@@ -1,10 +1,15 @@
-# Node Dependencies
-backend/node_modules/
-frontend/node_modules/
+node_modules/
 
-# Environment Variables
-backend/.env
+.env
+.env.*
+*.env
 
-# Expo / React Native Temp Files
-frontend/.expo/
-frontend/dist/
+.expo/
+dist/
+web-build/
+build/
+
+*.log
+
+.DS_Store
+Thumbs.db
