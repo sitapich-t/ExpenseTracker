@@ -9,6 +9,9 @@ const { createClient } = require('@supabase/supabase-js');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
+const authRoutes = require('./routes/authRoutes');
+const personalRoutes = require('./routes/personalRoutes');
+
 // Polyfill for WebSocket if missing in environment
 if (typeof global !== 'undefined' && !global.WebSocket) {
   try {
@@ -147,85 +150,15 @@ function authenticate(req, res, next) {
   }
 }
 
-// API ROUTES
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'online',
-    timestamp: new Date().toISOString(),
-    database: supabase ? 'Supabase (Connected/Ready)' : 'In-Memory Mode (Active)',
-  });
+app.use('/api/v1/auth', authRoutes);
+
+app.use((req, res, next) => {
+  req.supabase = supabase;
+  next();
 });
 
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { email, password, name, username } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    const cleanPassword = String(password || '').trim();
-    const cleanName = String(name || username || '').trim();
-
-    if (!cleanEmail || !cleanPassword || !cleanName) {
-      return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบทุกช่อง' });
-    }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
-      return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
-    }
-    if (cleanPassword.length < 6) {
-      return res.status(400).json({ error: 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร' });
-    }
-
-    const existing = await findUserByEmail(cleanEmail);
-    if (existing) {
-      return res.status(400).json({ error: 'อีเมลนี้ถูกใช้งานในระบบแล้ว' });
-    }
-
-    const password_hash = await bcrypt.hash(cleanPassword, 10);
-    const id = uuidv4();
-    const userRecord = { id, email: cleanEmail, password_hash, name: cleanName };
-    const savedUser = await insertUserRecord(userRecord);
-
-    const token = generateToken({ id: savedUser.id, email: savedUser.email, name: savedUser.name });
-    return res.json({
-      message: 'สมัครสมาชิกสำเร็จ',
-      token,
-      user: { id: savedUser.id, email: savedUser.email, name: savedUser.name },
-    });
-  } catch (err) {
-    console.error('❌ Register Error:', err);
-    return res.status(500).json({ error: `Server Error: ${err.message || 'Unknown error'}` });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    const cleanPassword = String(password || '').trim();
-
-    if (!cleanEmail || !cleanPassword) {
-      return res.status(400).json({ error: 'กรุณากรอกอีเมลและรหัสผ่าน' });
-    }
-
-    const user = await findUserByEmail(cleanEmail);
-    if (!user) {
-      return res.status(400).json({ error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
-    }
-
-    const ok = await bcrypt.compare(cleanPassword, user.password_hash);
-    if (!ok) {
-      return res.status(400).json({ error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
-    }
-
-    const token = generateToken({ id: user.id, email: user.email, name: user.name });
-    return res.json({
-      message: 'เข้าสู่ระบบสำเร็จ',
-      token,
-      user: { id: user.id, email: user.email, name: user.name },
-    });
-  } catch (err) {
-    console.error('❌ Login Error:', err);
-    return res.status(500).json({ error: `Server Error: ${err.message}` });
-  }
-});
+// ผูก Path หลักสำหรับข้อมูลส่วนบุคคล
+app.use('/api/v1/personal', personalRoutes);
 
 app.get('/api/transactions/my', authenticate, async (req, res) => {
   try {

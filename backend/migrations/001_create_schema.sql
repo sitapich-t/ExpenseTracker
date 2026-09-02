@@ -1,40 +1,35 @@
--- Supabase/Postgres schema migration: create users and transactions tables
-
--- Enable pgcrypto for gen_random_uuid()
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Users table
 CREATE TABLE IF NOT EXISTS users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email text NOT NULL UNIQUE,
-  password_hash text NOT NULL,
-  name text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Transactions table
-CREATE TABLE IF NOT EXISTS transactions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title text NOT NULL,
-  type text NOT NULL CHECK (type IN ('income', 'expense')),
-  amount numeric(12,2) NOT NULL DEFAULT 0,
-  merchant text,
-  metadata jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS categories (
+    category_id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    icon_type VARCHAR(50) NOT NULL,
+    type VARCHAR(10) CHECK (type IN ('income', 'expense'))
 );
 
--- Helpful indexes
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id_created_at ON transactions(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_transactions_merchant ON transactions(merchant);
+CREATE TABLE IF NOT EXISTS personal_transactions (
+    personal_transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+    category_id INT REFERENCES categories(category_id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    type VARCHAR(10) CHECK (type IN ('income', 'expense')),
+    amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+    merchant TEXT,
+    transaction_date TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
--- Optional: a view for quick dashboard summary per user
-CREATE OR REPLACE VIEW user_dashboard_summary AS
-SELECT
-  t.user_id,
-  COUNT(*) FILTER (WHERE t.type = 'expense') AS expenses_count,
-  COUNT(*) FILTER (WHERE t.type = 'income') AS incomes_count,
-  COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'expense'), 0) AS total_expenses,
-  COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'income'), 0) AS total_incomes
-FROM transactions t
-GROUP BY t.user_id;
+CREATE TABLE IF NOT EXISTS personal_budgets (
+    personal_budget_id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+    monthly_limit NUMERIC(12, 2) NOT NULL CHECK (monthly_limit >= 0),
+    month INT CHECK (month BETWEEN 1 AND 12),
+    year INT CHECK (year >= 2024),
+    UNIQUE(user_id, month, year)
+);
