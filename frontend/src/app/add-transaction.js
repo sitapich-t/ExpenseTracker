@@ -4,16 +4,19 @@ import {
   ScrollView, Alert, Platform, Modal, TouchableWithoutFeedback
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CATEGORIES = [
-  { id: 'Food', label: 'Food', icon: 'utensils', lib: 'FontAwesome5' },
-  { id: 'Transport', label: 'Transport', icon: 'bus', lib: 'FontAwesome5' },
-  { id: 'Shopping', label: 'Shopping', icon: 'bag-handle-sharp', lib: 'Ionicons' },
-  { id: 'Study', label: 'Study', icon: 'book', lib: 'FontAwesome5' },
-  { id: 'More', label: 'More', icon: 'ellipsis-horizontal', lib: 'Ionicons' },
+  { id: 'Food', label: 'อาหาร', icon: 'restaurant', lib: 'Ionicons', bg: '#fff3e0', color: '#e65100' },
+  { id: 'Transport', label: 'เดินทาง', icon: 'bus', lib: 'Ionicons', bg: '#e3f2fd', color: '#1565c0' },
+  { id: 'Shopping', label: 'ช้อปปิ้ง', icon: 'bag-handle', lib: 'Ionicons', bg: '#fce4ec', color: '#c62828' },
+  { id: 'Study', label: 'การศึกษา', icon: 'book', lib: 'Ionicons', bg: '#e8f5e9', color: '#2e7d32' },
+  { id: 'Entertainment', label: 'บันเทิง', icon: 'game-controller', lib: 'Ionicons', bg: '#f3e5f5', color: '#7b1fa2' },
+  { id: 'Health', label: 'สุขภาพ', icon: 'medkit', lib: 'Ionicons', bg: '#e0f7fa', color: '#00838f' },
+  { id: 'Bills', label: 'บิล', icon: 'receipt', lib: 'Ionicons', bg: '#fff8e1', color: '#f57f17' },
+  { id: 'Other', label: 'อื่นๆ', icon: 'ellipsis-horizontal', lib: 'Ionicons', bg: '#f5f5f5', color: '#616161' },
 ];
 
 export default function AddTransactionScreen() {
@@ -125,7 +128,7 @@ export default function AddTransactionScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Transaction</Text>
+        <Text style={styles.headerTitle}>บันทึกรายการ</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -136,7 +139,7 @@ export default function AddTransactionScreen() {
           onPress={() => setType('expense')}
         >
           <Text style={[styles.toggleText, type === 'expense' && styles.toggleTextActive]}>
-            Expense
+            รายจ่าย
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -144,16 +147,16 @@ export default function AddTransactionScreen() {
           onPress={() => setType('income')}
         >
           <Text style={[styles.toggleText, type === 'income' && styles.toggleTextActive]}>
-            Income
+            รายรับ
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* Amount Display & Input */}
       <View style={styles.amountSection}>
-        <Text style={styles.labelTitleCenter}>Amount</Text>
+        <Text style={styles.labelTitleCenter}>จำนวนเงิน</Text>
         <View style={styles.amountInputRow}>
-          <Text style={styles.currencySymbol}>$</Text>
+          <Text style={styles.currencySymbol}>฿</Text>
           <TextInput
             style={styles.amountInput}
             placeholder="0.00"
@@ -166,7 +169,7 @@ export default function AddTransactionScreen() {
       </View>
 
       {/* Category Picker */}
-      <Text style={styles.labelTitle}>Category</Text>
+      <Text style={styles.labelTitle}>หมวดหมู่</Text>
       <View style={styles.categoryContainer}>
         {CATEGORIES.map((cat) => {
           const isSelected = category === cat.id;
@@ -176,12 +179,8 @@ export default function AddTransactionScreen() {
               style={styles.catItem}
               onPress={() => setCategory(cat.id)}
             >
-              <View style={[styles.catIconCircle, isSelected && styles.catIconSelected]}>
-                {cat.lib === 'FontAwesome5' ? (
-                  <FontAwesome5 name={cat.icon} size={18} color={isSelected ? '#fff' : '#6c5ce7'} />
-                ) : (
-                  <Ionicons name={cat.icon} size={20} color={isSelected ? '#fff' : '#6c5ce7'} />
-                )}
+              <View style={[styles.catIconCircle, { backgroundColor: cat.bg }, isSelected && styles.catIconSelected]}>
+                <Ionicons name={cat.icon} size={20} color={isSelected ? '#fff' : cat.color} />
               </View>
               <Text style={[styles.catLabel, isSelected && styles.catLabelSelected]}>
                 {cat.label}
@@ -198,7 +197,7 @@ export default function AddTransactionScreen() {
       </TouchableOpacity>
 
       {/* Merchant Input */}
-      <Text style={styles.labelTitle}>Merchant</Text>
+      <Text style={styles.labelTitle}>ร้านค้า/รายละเอียด</Text>
       <View style={styles.inputBox}>
         <StoreIcon />
         <TextInput
@@ -213,7 +212,7 @@ export default function AddTransactionScreen() {
       {/* Date & Payment Row */}
       <View style={styles.rowTwoCol}>
         <View style={{ flex: 1, marginRight: 8 }}>
-          <Text style={styles.labelTitle}>Date</Text>
+          <Text style={styles.labelTitle}>วันที่</Text>
           <TouchableOpacity style={styles.inputBox} onPress={() => setShowDatePicker(true)}>
             <Ionicons name="calendar-outline" size={18} color="#666" />
             <Text style={styles.inputText}>{date.toLocaleDateString()}</Text>
@@ -221,7 +220,7 @@ export default function AddTransactionScreen() {
         </View>
 
         <View style={{ flex: 1, marginLeft: 8 }}>
-          <Text style={styles.labelTitle}>Payment</Text>
+          <Text style={styles.labelTitle}>ช่องทางชำระ</Text>
           <TouchableOpacity style={styles.inputBox} onPress={() => setShowPaymentModal(true)}>
             <Ionicons name="card-outline" size={18} color="#666" />
             <Text style={[styles.inputText, { flex: 1 }]} numberOfLines={1}>{payment}</Text>
@@ -243,7 +242,7 @@ export default function AddTransactionScreen() {
       )}
 
       {/* Note Input */}
-      <Text style={styles.labelTitle}>Note (Optional)</Text>
+      <Text style={styles.labelTitle}>โน้ต (ไม่บังคับ)</Text>
       <View style={[styles.inputBox, styles.noteBox]}>
         <MaterialCommunityIcons name="square-edit-outline" size={18} color="#666" style={{ marginTop: 2 }} />
         <TextInput
@@ -259,7 +258,7 @@ export default function AddTransactionScreen() {
 
       {/* Save Button */}
       <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>Save Expense</Text>
+        <Text style={styles.saveBtnText}>{type === 'expense' ? 'บันทึกรายจ่าย' : 'บันทึกรายรับ'}</Text>
       </TouchableOpacity>
 
       <View style={{ height: 40 }} />
@@ -376,14 +375,24 @@ const styles = StyleSheet.create({
   amountInput: { fontSize: 36, fontWeight: '700', color: '#5f3dc4', minWidth: 100 },
 
   labelTitle: { fontSize: 13, fontWeight: '600', color: '#555', marginTop: 16, marginBottom: 8 },
-  categoryContainer: { flexDirection: 'row', justifyContent: 'space-between' },
-  catItem: { alignItems: 'center' },
+  categoryContainer: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    marginHorizontal: -5
+  },
+  catItem: { 
+    alignItems: 'center',
+    width: '25%',
+    paddingVertical: 8,
+    paddingHorizontal: 5
+  },
   catIconCircle: {
     width: 50, height: 50, borderRadius: 25,
-    backgroundColor: '#eee9fe', justifyContent: 'center', alignItems: 'center', marginBottom: 4
+    justifyContent: 'center', alignItems: 'center', marginBottom: 4
   },
   catIconSelected: { backgroundColor: '#5f3dc4' },
-  catLabel: { fontSize: 12, color: '#777', fontWeight: '500' },
+  catLabel: { fontSize: 12, color: '#777', fontWeight: '500', textAlign: 'center' },
   catLabelSelected: { color: '#5f3dc4', fontWeight: '700' },
 
   scanAiBtn: {
@@ -455,7 +464,7 @@ const styles = StyleSheet.create({
   addPaymentBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justify: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
     marginTop: 8,
     borderWidth: 1,
