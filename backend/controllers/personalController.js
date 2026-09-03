@@ -1,33 +1,272 @@
-const db = require('../config/db');
+const supabase = require('../config/supabase');
+const { v4: uuidv4 } = require('uuid');
+
+// ==========================================
+// Budgets Controllers
+// ==========================================
+
+exports.getBudgets = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { month, year } = req.query;
+
+    let query = supabase
+      .from('personal_budgets')
+      .select('*, categories(id, name, icon_type)')
+      .eq('user_id', userId);
+
+    if (month) query = query.eq('month', parseInt(month));
+    if (year) query = query.eq('year', parseInt(year));
+
+    const { data, error } = await query.order('id', { ascending: true });
+
+    if (error) throw error;
+    return res.json({ success: true, budgets: data || [] });
+  } catch (err) {
+    console.error('❌ Get budgets error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+exports.setBudget = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { category_id, monthly_limit, month, year } = req.body || {};
+
+    if (!monthly_limit || !month || !year) {
+      return res.status(400).json({
+        success: false,
+        error: 'กรุณากรอกข้อมูลให้ครบถ้วน (monthly_limit, month, year)'
+      });
+    }
+
+    let checkQuery = supabase
+      .from('personal_budgets')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('month', parseInt(month))
+      .eq('year', parseInt(year));
+
+    if (category_id) {
+      checkQuery = checkQuery.eq('category_id', parseInt(category_id));
+    } else {
+      checkQuery = checkQuery.is('category_id', null);
+    }
+
+    const { data: existing } = await checkQuery.maybeSingle();
+
+    let resultData;
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('personal_budgets')
+        .update({ monthly_limit: parseFloat(monthly_limit) })
+        .eq('id', existing.id)
+        .select('*, categories(id, name, icon_type)')
+        .single();
+
+      if (error) throw error;
+      resultData = data;
+    } else {
+      const newBudget = {
+        user_id: userId,
+        category_id: category_id ? parseInt(category_id) : null,
+        monthly_limit: parseFloat(monthly_limit),
+        month: parseInt(month),
+        year: parseInt(year)
+      };
+
+      const { data, error } = await supabase
+        .from('personal_budgets')
+        .insert([newBudget])
+        .select('*, categories(id, name, icon_type)')
+        .single();
+
+      if (error) throw error;
+      resultData = data;
+    }
+
+    return res.json({
+      success: true,
+      message: 'บันทึกงบประมาณสำเร็จ',
+      budget: resultData
+    });
+  } catch (err) {
+    console.error('❌ Set budget error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+exports.updateBudget = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { id } = req.params;
+    const { monthly_limit } = req.body || {};
+
+    if (!monthly_limit) {
+      return res.status(400).json({ success: false, error: 'กรุณาระบุ monthly_limit' });
+    }
+
+    const { data, error } = await supabase
+      .from('personal_budgets')
+      .update({ monthly_limit: parseFloat(monthly_limit) })
+      .eq('id', parseInt(id))
+      .eq('user_id', userId)
+      .select('*, categories(id, name, icon_type)')
+      .single();
+
+    if (error) throw error;
+
+    return res.json({ success: true, message: 'อัปเดตงบประมาณสำเร็จ', budget: data });
+  } catch (err) {
+    console.error('❌ Update budget error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+exports.deleteBudget = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('personal_budgets')
+      .delete()
+      .eq('id', parseInt(id))
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    return res.json({ success: true, message: 'ลบงบประมาณสำเร็จ' });
+  } catch (err) {
+    console.error('❌ Delete budget error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// ==========================================
+// Transactions Controllers
+// ==========================================
 
 exports.getTransactions = async (req, res) => {
-  const result = await db.query('SELECT * FROM personal_transactions WHERE user_id = $1 ORDER BY transaction_date DESC', [req.user.userId]);
-  res.json({ success: true, data: result.rows });
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { month, year, category_id, type } = req.query;
+
+    let query = supabase
+      .from('personal_transactions')
+      .select('*, categories(id, name, icon_type)')
+      .eq('user_id', userId);
+
+    if (type) query = query.eq('type', type);
+    if (category_id) query = query.eq('category_id', parseInt(category_id));
+
+    if (month && year) {
+      const startDate = new Date(year, month - 1, 1).toISOString();
+      const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
+      query = query.gte('transaction_date', startDate).lte('transaction_date', endDate);
+    }
+
+    const { data, error } = await query.order('transaction_date', { ascending: false });
+
+    if (error) throw error;
+    return res.json({ success: true, transactions: data || [] });
+  } catch (err) {
+    console.error('❌ Get transactions error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
 };
 
 exports.createTransaction = async (req, res) => {
-  const { categoryId, title, type, amount, merchant } = req.body;
-  if (amount <= 0) return res.status(400).json({ success: false, message: 'Amount must be positive' });
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { title, type, amount, merchant, category_id, transaction_date } = req.body || {};
 
-  const result = await db.query(
-    `INSERT INTO personal_transactions (user_id, category_id, title, type, amount, merchant)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [req.user.userId, categoryId, title, type, amount, merchant]
-  );
-  res.status(201).json({ success: true, data: result.rows[0] });
+    if (!title || !amount) {
+      return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
+    }
+
+    const newTransaction = {
+      id: uuidv4(),
+      user_id: userId,
+      title: String(title).trim(),
+      type: type || 'expense',
+      amount: parseFloat(amount) || 0,
+      merchant: merchant || 'General',
+      category_id: category_id ? parseInt(category_id) : null,
+      transaction_date: transaction_date || new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('personal_transactions')
+      .insert([newTransaction])
+      .select('*, categories(id, name, icon_type)')
+      .single();
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: 'บันทึกรายการสำเร็จ',
+      transaction: data
+    });
+  } catch (err) {
+    console.error('❌ Create transaction error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
 };
 
 exports.updateTransaction = async (req, res) => {
-  const { id } = req.params;
-  const { title, amount, type } = req.body;
-  const result = await db.query(
-    `UPDATE personal_transactions SET title = $1, amount = $2, type = $3 WHERE id = $4 AND user_id = $5 RETURNING *`,
-    [title, amount, type, id, req.user.userId]
-  );
-  res.json({ success: true, data: result.rows[0] });
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { id } = req.params;
+    const { title, type, amount, merchant, category_id, transaction_date } = req.body || {};
+
+    const updateData = {};
+    if (title !== undefined) updateData.title = String(title).trim();
+    if (type !== undefined) updateData.type = type;
+    if (amount !== undefined) updateData.amount = parseFloat(amount);
+    if (merchant !== undefined) updateData.merchant = merchant;
+    if (category_id !== undefined) updateData.category_id = category_id ? parseInt(category_id) : null;
+    if (transaction_date !== undefined) updateData.transaction_date = transaction_date;
+
+    const { data, error } = await supabase
+      .from('personal_transactions')
+      .update(updateData)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*, categories(id, name, icon_type)')
+      .single();
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: 'อัปเดตรายการสำเร็จ',
+      transaction: data
+    });
+  } catch (err) {
+    console.error('❌ Update transaction error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
 };
 
 exports.deleteTransaction = async (req, res) => {
-  await db.query('DELETE FROM personal_transactions WHERE id = $1 AND user_id = $2', [req.params.id, req.user.userId]);
-  res.json({ success: true, message: 'Deleted successfully' });
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('personal_transactions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+
+    return res.json({ success: true, message: 'ลบรายการสำเร็จ' });
+  } catch (err) {
+    console.error('❌ Delete transaction error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
 };
