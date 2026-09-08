@@ -4,6 +4,8 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'reac
 import api, { setToken } from '@/lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -12,7 +14,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
   try {
-    const response = await fetch('http://192.168.0.3:3000/api/auth/login', {
+    const response = await fetch(`${API_URL}/api/v1/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),

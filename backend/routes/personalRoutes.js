@@ -1,7 +1,11 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const authenticate = require('../middlewares/authMiddleware');
 const personalController = require('../controllers/personalController');
+
+// Setup Multer สำหรับอัปโหลดรูปสแกนใบเสร็จ
+const upload = multer({ dest: 'uploads/' });
 
 // ==========================================
 // Budgets Routes
@@ -16,6 +20,7 @@ router.delete('/budgets/:id', authenticate, personalController.deleteBudget);
 // ==========================================
 router.get('/transactions', authenticate, personalController.getTransactions);
 router.post('/transactions', authenticate, personalController.createTransaction);
+router.post('/transactions/scan-receipt', upload.single('receipt'), personalController.scanReceipt);
 router.put('/transactions/:id', authenticate, personalController.updateTransaction);
 router.delete('/transactions/:id', authenticate, personalController.deleteTransaction);
 

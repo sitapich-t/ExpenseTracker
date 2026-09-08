@@ -26,7 +26,7 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      const res = await api.post('/api/auth/register', { name: cleanName, email: cleanEmail, password: cleanPassword });
+      const res = await api.post('/api/v1/auth/register', { name: cleanName, email: cleanEmail, password: cleanPassword });
       await setToken(res.token);
       await AsyncStorage.setItem('user', JSON.stringify(res.user));
       router.replace('/');

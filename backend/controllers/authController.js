@@ -22,21 +22,28 @@ async function sendOtpEmail(toEmail, otpCode) {
     name: process.env.MAILTRAP_SENDER_NAME || "Student Wallet",
   };
 
-  await transporter.sendMail({
-    from: sender,
-    to: [toEmail],
-    subject: 'รหัส OTP สำหรับยืนยันตัวตน - Student Wallet',
-    html: `
-      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-        <h2>ยืนยันการสมัครสมาชิก</h2>
-        <p>รหัส OTP สำหรับยืนยันอีเมลของคุณคือ:</p>
-        <h1 style="color: #4F46E5; letter-spacing: 5px;">${otpCode}</h1>
-        <p>รหัสนี้จะหมดอายุภายใน <b>10 นาที</b></p>
-        <p style="color: #888; font-size: 12px;">หากคุณไม่ได้ทำการสมัครสมาชิก กรุณาข้ามอีเมลนี้</p>
-      </div>
-    `,
-    category: "OTP Verification",
-  });
+  try {
+    await transporter.sendMail({
+      from: sender,
+      to: [toEmail],
+      subject: 'รหัส OTP สำหรับยืนยันตัวตน - Student Wallet',
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+          <h2>ยืนยันการสมัครสมาชิก</h2>
+          <p>รหัส OTP สำหรับยืนยันอีเมลของคุณคือ:</p>
+          <h1 style="color: #4F46E5; letter-spacing: 5px;">${otpCode}</h1>
+          <p>รหัสนี้จะหมดอายุภายใน <b>10 นาที</b></p>
+          <p style="color: #888; font-size: 12px;">หากคุณไม่ได้ทำการสมัครสมาชิก กรุณาข้ามอีเมลนี้</p>
+        </div>
+      `,
+      category: "OTP Verification",
+    });
+  } catch (err) {
+    // Dev fallback: กรณี Mailtrap ส่งเมลไม่ได้ (เช่น demo domain ห้ามส่งหาเมลอื่น)
+    // ให้ log OTP ลง console เพื่อให้ทดสอบต่อในเครื่องได้โดยไม่ต้องรออีเมลจริง
+    console.error('⚠️ ส่งอีเมล OTP ล้มเหลว:', err.message);
+    console.log(`🔑 OTP สำหรับใช้ยืนยันตัวตน (dev only): ${otpCode}`);
+  }
 }
 
 // ==========================================

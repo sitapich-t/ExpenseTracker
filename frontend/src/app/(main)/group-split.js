@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useRouter, useFocusEffect } from 'expo-router';
 
-const API_BASE_URL = 'http://192.168.0.3:3000/api';
+const API_BASE_URL = (global.__API_URL__ || 'http://192.168.1.45:3000') + '/api/v1';
 
 export default function GroupSplitScreen() {
   const router = useRouter();
