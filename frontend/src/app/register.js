@@ -13,8 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import api, { setToken } from '@/lib/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from '@/lib/api';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -45,24 +44,20 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
-      const response = await api.post('/api/auth/register', {
+      const res = await api.post('/api/v1/auth/register', {
         name,
         email,
         password,
       });
 
-      if (response.data && response.data.token) {
-        await setToken(response.data.token);
-        await AsyncStorage.setItem('userData', JSON.stringify(response.data.user));
-        Alert.alert('สำเร็จ', 'สร้างบัญชีสำเร็จ', [
-          { text: 'ตกลง', onPress: () => router.replace('/(tabs)') }
-        ]);
-      }
-    } catch (error) {
-      console.error('Register error:', error);
+      Alert.alert('สมัครสมาชิกสำเร็จ', res.message || 'กรุณาเช็คอีเมลเพื่อยืนยันตัวตนด้วยรหัส OTP', [
+        { text: 'ตกลง', onPress: () => router.replace('/login') },
+      ]);
+    } catch (err) {
+      console.error('Register error:', err);
       Alert.alert(
         'ข้อผิดพลาด',
-        error.response?.data?.message || 'ไม่สามารถสมัครสมาชิกได้ กรุณาลองใหม่อีกครั้ง'
+        err.body?.error || err.message || 'ไม่สามารถสมัครสมาชิกได้ กรุณาลองใหม่อีกครั้ง'
       );
     } finally {
       setLoading(false);

@@ -14,6 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -22,14 +24,14 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email || !password) {
+if (!email || !password) {
       Alert.alert('ข้อผิดพลาด', 'กรุณากรอกอีเมลและรหัสผ่าน');
       return;
     }
 
     try {
       setLoading(true);
-      const response = await fetch('http://10.0.2.2:3000/api/auth/login', {
+      const response = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -42,11 +44,11 @@ export default function LoginScreen() {
       if (response.ok) {
         await AsyncStorage.setItem('userToken', data.token);
         if (data.user) {
-           await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+           await AsyncStorage.setItem('user', JSON.stringify(data.user));
         }
-        router.replace('/(tabs)');
+        router.replace('/(main)/dashboard');
       } else {
-        Alert.alert('เข้าสู่ระบบล้มเหลว', data.message || 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+        Alert.alert('เข้าสู่ระบบล้มเหลว', data.error || data.message || 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
       }
     } catch (error) {
       console.error('Login error:', error);

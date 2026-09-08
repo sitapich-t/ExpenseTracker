@@ -7,6 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 
+const API_BASE_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+
 export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = useState([]);
@@ -23,13 +25,13 @@ export default function DashboardScreen() {
 
   const fetchData = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await AsyncStorage.getItem('userToken');
       if (!token) {
         router.replace('/login');
         return;
       }
 
-      // Get user info
+// Get user info
       const userStr = await AsyncStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
@@ -42,9 +44,7 @@ export default function DashboardScreen() {
         setMonthlyBudget(parseFloat(budgetStr));
       }
 
-      // Use the correct API URL (fallback to 10.0.2.2 for Android emulator)
-      const apiUrl = 'http://10.0.2.2:3000/api/transactions/my';
-      const res = await axios.get(apiUrl, {
+      const res = await axios.get(`${API_BASE_URL}/api/v1/personal/transactions`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 

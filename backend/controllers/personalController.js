@@ -1,5 +1,7 @@
 const supabase = require('../config/supabase');
 const { v4: uuidv4 } = require('uuid');
+const transactionService = require('../services/transactionService');
+const ocrService = require('../services/ocrService');
 
 // ==========================================
 // Budgets Controllers
@@ -101,15 +103,22 @@ exports.updateBudget = async (req, res) => {
   try {
     const userId = req.user.id || req.user.user_id;
     const { id } = req.params;
-    const { monthly_limit } = req.body || {};
+    const { monthly_limit, category_id } = req.body || {};
 
-    if (!monthly_limit) {
-      return res.status(400).json({ success: false, error: 'กรุณาระบุ monthly_limit' });
+    if (monthly_limit === undefined && category_id === undefined) {
+      return res.status(400).json({ success: false, error: 'กรุณาระบุ monthly_limit หรือ category_id' });
+    }
+
+    // สร้าง object เฉพาะ field ที่ถูกส่งมา เพื่อไม่ให้ field ที่หายไปถูกเขียนทับ
+    const updates = {};
+    if (monthly_limit !== undefined) updates.monthly_limit = parseFloat(monthly_limit);
+    if (category_id !== undefined) {
+      updates.category_id = category_id === null || category_id === '' ? null : parseInt(category_id);
     }
 
     const { data, error } = await supabase
       .from('personal_budgets')
-      .update({ monthly_limit: parseFloat(monthly_limit) })
+      .update(updates)
       .eq('id', parseInt(id))
       .eq('user_id', userId)
       .select('*, categories(id, name, icon_type)')
@@ -180,7 +189,7 @@ exports.getTransactions = async (req, res) => {
 exports.createTransaction = async (req, res) => {
   try {
     const userId = req.user.id || req.user.user_id;
-    const { title, type, amount, merchant, category_id, transaction_date } = req.body || {};
+    const { title, type, amount, merchant, category_id, date, transaction_date } = req.body || {};
 
     if (!title || !amount) {
       return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
@@ -189,12 +198,12 @@ exports.createTransaction = async (req, res) => {
     const newTransaction = {
       id: uuidv4(),
       user_id: userId,
-      title: String(title).trim(),
+      title: transactionService.normalizeTitle(title),
       type: type || 'expense',
-      amount: parseFloat(amount) || 0,
+      amount: transactionService.parseAmount(amount),
       merchant: merchant || 'General',
-      category_id: category_id ? parseInt(category_id) : null,
-      transaction_date: transaction_date || new Date().toISOString()
+      category_id: transactionService.parseCategoryId(category_id),
+      transaction_date: transactionService.resolveDate(date || transaction_date),
     };
 
     const { data, error } = await supabase
@@ -223,12 +232,12 @@ exports.updateTransaction = async (req, res) => {
     const { title, type, amount, merchant, category_id, transaction_date } = req.body || {};
 
     const updateData = {};
-    if (title !== undefined) updateData.title = String(title).trim();
+    if (title !== undefined) updateData.title = transactionService.normalizeTitle(title);
     if (type !== undefined) updateData.type = type;
-    if (amount !== undefined) updateData.amount = parseFloat(amount);
+    if (amount !== undefined) updateData.amount = transactionService.parseAmount(amount);
     if (merchant !== undefined) updateData.merchant = merchant;
-    if (category_id !== undefined) updateData.category_id = category_id ? parseInt(category_id) : null;
-    if (transaction_date !== undefined) updateData.transaction_date = transaction_date;
+    if (category_id !== undefined) updateData.category_id = transactionService.parseCategoryId(category_id);
+    if (transaction_date !== undefined) updateData.transaction_date = transactionService.resolveDate(transaction_date);
 
     const { data, error } = await supabase
       .from('personal_transactions')
@@ -268,5 +277,26 @@ exports.deleteTransaction = async (req, res) => {
   } catch (err) {
     console.error('❌ Delete transaction error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// สแกนใบเสร็จ (Mock Scanner Endpoint)
+exports.scanReceipt = async (req, res) => {
+  try {
+    const { image } = req.body || {};
+    const file = req.file;
+
+    const { merchant, total, parsedText } = ocrService.scanReceipt({ file, image });
+
+    return res.json({
+      success: true,
+      merchant,
+      total,
+      date: new Date().toISOString(),
+      parsedText,
+    });
+  } catch (err) {
+    console.error('❌ Scan receipt error:', err);
+    return res.status(500).json({ success: false, error: 'การอ่านสแกนใบเสร็จล้มเหลว' });
   }
 };

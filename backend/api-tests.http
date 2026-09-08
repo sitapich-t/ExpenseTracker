@@ -1,0 +1,195 @@
+# ============================================================
+# Student Wallet API Test Requests — VS Code REST Client
+# วิธีใช้: ติดตั้ง extension "REST Client" แล้วกด "Send Request"
+# เหนือแต่ละ request (### แบ่ง request หนึ่ง request)
+# ============================================================
+
+@baseUrl = http://localhost:3000/api/v1
+# วาง JWT token จาก response ของข้อ 2 (Login) หรือข้อ 3 (Verify OTP) ลงในตัวแปรนี้
+@authToken = <วาง-JWT-token-ที่นี่>
+# วาง group id จาก response ของข้อ 10 (Create Group) ลงในตัวแปรนี้
+@groupId = <วาง-group-id-ที่นี่>
+
+############################################################
+# AUTH DOMAIN
+############################################################
+
+### 1. ลงทะเบียนผู้ใช้ใหม่
+# ส่ง OTP ไปที่อีเมล (หมดอายุ 10 นาที) — ยังเข้าสู่ระบบไม่ได้จนกว่าจะยืนยัน OTP
+# คาดหวัง: 201 Created
+# { "success": true, "message": "สมัครสมาชิกสำเร็จ กรุณาเช็คอีเมลเพื่อนำรหัส OTP มายืนยัน", "email": "..." }
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "ทดสอบ ผู้ใช้",
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 2. เข้าสู่ระบบ
+# ต้องยืนยัน OTP เรียบร้อยแล้ว (is_verified = true) ถึงจะสำเร็จ
+# คาดหวัง: 200 OK
+# { "success": true, "message": "เข้าสู่ระบบสำเร็จ", "token": "...", "user": { "id", "email", "name" } }
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 3. ยืนยันรหัส OTP
+# ใช้ OTP จากอีเมลที่ได้ตอนสมัคร — หลังยืนยันสำเร็จจะได้รับ token กลับมา
+# คาดหวัง: 200 OK
+# { "success": true, "message": "ยืนยันตัวตนสำเร็จ เข้าสู่ระบบเรียบร้อย", "token": "...", "user": { "id", "email", "name" } }
+POST {{baseUrl}}/auth/verify-otp
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "otp": "123456"
+}
+
+### 4. Get Profile
+# ⚠️ ยังไม่มี endpoint นี้ใน backend ตอนนี้ → จะได้ 404
+# JWT payload ปัจจุบันมีแค่ { id, email, name } — ถ้าต้องการหน้า Profile ต้องเพิ่ม route ใหม่
+# คาดหวัง (เมื่อเพิ่ม route แล้ว): 200 OK { "success": true, "user": { "id", "email", "name" } }
+GET {{baseUrl}}/auth/profile
+Authorization: Bearer {{authToken}}
+
+############################################################
+# PERSONAL DOMAIN
+############################################################
+
+### 5. ดึงรายการธุรกรรมส่วนตัว
+# Query params ไม่บังคับ: ?month=9&year=2026&type=expense&category_id=1
+# เรียงตาม transaction_date (ใหม่สุดก่อน) — คาดหวัง: 200 OK
+# { "success": true, "transactions": [ ... ] }
+GET {{baseUrl}}/personal/transactions
+Authorization: Bearer {{authToken}}
+
+### 6. สร้างรายการธุรกรรมส่วนตัว
+# รับทั้ง date หรือ transaction_date (ค่า canonical = transaction_date)
+# ฟิลด์แปลกๆ ที่ frontend ส่ง (category, paymentMethod, note) จะถูก backend ตัดทิ้งไป
+# คาดหวัง: 200 OK
+# { "success": true, "message": "บันทึกรายการสำเร็จ", "transaction": { ... } }
+POST {{baseUrl}}/personal/transactions
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "title": "ข้าวผัดหมู",
+  "type": "expense",
+  "amount": 45.0,
+  "merchant": "ร้านข้าวอร่อย",
+  "category_id": null,
+  "date": "2026-09-07T10:00:00.000Z"
+}
+
+### 7. ดึงงบประมาณส่วนตัว
+# Query params ไม่บังคับ: ?month=9&year=2026 — คาดหวัง: 200 OK
+# { "success": true, "budgets": [ ... ] }
+GET {{baseUrl}}/personal/budgets
+Authorization: Bearer {{authToken}}
+
+### 8. สร้าง/อัปเดตงบประมาณส่วนตัว
+# ถ้ามี budget เดิมของ (month, year, category_id) ซ้ำจะอัปเดต monthly_limit แทนการสร้างใหม่
+# คาดหวัง: 200 OK
+# { "success": true, "message": "บันทึกงบประมาณสำเร็จ", "budget": { ... } }
+POST {{baseUrl}}/personal/budgets
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "monthly_limit": 10000,
+  "month": 9,
+  "year": 2026,
+  "category_id": null
+}
+
+############################################################
+# GROUP DOMAIN
+############################################################
+
+### 9. ดึงรายการกลุ่มของฉัน
+# คาดหวัง: 200 OK
+# { "success": true, "groups": [ ... ] }
+GET {{baseUrl}}/groups/my
+Authorization: Bearer {{authToken}}
+
+### 10. สร้างกลุ่มใหม่
+# category: General | Trip | Food | Event — แต่ละค่าจะตั้ง icon/สีของกลุ่มให้อัตโนมัติ
+# คาดหวัง: 200 OK
+# { "success": true, "message": "สร้างกลุ่มสำเร็จ", "group": { "id", "name", ... } }
+POST {{baseUrl}}/groups/create
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "name": "ทริปภูเก็ต",
+  "category": "Trip"
+}
+
+### 11. ดึงสมาชิกในกลุ่ม
+# ใช้ groupId จากการสร้างกลุ่ม (ข้อ 10) — คาดหวัง: 200 OK
+# { "success": true, "members": [ ... ] }
+GET {{baseUrl}}/groups/{{groupId}}/members
+Authorization: Bearer {{authToken}}
+
+### 12. เพิ่มสมาชิกเข้ากลุ่ม
+# user_id ต้องเป็น id ของผู้ใช้ที่ลงทะเบียนในระบบแล้ว (จาก response auth)
+# คาดหวัง: 200 OK
+# { "success": true, "message": "เพิ่มสมาชิกสำเร็จ", "member": { "id", "group_id", "user_id", ... } }
+POST {{baseUrl}}/groups/{{groupId}}/members
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "user_id": "<ใส่-user-id-ของผู้ใช้ที่นี่>"
+}
+
+### 13. ดึงธุรกรรมของกลุ่ม
+# คาดหวัง: 200 OK
+# { "success": true, "transactions": [ ... ] }
+GET {{baseUrl}}/groups/{{groupId}}/transactions
+Authorization: Bearer {{authToken}}
+
+### 14. สร้างธุรกรรมในกลุ่ม
+# paid_by = id ผู้จ่าย (default: ใช้ผู้เรียกใช้เอง) — date ใช้เป็น transaction_date
+# คาดหวัง: 200 OK
+# { "success": true, "message": "บันทึกรายการสำเร็จ", "transaction": { ... } }
+POST {{baseUrl}}/groups/{{groupId}}/transactions
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "title": "ค่ารถตู้",
+  "type": "expense",
+  "amount": 600.0,
+  "merchant": "รถตู้",
+  "category": "Trip",
+  "paid_by": null,
+  "date": "2026-09-07T08:00:00.000Z"
+}
+
+############################################################
+# SHARED SERVICES
+############################################################
+
+### 15. สแกนใบเสร็จ (mock OCR — ไม่มี real OCR)
+# อ่านจากชื่อไฟล์รูปแบบ "merchant__total-5.50" แล้วตอบ merchant/total กลับมา
+# (ไฟล์ตัวอย่าง: tests/fixtures/starbucks__total-5.50.png →
+#  merchant = "starbucks", total = 5.5)
+# ไม่ต้องใช้ token (route นี้เป็น public)
+# คาดหวัง: 200 OK
+# { "success": true, "merchant": "starbucks", "total": 5.5, "date": "...", "parsedText": "...png" }
+POST {{baseUrl}}/personal/transactions/scan-receipt
+Content-Type: multipart/form-data; boundary=----testBoundary
+
+------testBoundary
+Content-Disposition: form-data; name="receipt"; filename="starbucks__total-5.50.png"
+Content-Type: image/png
+
+< ./tests/fixtures/starbucks__total-5.50.png
+------testBoundary--

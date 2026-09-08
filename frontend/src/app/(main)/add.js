@@ -11,7 +11,7 @@ import {
 import axios from 'axios';
 
 // ⚠️ อย่าลืมเปลี่ยน IP เป็น IP เครื่องคอมของคุณ เช่น 'http://192.168.1.50:3000'
-const API_BASE_URL = 'http://192.168.0.3:3000/api/expenses';
+const API_BASE_URL = (global.__API_URL__ || 'http://192.168.1.45:3000') + '/api/expenses';
 
 export default function HomeScreen() {
   const currentUserId = 2; // Mock User ID

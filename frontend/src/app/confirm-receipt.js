@@ -7,6 +7,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+
 export default function ConfirmReceiptScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -20,7 +22,7 @@ export default function ConfirmReceiptScreen() {
   const handleConfirmSave = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://192.168.0.3:3000/api/transactions/create', {
+      const response = await fetch(`${API_URL}/api/v1/personal/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -32,7 +34,7 @@ export default function ConfirmReceiptScreen() {
           type: 'expense',
           category: category,
           merchant: merchant,
-          date: new Date().toISOString(),
+          transaction_date: new Date().toISOString(),
           paymentMethod: paymentMethod,
         }),
       });

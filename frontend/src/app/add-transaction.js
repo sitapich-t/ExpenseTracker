@@ -8,6 +8,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+
 const CATEGORIES = [
   { id: 'Food', label: 'อาหาร', icon: 'restaurant', lib: 'Ionicons', bg: '#fff3e0', color: '#e65100' },
   { id: 'Transport', label: 'เดินทาง', icon: 'bus', lib: 'Ionicons', bg: '#e3f2fd', color: '#1565c0' },
@@ -83,7 +85,7 @@ export default function AddTransactionScreen() {
         return;
       }
 
-      const response = await fetch('http://192.168.1.45:3000/api/transactions/create', {
+      const response = await fetch(`${API_URL}/api/v1/personal/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,7 +97,7 @@ export default function AddTransactionScreen() {
           type: type,
           category: category,
           merchant: merchant.trim() || 'General',
-          date: date.toISOString(),
+          transaction_date: date.toISOString(),
           paymentMethod: payment,
           note: note.trim(),
         }),
