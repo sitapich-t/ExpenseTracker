@@ -11,8 +11,7 @@ import {
   SafeAreaView 
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
+import { getToken, http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 
 const getCategoryDetails = (category) => {
@@ -59,10 +58,10 @@ export default function TransactionsScreen() {
 
   const fetchTransactions = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await getToken();
       if (!token) return;
 
-      const response = await axios.get('http://10.0.2.2:3000/api/transactions/my', {
+      const response = await http.get('/personal/transactions', {
         headers: { Authorization: `Bearer ${token}` }
       });
       

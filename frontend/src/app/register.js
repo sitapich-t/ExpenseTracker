@@ -51,7 +51,7 @@ export default function RegisterScreen() {
       });
 
       Alert.alert('สมัครสมาชิกสำเร็จ', res.message || 'กรุณาเช็คอีเมลเพื่อยืนยันตัวตนด้วยรหัส OTP', [
-        { text: 'ตกลง', onPress: () => router.replace('/login') },
+        { text: 'ตกลง', onPress: () => router.replace({ pathname: '/verify-otp', params: { email } }) },
       ]);
     } catch (err) {
       console.error('Register error:', err);
@@ -74,7 +74,7 @@ export default function RegisterScreen() {
           <View style={styles.iconContainer}>
             <Ionicons name="wallet-outline" size={60} color="#5f3dc4" />
           </View>
-          <Text style={styles.appName}>Student Wallet</Text>
+          <Text style={styles.appName}>Expense Tracker</Text>
           <Text style={styles.subtitle}>สร้างบัญชีใหม่</Text>
         </View>
 

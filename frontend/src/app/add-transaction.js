@@ -6,9 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+import { API_URL, getToken, clearToken } from '@/lib/api';
 
 const CATEGORIES = [
   { id: 'Food', label: 'อาหาร', icon: 'restaurant', lib: 'Ionicons', bg: '#fff3e0', color: '#e65100' },
@@ -77,7 +75,7 @@ export default function AddTransactionScreen() {
         return;
       }
 
-      const token = await AsyncStorage.getItem('token');
+      const token = await getToken();
       if (!token) {
         Alert.alert('กรุณาล็อกอิน', 'ไม่พบข้อมูลการเข้าสู่ระบบ', [
           { text: 'OK', onPress: () => router.replace('/login') }
@@ -107,7 +105,7 @@ export default function AddTransactionScreen() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          await AsyncStorage.removeItem('token');
+          await clearToken();
           Alert.alert('เซสชั่นหมดอายุ', 'กรุณาเข้าสู่ระบบใหม่', [
             { text: 'OK', onPress: () => router.replace('/login') }
           ]);

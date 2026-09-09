@@ -10,11 +10,8 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import { useRouter, useFocusEffect } from 'expo-router';
-
-const API_BASE_URL = (global.__API_URL__ || 'http://192.168.1.45:3000') + '/api/v1';
+import { getToken, http } from '@/lib/api';
 
 export default function GroupSplitScreen() {
   const router = useRouter();
@@ -58,20 +55,13 @@ export default function GroupSplitScreen() {
     },
   ]);
 
-  // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่สลับกลับมาหน้านี้
-  useFocusEffect(
-    useCallback(() => {
-      fetchMyGroups();
-    }, [])
-  );
-
-  const fetchMyGroups = async () => {
+  const fetchMyGroups = useCallback(async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await getToken();
       if (!token) return;
 
-      const res = await axios.get(`${API_BASE_URL}/groups/my`, {
+      const res = await http.get('/groups/my', {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -84,7 +74,14 @@ export default function GroupSplitScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่สลับกลับมาหน้านี้
+  useFocusEffect(
+    useCallback(() => {
+      fetchMyGroups();
+    }, [fetchMyGroups])
+  );
 
   const renderStatusBadge = (type, amount) => {
     const formattedAmount = (amount ?? 0).toLocaleString();

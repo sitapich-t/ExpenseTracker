@@ -12,9 +12,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
-
-const API_BASE_URL = (global.__API_URL__ || 'http://192.168.1.45:3000') + '/api/v1';
+import { http } from '@/lib/api';
 
 const CATEGORIES = [
   { id: 'Trip', label: 'Trip', icon: 'airplane-outline' },
@@ -40,8 +38,8 @@ export default function CreateGroupScreen() {
       const token = await AsyncStorage.getItem('userToken');
 
       // ยิง API สร้างกลุ่มใหม่
-      const res = await axios.post(
-        `${API_BASE_URL}/groups/create`,
+      const res = await http.post(
+        '/groups/create',
         {
           name: groupName,
           category: selectedCategory,

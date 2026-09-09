@@ -4,10 +4,8 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
+import { http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
-
-const API_BASE_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -44,7 +42,7 @@ export default function DashboardScreen() {
         setMonthlyBudget(parseFloat(budgetStr));
       }
 
-      const res = await axios.get(`${API_BASE_URL}/api/v1/personal/transactions`, {
+      const res = await http.get('/personal/transactions', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -70,7 +68,7 @@ export default function DashboardScreen() {
       setTotalExpense(exp);
 
     } catch (err) {
-      console.log('Fetch error:', err.response?.data || err.message);
+      console.error('Fetch error:', err.response?.data || err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -127,6 +125,12 @@ export default function DashboardScreen() {
           </View>
           <TouchableOpacity style={styles.iconBtn}>
             <Ionicons name="notifications-outline" size={24} color="#333" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => router.replace('/logout')}
+          >
+            <Ionicons name="log-out-outline" size={24} color="#c62828" />
           </TouchableOpacity>
         </View>
 

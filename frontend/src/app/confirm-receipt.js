@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
-  TextInput, ScrollView, Alert
+  TextInput, ScrollView, Alert, Platform
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+import { Ionicons } from '@expo/vector-icons';
+import { API_URL, getToken } from '@/lib/api';
 
 export default function ConfirmReceiptScreen() {
   const router = useRouter();
@@ -16,12 +14,12 @@ export default function ConfirmReceiptScreen() {
   const [merchant, setMerchant] = useState(params.merchant || 'Starbucks');
   const [amount, setAmount] = useState(params.amount || '5.50');
   const [date, setDate] = useState(params.date || '10/24/2023');
-  const [category, setCategory] = useState(params.category || 'Food & Drink');
+  const [category] = useState(params.category || 'Food & Drink');
   const [paymentMethod, setPaymentMethod] = useState('Card'); // 'Card' | 'Cash'
 
   const handleConfirmSave = async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
+      const token = await getToken();
       const response = await fetch(`${API_URL}/api/v1/personal/transactions`, {
         method: 'POST',
         headers: {
@@ -42,7 +40,7 @@ export default function ConfirmReceiptScreen() {
       if (!response.ok) throw new Error('Failed to save');
       
       Alert.alert('สำเร็จ', 'บันทึกใบเสร็จเรียบร้อยแล้ว');
-      router.replace('/dashboard');
+      router.replace('/(main)/dashboard');
     } catch (err) {
       Alert.alert('Error', err.message);
     }
