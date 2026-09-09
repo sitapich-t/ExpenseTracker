@@ -23,9 +23,9 @@ const transporter = nodemailer.createTransport({
 async function sendOtpEmail(toEmail, otpCode) {
   try {
     await transporter.sendMail({
-      from: `"Student Wallet" <${GMAIL_USER}>`, // ต้องใช้ Gmail เดียวกับที่ตั้งค่าไว้
+      from: `"Expense Tracker" <${GMAIL_USER}>`, // ต้องใช้ Gmail เดียวกับที่ตั้งค่าไว้
       to: toEmail, // อีเมลของผู้ใช้ทุกคนที่มาสมัคร
-      subject: 'รหัส OTP สำหรับยืนยันตัวตน - Student Wallet',
+      subject: 'รหัส OTP สำหรับยืนยันตัวตน - Expense Tracker',
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
           <h2>ยืนยันการสมัครสมาชิก</h2>
