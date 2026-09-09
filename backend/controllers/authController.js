@@ -3,29 +3,28 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const supabase = require('../config/supabase');
 const nodemailer = require('nodemailer');
-const { MailtrapTransport } = require('mailtrap');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'student_wallet_jwt_secret_key_2026';
+const GMAIL_USER = process.env.GMAIL_USER || 'sitapich@gmail.com';
+const GMAIL_PASS = process.env.GMAIL_PASS || 'hdfi owka mitt rfva';
 
 // ==========================================
 // MAILTRAP TRANSPORT CONFIGURATION
 // ==========================================
-const transporter = nodemailer.createTransport(
-  MailtrapTransport({
-    token: process.env.MAILTRAP_TOKEN,
-  })
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: GMAIL_USER,
+    pass: GMAIL_PASS
+  }
+}
 );
 
 async function sendOtpEmail(toEmail, otpCode) {
-  const sender = {
-    address: process.env.MAILTRAP_SENDER_EMAIL || "hello@demomailtrap.co",
-    name: process.env.MAILTRAP_SENDER_NAME || "Student Wallet",
-  };
-
   try {
     await transporter.sendMail({
-      from: sender,
-      to: [toEmail],
+      from: `"Student Wallet" <${GMAIL_USER}>`, // ต้องใช้ Gmail เดียวกับที่ตั้งค่าไว้
+      to: toEmail, // อีเมลของผู้ใช้ทุกคนที่มาสมัคร
       subject: 'รหัส OTP สำหรับยืนยันตัวตน - Student Wallet',
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
@@ -35,14 +34,12 @@ async function sendOtpEmail(toEmail, otpCode) {
           <p>รหัสนี้จะหมดอายุภายใน <b>10 นาที</b></p>
           <p style="color: #888; font-size: 12px;">หากคุณไม่ได้ทำการสมัครสมาชิก กรุณาข้ามอีเมลนี้</p>
         </div>
-      `,
-      category: "OTP Verification",
+      `
     });
+    console.log(`✉️ ส่งอีเมล OTP สำเร็จไปยัง: ${toEmail}`);
   } catch (err) {
-    // Dev fallback: กรณี Mailtrap ส่งเมลไม่ได้ (เช่น demo domain ห้ามส่งหาเมลอื่น)
-    // ให้ log OTP ลง console เพื่อให้ทดสอบต่อในเครื่องได้โดยไม่ต้องรออีเมลจริง
     console.error('⚠️ ส่งอีเมล OTP ล้มเหลว:', err.message);
-    console.log(`🔑 OTP สำหรับใช้ยืนยันตัวตน (dev only): ${otpCode}`);
+    console.log(`🔑 OTP สำหรับใช้ยืนยันตัวตน (dev fallback): ${otpCode}`);
   }
 }
 
