@@ -1,32 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getToken } from '@/lib/api';
 
 export default function IndexScreen() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const token = await AsyncStorage.getItem('token');
-      if (!token) {
-        // 💡 ถ้าไม่มี Token ให้ส่งไปหน้า Login ทันที
+    const checkAuth = async () => {
+      try {
+        const token = await getToken();
+        // ถ้ามี Token ให้เข้าหน้าหลัก ไม่เช่นนั้นไปหน้า Login
+        router.replace(token ? '/(main)/dashboard' : '/login');
+      } catch {
         router.replace('/login');
-      } else {
-        // 💡 ถ้ามี Token ให้เข้าหน้าหลัก (เช่น /home หรือ /(tabs))
-        router.replace('/(main)/dashboard'); 
       }
-    } catch (e) {
-      router.replace('/login');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    checkAuth();
+  }, [router]);
 
   return (
     <View style={styles.center}>

@@ -13,8 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_URL = global.__API_URL__ || 'http://192.168.1.45:3000';
+import { API_URL } from '@/lib/api';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -47,6 +46,11 @@ if (!email || !password) {
            await AsyncStorage.setItem('user', JSON.stringify(data.user));
         }
         router.replace('/(main)/dashboard');
+      } else if (response.status === 403) {
+        Alert.alert('ยังไม่ได้ยืนยันตัวตน', data.error || 'กรุณายืนยันรหัส OTP ก่อนเข้าสู่ระบบ', [
+          { text: 'กรอกรหัส OTP', onPress: () => router.push({ pathname: '/verify-otp', params: { email } }) },
+          { text: 'ยกเลิก', style: 'cancel' },
+        ]);
       } else {
         Alert.alert('เข้าสู่ระบบล้มเหลว', data.error || data.message || 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
       }
@@ -67,7 +71,7 @@ if (!email || !password) {
         <View style={styles.iconContainer}>
           <Ionicons name="wallet-outline" size={80} color="#5f3dc4" />
         </View>
-        <Text style={styles.appName}>Student Wallet</Text>
+        <Text style={styles.appName}>Expense Tracker</Text>
         <Text style={styles.subtitle}>จัดการการเงินของคุณได้อย่างง่ายดาย</Text>
       </View>
 
@@ -116,6 +120,11 @@ if (!email || !password) {
           <Text style={styles.registerText}>ยังไม่มีบัญชีใช่ไหม? </Text>
           <TouchableOpacity onPress={() => router.push('/register')}>
             <Text style={styles.registerLink}>สมัครสมาชิก</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.otpContainer}>
+          <TouchableOpacity onPress={() => router.push('/verify-otp')}>
+            <Text style={styles.otpLink}>ลงทะเบียนแล้วแต่ยังไม่ได้ยืนยัน OTP?</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -219,5 +228,14 @@ const styles = StyleSheet.create({
     color: '#5f3dc4',
     fontSize: 15,
     fontWeight: 'bold',
+  },
+  otpContainer: {
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  otpLink: {
+    color: '#9ca3af',
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 });

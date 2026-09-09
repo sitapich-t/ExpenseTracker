@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
+import { getToken, http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 
 const THAI_MONTHS = [
@@ -42,17 +42,17 @@ export default function BudgetScreen() {
       const currentBudget = storedBudget ? parseFloat(storedBudget) : 10000;
       setBudget(currentBudget);
 
-      const token = await AsyncStorage.getItem('token');
+      const token = await getToken();
       if (!token) {
         setLoading(false);
         return;
       }
 
-      const response = await axios.get('http://10.0.2.2:3000/api/transactions/my', {
+      const response = await http.get('/personal/transactions', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      const transactions = response.data;
+      const transactions = response.data.transactions;
       
       let totalSpent = 0;
       const breakdown = {};
