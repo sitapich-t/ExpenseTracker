@@ -280,23 +280,26 @@ exports.deleteTransaction = async (req, res) => {
   }
 };
 
-// สแกนใบเสร็จ (Mock Scanner Endpoint)
+// สแกนใบเสร็จ (รองรับทั้ง Multipart file "receipt" และ JSON base64 "image")
 exports.scanReceipt = async (req, res) => {
   try {
     const { image } = req.body || {};
     const file = req.file;
 
-    const { merchant, total, parsedText } = ocrService.scanReceipt({ file, image });
+    const result = await ocrService.scanReceipt({ file, image });
 
     return res.json({
       success: true,
-      merchant,
-      total,
-      date: new Date().toISOString(),
-      parsedText,
+      merchant: result.merchant || '',
+      total: result.total || 0,
+      date: result.date || new Date().toISOString(),
+      parsedText: result.parsedText || '',
+      documentType: result.documentType || 'receipt',
+      bankName: result.bankName || null,
+      transactionId: result.transactionId || null,
     });
   } catch (err) {
     console.error('❌ Scan receipt error:', err);
-    return res.status(500).json({ success: false, error: 'การอ่านสแกนใบเสร็จล้มเหลว' });
+    return res.status(500).json({ success: false, error: err.message || 'การอ่านสแกนใบเสร็จล้มเหลว' });
   }
 };
