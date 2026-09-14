@@ -52,6 +52,7 @@ export default function AddTransactionScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [payment, setPayment] = useState('Debit Card');
   const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // Modal States
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -80,11 +81,24 @@ export default function AddTransactionScreen() {
     setShowPaymentModal(false);
   };
 
+  // เลือก alert ที่ "รุนแรงที่สุด" มาโชว์ ถ้ามีหลาย budget ข้าม threshold พร้อมกัน
+  // (เช่น ทั้งงบรวมและงบเฉพาะหมวดข้ามพร้อมกันในรายการเดียว) — OVER สำคัญกว่า WARNING เสมอ
+  const pickMostSevereAlert = (budgetAlerts) => {
+    if (!budgetAlerts || budgetAlerts.length === 0) return null;
+    return (
+      budgetAlerts.find(a => a.level === 'OVER') ||
+      budgetAlerts.find(a => a.level === 'WARNING') ||
+      null
+    );
+  };
+
   const handleSave = async () => {
     try {
+      setSaving(true);
       const numericAmount = parseFloat(amount);
       if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
         Alert.alert('ข้อผิดพลาด', 'กรุณากรอกจำนวนเงินให้ถูกต้อง');
+        setSaving(false);
         return;
       }
 
@@ -93,6 +107,7 @@ export default function AddTransactionScreen() {
         Alert.alert('กรุณาล็อกอิน', 'ไม่พบข้อมูลการเข้าสู่ระบบ', [
           { text: 'OK', onPress: () => router.replace('/login') }
         ]);
+        setSaving(false);
         return;
       }
 
@@ -115,7 +130,8 @@ export default function AddTransactionScreen() {
       });
 
       const data = await response.json();
-
+      console.log('=== BUDGET ALERTS ===', JSON.stringify(data.budgetAlerts));
+      
       if (!response.ok) {
         if (response.status === 401) {
           await clearToken();
@@ -127,10 +143,29 @@ export default function AddTransactionScreen() {
         throw new Error(data.error || 'บันทึกไม่สำเร็จ');
       }
 
-      Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อย');
-      router.back();
+      // เช็คว่ารายการนี้ทำให้งบข้าม threshold (WARNING/OVER) หรือไม่
+      // บันทึกสำเร็จเสมอ ไม่ว่าจะมี budget alert หรือไม่ — แค่ข้อความตอนกด OK ต่างกัน
+      const alert = pickMostSevereAlert(data.budgetAlerts);
+
+      if (alert) {
+        const percentText = `${(alert.percentUsed * 100).toFixed(0)}%`;
+        const title = alert.level === 'OVER' ? '🔴 เกินงบประมาณแล้ว' : '⚠️ ใกล้เต็มงบแล้ว';
+        const body = alert.level === 'OVER'
+          ? `บันทึกรายการสำเร็จ แต่คุณใช้จ่ายไปแล้ว ${percentText} เกินงบที่ตั้งไว้`
+          : `บันทึกรายการสำเร็จ ตอนนี้ใช้จ่ายไปแล้ว ${percentText} ของงบที่ตั้งไว้`;
+
+        Alert.alert(title, body, [
+          { text: 'ตกลง', onPress: () => router.back() }
+        ]);
+      } else {
+        Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อย', [
+          { text: 'ตกลง', onPress: () => router.back() }
+        ]);
+      }
     } catch (err) {
       Alert.alert('Error', err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -270,8 +305,10 @@ export default function AddTransactionScreen() {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>{type === 'expense' ? 'บันทึกรายจ่าย' : 'บันทึกรายรับ'}</Text>
+      <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+        <Text style={styles.saveBtnText}>
+          {saving ? 'กำลังบันทึก...' : (type === 'expense' ? 'บันทึกรายจ่าย' : 'บันทึกรายรับ')}
+        </Text>
       </TouchableOpacity>
 
       <View style={{ height: 40 }} />
