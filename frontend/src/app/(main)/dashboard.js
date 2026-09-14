@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { http } from '@/lib/api';
+import { http, getToken } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function DashboardScreen() {
@@ -18,46 +18,63 @@ export default function DashboardScreen() {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
   
-  // Budget
-  const [monthlyBudget, setMonthlyBudget] = useState(10000);
+  // Budget — ดึงจาก backend จริง ไม่ใช้ AsyncStorage อีกต่อไป
+  const [monthlyBudget, setMonthlyBudget] = useState(0);
+  const [hasBudget, setHasBudget] = useState(false);
 
   const fetchData = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await getToken();
       if (!token) {
         router.replace('/login');
         return;
       }
 
-// Get user info
+      // Get user info
       const userStr = await AsyncStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
         if (user.name) setUserName(user.name);
       }
 
-      // Get budget
-      const budgetStr = await AsyncStorage.getItem('monthlyBudget');
-      if (budgetStr) {
-        setMonthlyBudget(parseFloat(budgetStr));
+      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+      const currentMonth = new Date().getMonth(); // 0-indexed
+      const currentYear = new Date().getFullYear();
+
+      // ดึงงบ "รวม" ของเดือนนี้จาก backend (แทนที่ AsyncStorage เดิม)
+      // ต้องเรียกจุดเดียวกับที่ budget.js ใช้ เพื่อให้ค่าตรงกันเสมอ
+      try {
+        const budgetRes = await http.get(
+          `/personal/budgets?month=${currentMonth + 1}&year=${currentYear}`,
+          authHeader
+        );
+        const budgets = budgetRes.data.budgets || [];
+        const overallBudget = budgets.find(b => b.category_id === null);
+
+        if (overallBudget) {
+          setMonthlyBudget(parseFloat(overallBudget.monthly_limit));
+          setHasBudget(true);
+        } else {
+          setMonthlyBudget(0);
+          setHasBudget(false);
+        }
+      } catch (budgetErr) {
+        console.error('Fetch budget error:', budgetErr.response?.data || budgetErr.message);
       }
 
-      const res = await http.get('/personal/transactions', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await http.get('/personal/transactions', authHeader);
 
       const txs = res.data.transactions || [];
       setTransactions(txs.slice(0, 5)); // Show only 5 recent
 
-      // Calculate totals for current month
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
+      // คำนวณยอดของเดือนนี้ด้วย transaction_date (วันที่เกิดรายจ่ายจริง)
+      // ไม่ใช้ created_at (วันที่บันทึกเข้าระบบ) — ต้องใช้ field เดียวกับหน้า budget.js
+      // ไม่งั้นยอดสองหน้าจะไม่ตรงกัน (เช่น สแกนใบเสร็จย้อนหลัง)
       let inc = 0;
       let exp = 0;
-      
+
       txs.forEach(tx => {
-        const txDate = new Date(tx.created_at);
+        const txDate = new Date(tx.transaction_date || tx.created_at);
         if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
           if (tx.type === 'income') inc += parseFloat(tx.amount);
           else exp += parseFloat(tx.amount);
@@ -103,7 +120,8 @@ export default function DashboardScreen() {
   const balance = totalIncome - totalExpense;
   const budgetPercent = monthlyBudget > 0 ? (totalExpense / monthlyBudget) * 100 : 0;
   const budgetProgress = Math.min(budgetPercent, 100);
-  const progressColor = budgetPercent > 80 ? '#ef4444' : budgetPercent > 50 ? '#f59e0b' : '#10b981';
+  // threshold สี ให้ตรงกับ backend budgetService (WARNING = 80%, OVER = 100%)
+  const progressColor = budgetPercent >= 100 ? '#ef4444' : budgetPercent >= 80 ? '#f59e0b' : '#10b981';
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fcfbfe' }}>
@@ -192,19 +210,28 @@ export default function DashboardScreen() {
         <TouchableOpacity style={styles.budgetCard} onPress={() => router.push('/budget')} activeOpacity={0.8}>
           <View style={styles.budgetHeader}>
             <Text style={styles.budgetTitle}>งบประมาณรายเดือน</Text>
-            <Text style={[styles.budgetPercent, { color: progressColor }]}>{budgetPercent.toFixed(0)}%</Text>
+            {hasBudget && (
+              <Text style={[styles.budgetPercent, { color: progressColor }]}>{budgetPercent.toFixed(0)}%</Text>
+            )}
           </View>
-          <Text style={styles.budgetSub}>เหลืองบอีก: ฿ {Math.max(0, monthlyBudget - totalExpense).toLocaleString()}</Text>
-          
-          {/* Progress Bar */}
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressBar, { width: `${budgetProgress}%`, backgroundColor: progressColor }]} />
-          </View>
-          
-          <View style={styles.budgetFooter}>
-            <Text style={styles.budgetText}>ใช้ไป ฿ {totalExpense.toLocaleString()}</Text>
-            <Text style={styles.budgetText}>จาก ฿ {monthlyBudget.toLocaleString()}</Text>
-          </View>
+
+          {hasBudget ? (
+            <>
+              <Text style={styles.budgetSub}>เหลืองบอีก: ฿ {Math.max(0, monthlyBudget - totalExpense).toLocaleString()}</Text>
+
+              {/* Progress Bar */}
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressBar, { width: `${budgetProgress}%`, backgroundColor: progressColor }]} />
+              </View>
+
+              <View style={styles.budgetFooter}>
+                <Text style={styles.budgetText}>ใช้ไป ฿ {totalExpense.toLocaleString()}</Text>
+                <Text style={styles.budgetText}>จาก ฿ {monthlyBudget.toLocaleString()}</Text>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.budgetSub}>ยังไม่ได้ตั้งงบประมาณเดือนนี้ — แตะเพื่อตั้งค่า</Text>
+          )}
         </TouchableOpacity>
 
         {/* Recent Transactions Header */}
@@ -224,7 +251,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           transactions.map((tx) => {
-            const cat = getCategoryIcon(tx.category);
+            const cat = getCategoryIcon(tx.categories?.name || tx.category);
             const isIncome = tx.type === 'income';
             return (
               <View key={tx.id} style={styles.txCard}>
@@ -234,7 +261,7 @@ export default function DashboardScreen() {
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.txName} numberOfLines={1}>{tx.title || tx.merchant}</Text>
                   <Text style={styles.txSub}>
-                    {new Date(tx.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                    {new Date(tx.transaction_date || tx.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                   </Text>
                 </View>
                 <Text style={[styles.txAmount, { color: isIncome ? '#10b981' : '#ef4444' }]}>

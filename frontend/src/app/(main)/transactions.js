@@ -138,7 +138,11 @@ export default function TransactionsScreen() {
     const catDetails = getCategoryDetails(item.category);
 
     return (
-      <View style={styles.transactionCard}>
+      <TouchableOpacity
+        style={styles.transactionCard}
+        activeOpacity={0.7}
+        onPress={() => router.push({ pathname: '/add-transaction', params: { edit: String(item.id) } })}
+      >
         <View style={[styles.iconContainer, { backgroundColor: catDetails.bg }]}>
           <Text style={styles.iconText}>{catDetails.icon}</Text>
         </View>
@@ -156,7 +160,7 @@ export default function TransactionsScreen() {
           </Text>
           <Text style={styles.transactionDate}>{formatDate(item.created_at)}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

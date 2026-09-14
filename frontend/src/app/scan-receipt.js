@@ -94,7 +94,7 @@ export default function ScanReceiptScreen() {
           amount: data.total != null ? String(data.total) : '',
           date: data.date || '',
           parsedText: data.parsedText || '',
-          category: isSlip ? 'Transfer' : 'Food & Drink',
+          categoryId: data.categoryId != null ? String(data.categoryId) : '',  // ← เพิ่มบรรทัดนี้
           documentType: isSlip ? 'transfer_slip' : 'receipt',
           bankName: data.bankName || '',
           transactionId: data.transactionId || '',

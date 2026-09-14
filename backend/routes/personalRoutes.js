@@ -25,6 +25,7 @@ router.delete('/budgets/:id', authenticate, personalController.deleteBudget);
 // Transactions Routes
 // ==========================================
 router.get('/transactions', authenticate, personalController.getTransactions);
+router.get('/transactions/:id', authenticate, personalController.getTransactionById);
 router.post('/transactions', authenticate, personalController.createTransaction);
 router.post('/transactions/scan-receipt', scanUpload, personalController.scanReceipt);
 router.put('/transactions/:id', authenticate, personalController.updateTransaction);

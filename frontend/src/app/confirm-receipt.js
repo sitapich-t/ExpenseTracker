@@ -8,19 +8,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { API_URL, getToken } from '@/lib/api';
 import { getScannedImage, clearScannedImage } from '@/utils/scannedImageStore';
 
-// รายการหมวดหมู่ให้เลือก
+// รายการหมวดหมู่ให้เลือก — ต้องตรงกับตาราง categories ใน Supabase เป๊ะ
+// id คือ category_id จริง, label คือ name จริงในตาราง (1-9 ยืนยันแล้ว)
 const CATEGORIES = [
-  { label: 'Food & Drink', icon: 'fast-food-outline' },
-  { label: 'Groceries', icon: 'cart-outline' },
-  { label: 'Transport', icon: 'car-outline' },
-  { label: 'Shopping', icon: 'bag-handle-outline' },
-  { label: 'Bills & Utilities', icon: 'flash-outline' },
-  { label: 'Entertainment', icon: 'film-outline' },
-  { label: 'Health', icon: 'medkit-outline' },
-  { label: 'Education', icon: 'book-outline' },
-  { label: 'Transfer', icon: 'swap-horizontal-outline' },
-  { label: 'Other', icon: 'ellipsis-horizontal-outline' },
+  { id: 1, label: 'Food', icon: 'fast-food-outline' },
+  { id: 2, label: 'Shopping', icon: 'bag-handle-outline' },
+  { id: 3, label: 'Travel', icon: 'airplane-outline' },
+  { id: 4, label: 'Transport', icon: 'car-outline' },
+  { id: 5, label: 'Study', icon: 'book-outline' },
+  { id: 6, label: 'Entertainment', icon: 'film-outline' },
+  { id: 7, label: 'Health', icon: 'medkit-outline' },
+  { id: 8, label: 'Bills', icon: 'flash-outline' },
+  { id: 9, label: 'Other', icon: 'ellipsis-horizontal-outline' },
 ];
+
+const DEFAULT_CATEGORY_ID = 1; // Food — ใช้ตอนหา category ไม่ได้เลยจริงๆ
 
 export default function ConfirmReceiptScreen() {
   const router = useRouter();
@@ -306,14 +308,28 @@ const isTransferSlip = documentType === 'transfer_slip';
 const bankName = params.bankName ? String(params.bankName) : '';
 const transactionId = params.transactionId ? String(params.transactionId) : '';
 
+// หา category_id เริ่มต้น:
+// 1) ถ้า backend ส่ง categoryId มาจาก auto-fill (classifyCategory) ใช้ค่านั้นก่อน
+// 2) ถ้าไม่มี/ไม่ถูกต้อง fallback เป็น DEFAULT_CATEGORY_ID (Food)
+const initialCategoryId = (() => {
+  const fromParams = Number(params.categoryId);
+  const isValidId = CATEGORIES.some((c) => c.id === fromParams);
+  return isValidId ? fromParams : DEFAULT_CATEGORY_ID;
+})();
+
 // State
 const [merchant, setMerchant] = useState(detectedMerchant);
 const [amount, setAmount] = useState(params.amount || '');
 const [date, setDate] = useState(params.date || '');
-  const [category, setCategory] = useState(params.category || 'Food & Drink');
+  // เก็บเป็น category_id (ตัวเลข) ตรงกับตาราง Supabase — ไม่ใช่ label string อีกต่อไป
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card'); // 'Card' | 'Cash' | 'Transfer'
   const [showOriginal, setShowOriginal] = useState(false);
+
+  // label ปัจจุบันสำหรับแสดงผลใน UI เท่านั้น (state จริงคือ categoryId)
+  const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
+
   const handleConfirmSave = async () => {
     try {
       const token = await getToken();
@@ -327,7 +343,7 @@ const [date, setDate] = useState(params.date || '');
           title: merchant,
           amount: parseFloat(amount) || 0,
           type: 'expense',
-          category: category,
+          category_id: categoryId, // ← ส่งเลข id จริง ตรงกับ FK ในตาราง categories
           merchant: merchant,
           transaction_date: date || new Date().toISOString(),
           paymentMethod: paymentMethod,
@@ -470,7 +486,7 @@ const [date, setDate] = useState(params.date || '');
             style={[styles.inputBox, { justifyContent: 'space-between' }]}
             onPress={() => setCategoryModalVisible(true)}
           >
-            <Text style={styles.inputText}>{category}</Text>
+            <Text style={styles.inputText}>{selectedCategory.label}</Text>
             <Ionicons name="chevron-down" size={16} color="#888" />
           </TouchableOpacity>
         </View>
@@ -492,33 +508,33 @@ const [date, setDate] = useState(params.date || '');
             <Text style={styles.modalTitle}>เลือกหมวดหมู่</Text>
             <FlatList
               data={CATEGORIES}
-              keyExtractor={(item) => item.label}
+              keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
                     styles.categoryRow,
-                    category === item.label && styles.categoryRowActive,
+                    categoryId === item.id && styles.categoryRowActive,
                   ]}
                   onPress={() => {
-                    setCategory(item.label);
+                    setCategoryId(item.id);
                     setCategoryModalVisible(false);
                   }}
                 >
                   <Ionicons
                     name={item.icon}
                     size={20}
-                    color={category === item.label ? '#5f3dc4' : '#666'}
+                    color={categoryId === item.id ? '#5f3dc4' : '#666'}
                     style={{ marginRight: 12 }}
                   />
                   <Text
                     style={[
                       styles.categoryRowText,
-                      category === item.label && styles.categoryRowTextActive,
+                      categoryId === item.id && styles.categoryRowTextActive,
                     ]}
                   >
                     {item.label}
                   </Text>
-                  {category === item.label && (
+                  {categoryId === item.id && (
                     <Ionicons
                       name="checkmark"
                       size={18}
@@ -555,6 +571,16 @@ const [date, setDate] = useState(params.date || '');
               <Ionicons name="cash-outline" size={18} color={paymentMethod === 'Cash' ? '#5f3dc4' : '#666'} />
               <Text style={[styles.paymentBtnText, paymentMethod === 'Cash' && styles.paymentBtnTextActive]}>
                 Cash
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.paymentBtn, paymentMethod === 'E-Banking' && styles.paymentBtnActive]}
+              onPress={() => setPaymentMethod('E-Banking')}
+            >
+              <Ionicons name="cash-outline" size={18} color={paymentMethod === 'E-Banking' ? '#5f3dc4' : '#666'} />
+              <Text style={[styles.paymentBtnText, paymentMethod === 'E-Banking' && styles.paymentBtnTextActive]}>
+                E-Banking
               </Text>
             </TouchableOpacity>
           </View>

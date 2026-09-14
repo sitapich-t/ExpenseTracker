@@ -3,7 +3,6 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getToken, http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -24,23 +23,24 @@ const CATEGORY_ICONS = {
 };
 
 export default function BudgetScreen() {
-  const [budget, setBudget] = useState(10000);
+  // ไม่มีงบ = null (ต่างจาก 0) เพื่อแยกกรณี "ยังไม่เคยตั้งงบ" ออกจาก "ตั้งงบเป็น 0"
+  const [budgetId, setBudgetId] = useState(null);
+  const [budget, setBudgetAmount] = useState(0);
+  const [hasBudget, setHasBudget] = useState(false);
   const [spent, setSpent] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [isModalVisible, setModalVisible] = useState(false);
   const [tempBudget, setTempBudget] = useState('');
   const [categoryBreakdown, setCategoryBreakdown] = useState({});
 
   const currentDate = new Date();
-  const currentMonth = currentDate.getMonth();
+  const currentMonth = currentDate.getMonth(); // 0-indexed สำหรับ THAI_MONTHS
   const currentYear = currentDate.getFullYear();
 
   const fetchBudgetData = async () => {
     try {
       setLoading(true);
-      const storedBudget = await AsyncStorage.getItem('monthlyBudget');
-      const currentBudget = storedBudget ? parseFloat(storedBudget) : 10000;
-      setBudget(currentBudget);
 
       const token = await getToken();
       if (!token) {
@@ -48,26 +48,44 @@ export default function BudgetScreen() {
         return;
       }
 
-      const response = await http.get('/personal/transactions', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
+      // ดึงงบประมาณ "รวม" ของเดือนนี้จาก backend จริง (ไม่ใช้ AsyncStorage อีกต่อไป)
+      const budgetRes = await http.get(
+        `/personal/budgets?month=${currentMonth + 1}&year=${currentYear}`,
+        authHeader
+      );
+      const budgets = budgetRes.data.budgets || [];
+      // งบรวมคือแถวที่ category_id เป็น null (แยกจากงบเฉพาะหมวด)
+      const overallBudget = budgets.find(b => b.category_id === null);
+
+      if (overallBudget) {
+        setBudgetId(overallBudget.id);
+        setBudgetAmount(parseFloat(overallBudget.monthly_limit));
+        setHasBudget(true);
+      } else {
+        setBudgetId(null);
+        setBudgetAmount(0);
+        setHasBudget(false);
+      }
+
+      const response = await http.get('/personal/transactions', authHeader);
       const transactions = response.data.transactions;
-      
+
       let totalSpent = 0;
       const breakdown = {};
 
       transactions.forEach(tx => {
-        const txDate = new Date(tx.created_at || tx.date);
+        const txDate = new Date(tx.transaction_date || tx.created_at);
         if (
-          tx.type === 'expense' && 
-          txDate.getMonth() === currentMonth && 
+          tx.type === 'expense' &&
+          txDate.getMonth() === currentMonth &&
           txDate.getFullYear() === currentYear
         ) {
           const amount = parseFloat(tx.amount);
           totalSpent += amount;
-          
-          const cat = tx.category || 'Other';
+
+          const cat = tx.categories?.name || tx.category || 'Other';
           if (!breakdown[cat]) {
             breakdown[cat] = 0;
           }
@@ -91,19 +109,55 @@ export default function BudgetScreen() {
   );
 
   const handleSaveBudget = async () => {
-    if (!tempBudget || isNaN(tempBudget)) {
+    if (!tempBudget || isNaN(tempBudget) || parseFloat(tempBudget) <= 0) {
       Alert.alert('ข้อผิดพลาด', 'กรุณาระบุจำนวนเงินที่ถูกต้อง');
       return;
     }
 
     try {
-      await AsyncStorage.setItem('monthlyBudget', tempBudget);
-      setBudget(parseFloat(tempBudget));
+      setSaving(true);
+      const token = await getToken();
+      if (!token) {
+        Alert.alert('ข้อผิดพลาด', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
+        return;
+      }
+
+      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+      const payload = {
+        monthly_limit: parseFloat(tempBudget),
+        month: currentMonth + 1,
+        year: currentYear,
+        // ไม่ส่ง category_id = งบรวมทั้งเดือน
+      };
+
+      let res;
+      if (budgetId) {
+        // มีงบอยู่แล้ว → แก้ไขด้วย PUT
+        res = await http.put(`/personal/budgets/${budgetId}`, payload, authHeader);
+      } else {
+        // ยังไม่มีงบ → ตั้งใหม่ด้วย POST (backend upsert ให้อยู่แล้วถ้าซ้ำเดือน/ปี)
+        res = await http.post('/personal/budgets', payload, authHeader);
+      }
+
+      const savedBudget = res.data.budget;
+      setBudgetId(savedBudget.id);
+      setBudgetAmount(parseFloat(savedBudget.monthly_limit));
+      setHasBudget(true);
       setModalVisible(false);
       setTempBudget('');
+
+      // backend คืน budgetAlert มาถ้าข้าม threshold ทันทีหลังตั้งงบใหม่ (เช่น ลดวงเงินจนเกิน)
+      const alert = res.data.budgetAlert;
+      if (alert?.level === 'OVER') {
+        Alert.alert('⚠️ เกินงบประมาณ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
+      } else if (alert?.level === 'WARNING') {
+        Alert.alert('⚠️ ใกล้เต็มงบ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
+      }
     } catch (error) {
       console.error('Error saving budget:', error);
       Alert.alert('ข้อผิดพลาด', 'ไม่สามารถบันทึกงบประมาณได้');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -112,7 +166,7 @@ export default function BudgetScreen() {
   
   let statusColor = '#10b981'; // Green
   if (percentage >= 100) statusColor = '#ef4444'; // Red
-  else if (percentage >= 50) statusColor = '#f59e0b'; // Yellow
+  else if (percentage >= 80) statusColor = '#f59e0b'; // Orange (ให้ตรงกับ threshold 80% ที่ backend ใช้)
 
   const formatMoney = (amount) => {
     return '฿' + amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -133,26 +187,33 @@ export default function BudgetScreen() {
         <Text style={styles.headerDate}>{THAI_MONTHS[currentMonth]} {currentYear}</Text>
       </View>
 
-      <View style={styles.budgetCard}>
-        <View style={[styles.mainCircle, { borderColor: statusColor, shadowColor: statusColor }]}>
-          <Text style={[styles.percentageText, { color: statusColor }]}>
-            {percentage.toFixed(0)}%
-          </Text>
-          <Text style={styles.spentText}>ใช้ไปแล้ว {formatMoney(spent)}</Text>
-          <Text style={styles.budgetText}>จากงบ {formatMoney(budget)}</Text>
+      {!hasBudget ? (
+        <View style={styles.emptyBudgetCard}>
+          <Ionicons name="wallet-outline" size={40} color="#9ca3af" />
+          <Text style={styles.emptyBudgetText}>ยังไม่ได้ตั้งงบประมาณเดือนนี้</Text>
         </View>
+      ) : (
+        <View style={styles.budgetCard}>
+          <View style={[styles.mainCircle, { borderColor: statusColor, shadowColor: statusColor }]}>
+            <Text style={[styles.percentageText, { color: statusColor }]}>
+              {percentage.toFixed(0)}%
+            </Text>
+            <Text style={styles.spentText}>ใช้ไปแล้ว {formatMoney(spent)}</Text>
+            <Text style={styles.budgetText}>จากงบ {formatMoney(budget)}</Text>
+          </View>
 
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBarFill, { width: `${clampedPercentage}%`, backgroundColor: statusColor }]} />
+          <View style={styles.progressBarContainer}>
+            <View style={[styles.progressBarFill, { width: `${clampedPercentage}%`, backgroundColor: statusColor }]} />
+          </View>
         </View>
-      </View>
+      )}
 
-      {percentage >= 100 ? (
+      {hasBudget && percentage >= 100 ? (
         <View style={[styles.alertCard, styles.alertCritical]}>
           <Ionicons name="warning" size={24} color="#fff" />
           <Text style={styles.alertTextCritical}>คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้!</Text>
         </View>
-      ) : percentage >= 80 ? (
+      ) : hasBudget && percentage >= 80 ? (
         <View style={[styles.alertCard, styles.alertWarning]}>
           <Ionicons name="warning" size={24} color="#92400e" />
           <Text style={styles.alertTextWarning}>คุณใช้จ่ายเกิน 80% ของงบประมาณแล้ว!</Text>
@@ -162,7 +223,7 @@ export default function BudgetScreen() {
       <TouchableOpacity 
         style={styles.editButton}
         onPress={() => {
-          setTempBudget(budget.toString());
+          setTempBudget(hasBudget ? budget.toString() : '');
           setModalVisible(true);
         }}
       >
@@ -220,20 +281,27 @@ export default function BudgetScreen() {
               onChangeText={setTempBudget}
               keyboardType="numeric"
               placeholder="จำนวนเงิน"
+              editable={!saving}
             />
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setModalVisible(false)}
+                disabled={saving}
               >
                 <Text style={styles.cancelButtonText}>ยกเลิก</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.modalButton, styles.saveButton]}
                 onPress={handleSaveBudget}
+                disabled={saving}
               >
-                <Text style={styles.saveButtonText}>บันทึก</Text>
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveButtonText}>บันทึก</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -271,6 +339,18 @@ const styles = StyleSheet.create({
   headerDate: {
     fontSize: 16,
     color: '#6b7280',
+  },
+  emptyBudgetCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyBudgetText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: '#9ca3af',
   },
   budgetCard: {
     backgroundColor: '#fff',

@@ -10,6 +10,7 @@ const supabase = require('./config/supabase');
 const authRoutes = require('./routes/authRoutes');
 const personalRoutes = require('./routes/personalRoutes');
 const groupRoutes = require('./routes/groupRoutes');
+const billSplitRoutes = require('./routes/billSplitRoutes');
 
 const app = express();
 app.use(cors());
@@ -31,6 +32,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/personal', personalRoutes);
 app.use('/api/v1/groups', groupRoutes);
+app.use('/api/v1/bill-split', billSplitRoutes);
 
 // ==========================================
 // SERVER START

@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, Platform, Modal, TouchableWithoutFeedback
+  ScrollView, Alert, Platform, Modal, TouchableWithoutFeedback, ActivityIndicator
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { API_URL, getToken, clearToken } from '@/lib/api';
+import { API_URL, getToken, clearToken, http } from '@/lib/api';
 
 const CATEGORIES = [
   { id: 'Food', label: 'อาหาร', icon: 'restaurant', lib: 'Ionicons', bg: '#fff3e0', color: '#e65100' },
@@ -19,9 +19,30 @@ const CATEGORIES = [
   { id: 'Other', label: 'อื่นๆ', icon: 'ellipsis-horizontal', lib: 'Ionicons', bg: '#f5f5f5', color: '#616161' },
 ];
 
+// ต้องตรงกับ id จริงในตาราง categories (Supabase) — name ต้องสะกดเหมือนกันเป๊ะ
+const CATEGORY_NAME_TO_ID = {
+  Food: 1,
+  Shopping: 2,
+  Travel: 3,
+  Transport: 4,
+  Study: 5,
+  Entertainment: 6,
+  Health: 7,
+  Bills: 8,
+  Other: 9,
+};
+
+// แปลง category_id -> ชื่อหมวด (ใช้ตอนโหลดข้อมูลเดิมมาแก้ไข)
+const CATEGORY_ID_TO_NAME = Object.entries(CATEGORY_NAME_TO_ID).reduce((acc, [name, id]) => {
+  acc[id] = name;
+  return acc;
+}, {});
+
 export default function AddTransactionScreen() {
   const router = useRouter();
-  
+  const { edit } = useLocalSearchParams();
+  const editId = edit ? String(edit) : null;
+
   // Dynamic Payment Options State
   const [paymentMethods, setPaymentMethods] = useState([
     { id: 'Debit Card', label: 'Debit Card' },
@@ -31,6 +52,7 @@ export default function AddTransactionScreen() {
   ]);
 
   // Form States
+  const [loading, setLoading] = useState(false);
   const [type, setType] = useState('expense');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Food');
@@ -39,6 +61,7 @@ export default function AddTransactionScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [payment, setPayment] = useState('Debit Card');
   const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // Modal States
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -67,11 +90,58 @@ export default function AddTransactionScreen() {
     setShowPaymentModal(false);
   };
 
+  // โหมดแก้ไข: โหลดข้อมูลเดิมมาลง form ก่อนบันทึก
+  useEffect(() => {
+    if (!editId) return;
+
+    const loadTransaction = async () => {
+      try {
+        setLoading(true);
+        const token = await getToken();
+        if (!token) return;
+        const response = await http.get(`/personal/transactions/${editId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const tx = response.data.transaction;
+        if (!tx) return;
+
+        const catName = tx.categories?.name || CATEGORY_ID_TO_NAME[tx.category_id] || 'Other';
+        setType(tx.type === 'income' ? 'income' : 'expense');
+        setAmount(tx.amount != null ? String(tx.amount) : '');
+        setCategory(CATEGORIES.some(c => c.id === catName) ? catName : 'Other');
+        setMerchant(tx.title || tx.merchant || '');
+        setDate(tx.transaction_date ? new Date(tx.transaction_date) : new Date());
+        if (tx.note) setNote(tx.note);
+        if (tx.payment_method) setPayment(tx.payment_method);
+      } catch (err) {
+        console.error('Error loading transaction:', err);
+        Alert.alert('ข้อผิดพลาด', 'ไม่สามารถโหลดข้อมูลรายการนี้ได้');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTransaction();
+  }, [editId]);
+
+  // เลือก alert ที่ "รุนแรงที่สุด" มาโชว์ ถ้ามีหลาย budget ข้าม threshold พร้อมกัน
+  // (เช่น ทั้งงบรวมและงบเฉพาะหมวดข้ามพร้อมกันในรายการเดียว) — OVER สำคัญกว่า WARNING เสมอ
+  const pickMostSevereAlert = (budgetAlerts) => {
+    if (!budgetAlerts || budgetAlerts.length === 0) return null;
+    return (
+      budgetAlerts.find(a => a.level === 'OVER') ||
+      budgetAlerts.find(a => a.level === 'WARNING') ||
+      null
+    );
+  };
+
   const handleSave = async () => {
     try {
+      setSaving(true);
       const numericAmount = parseFloat(amount);
       if (!amount || isNaN(numericAmount) || numericAmount <= 0) {
         Alert.alert('ข้อผิดพลาด', 'กรุณากรอกจำนวนเงินให้ถูกต้อง');
+        setSaving(false);
         return;
       }
 
@@ -80,11 +150,15 @@ export default function AddTransactionScreen() {
         Alert.alert('กรุณาล็อกอิน', 'ไม่พบข้อมูลการเข้าสู่ระบบ', [
           { text: 'OK', onPress: () => router.replace('/login') }
         ]);
+        setSaving(false);
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/v1/personal/transactions`, {
-        method: 'POST',
+      const url = editId
+        ? `${API_URL}/api/v1/personal/transactions/${editId}`
+        : `${API_URL}/api/v1/personal/transactions`;
+      const response = await fetch(url, {
+        method: editId ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -93,7 +167,7 @@ export default function AddTransactionScreen() {
           title: merchant.trim() || category,
           amount: numericAmount,
           type: type,
-          category: category,
+          category_id: CATEGORY_NAME_TO_ID[category] || null,   // ← เปลี่ยนจาก category: category
           merchant: merchant.trim() || 'General',
           transaction_date: date.toISOString(),
           paymentMethod: payment,
@@ -102,7 +176,8 @@ export default function AddTransactionScreen() {
       });
 
       const data = await response.json();
-
+      console.log('=== BUDGET ALERTS ===', JSON.stringify(data.budgetAlerts));
+      
       if (!response.ok) {
         if (response.status === 401) {
           await clearToken();
@@ -114,12 +189,39 @@ export default function AddTransactionScreen() {
         throw new Error(data.error || 'บันทึกไม่สำเร็จ');
       }
 
-      Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อย');
-      router.back();
+      // เช็คว่ารายการนี้ทำให้งบข้าม threshold (WARNING/OVER) หรือไม่
+      // บันทึกสำเร็จเสมอ ไม่ว่าจะมี budget alert หรือไม่ — แค่ข้อความตอนกด OK ต่างกัน
+      const alert = pickMostSevereAlert(data.budgetAlerts);
+
+      if (alert) {
+        const percentText = `${(alert.percentUsed * 100).toFixed(0)}%`;
+        const title = alert.level === 'OVER' ? '🔴 เกินงบประมาณแล้ว' : '⚠️ ใกล้เต็มงบแล้ว';
+        const body = alert.level === 'OVER'
+          ? `บันทึกรายการสำเร็จ แต่คุณใช้จ่ายไปแล้ว ${percentText} เกินงบที่ตั้งไว้`
+          : `บันทึกรายการสำเร็จ ตอนนี้ใช้จ่ายไปแล้ว ${percentText} ของงบที่ตั้งไว้`;
+
+        Alert.alert(title, body, [
+          { text: 'ตกลง', onPress: () => router.back() }
+        ]);
+      } else {
+        Alert.alert('สำเร็จ', editId ? 'อัปเดตรายการเรียบร้อย' : 'บันทึกรายการเรียบร้อย', [
+          { text: 'ตกลง', onPress: () => router.back() }
+        ]);
+      }
     } catch (err) {
       Alert.alert('Error', err.message);
+    } finally {
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#5f3dc4" />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -128,7 +230,7 @@ export default function AddTransactionScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>บันทึกรายการ</Text>
+        <Text style={styles.headerTitle}>{editId ? 'แก้ไขรายการ' : 'บันทึกรายการ'}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -257,8 +359,10 @@ export default function AddTransactionScreen() {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>{type === 'expense' ? 'บันทึกรายจ่าย' : 'บันทึกรายรับ'}</Text>
+      <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+        <Text style={styles.saveBtnText}>
+          {saving ? 'กำลังบันทึก...' : (editId ? 'บันทึกการแก้ไข' : (type === 'expense' ? 'บันทึกรายจ่าย' : 'บันทึกรายรับ'))}
+        </Text>
       </TouchableOpacity>
 
       <View style={{ height: 40 }} />
@@ -352,6 +456,7 @@ const StoreIcon = () => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fcfbfe', paddingHorizontal: 20, paddingTop: 45 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fcfbfe' },
   headerBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   backBtn: { padding: 4 },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#5f3dc4' },
