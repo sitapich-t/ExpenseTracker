@@ -12,6 +12,7 @@ export default function RootLayout() {
       <Stack.Screen name="add-transaction" options={{ presentation: 'modal' }} />
       <Stack.Screen name="scan-receipt" />
       <Stack.Screen name="confirm-receipt" />
+      <Stack.Screen name="budget" />
     </Stack>
   );
 }
