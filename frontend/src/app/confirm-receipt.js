@@ -54,10 +54,10 @@ export default function ConfirmReceiptScreen() {
   console.log('📸 Confirm imageUri (data URI):', imageUri ? imageUri.slice(0, 40) : '(none)');
 
   // ================================
-  // ดึง "ชื่อร้าน" จากผล OCR
-  // ================================
+// ดึง "ชื่อร้าน" จากผล OCR
+// ================================
 
-  function extractMerchant(ocrText, backendMerchant) {
+function extractMerchant(ocrText, backendMerchant) {
   // คำที่ไม่ใช่ชื่อร้าน
   const ignorePatterns = [
     /ใบเสร็จ/i,
@@ -119,6 +119,7 @@ export default function ConfirmReceiptScreen() {
     /\bbay\b/i,
     /พร้อม[เแ]พย์/i,
     /promptpay/i,
+    /พร้อมเพย์/i,
     /กสิกรไทย/i,
     /ไทยพาณิชย์/i,
     /กรุงเทพ/i,
@@ -128,9 +129,8 @@ export default function ConfirmReceiptScreen() {
     /^จาก\b/i,           // เผื่อสลิปบางแบบใช้ "จาก" (From)
     /เติมเงินสำเร็จ/i,   // หัวข้อสถานะ ไม่ใช่ชื่อผู้รับ
     /การเติมเงิน/i,
-    /จำนวนเงิน/i,
-    /จำนวน/i,
-    /top\s*up/i,
+    /จำนวนเงิน/i, /จำนวน/i, /top\s*up/i,
+    // ✅ เพิ่มใหม่รอบนี้
     /ข้อมูลเพิ่มเติม/i,
     /ผู้ให้บริการ/i,
     /ผู้รับเงิน/i,
@@ -139,8 +139,9 @@ export default function ConfirmReceiptScreen() {
     /คิวอาร์โค้ด/i,
     /ตรวจสอบ/i,
     /สถานะ/i,
-];
+    /การเติมเงิน/i,
 
+];
 
     // ทำความสะอาดชื่อ
   const cleanName = (text) => {
@@ -196,14 +197,18 @@ export default function ConfirmReceiptScreen() {
     name = words.join(' ').trim();
 
     // ✅ คำ UI ที่ OCR อ่านหลุดมาจากปุ่ม/ไอคอนบนสลิป (เช่น "ดู" จากปุ่ม
-    // "ดูต้นฉบับ/View Original" ที่ซ้อนทับกับชื่อผู้รับในภาพ) — ตัดเฉพาะคำหน้าแรก
-    // แต่ถ้าขึ้นต้นด้วย "จาก" (From) ทิ้งทั้งบรรทัด เพราะคือฝั่งผู้โอน ไม่ใช่ผู้รับเงิน
+    // "ดูต้นฉบับ/View Original" ที่ซ้อนทับกับชื่อผู้รับในภาพ)
+    // เอาเฉพาะคำที่อยู่ "หน้าสุด" และไม่ใช่ทั้งบรรทัด กันไม่ให้ไปตัดชื่อจริง
     words = name.split(' ');
     if (words.length > 1 && words[0].toLowerCase() === 'จาก') {
       return '';
     }
     const leadingUiJunk = ['ดู', 'ดูรายละเอียด', 'ดูต้นฉบับ', 'view', 'ไปยัง', 'จาก'];
-    if (words.length > 1 && leadingUiJunk.includes(words[0].toLowerCase())) {
+    words = name.split(' ');
+    if (
+      words.length > 1 &&
+      leadingUiJunk.includes(words[0].toLowerCase())
+    ) {
       words.shift();
       name = words.join(' ').trim();
     }
@@ -213,32 +218,32 @@ export default function ConfirmReceiptScreen() {
 
   // ตรวจว่าดูเหมือนชื่อร้านหรือไม่
   const isValidMerchant = (text, debugLabel = '') => {
-    const reject = (reason) => {
-      if (debugLabel) console.log(`❌ [${debugLabel}] rejected "${text}" → ${reason}`);
-      return false;
-    };
-
-    if (!text || text.length < 2) return reject('too short');
-    // ✅ เคสพิเศษ: "เติมเงินพร้อมเพย์" คือชื่อปลายทางจริงของรายการ (ไม่ใช่แค่บอกช่องทางจ่าย)
-    // ต้อง allow ก่อนเช็ค ignorePatterns อื่นๆ เพราะไม่งั้นจะโดน /พร้อมเพย์/ ตัดทิ้งทุกครั้ง
-    if (/^เติมเงินพร้อมเพย์$/i.test(text.trim())) return true;
-
-    if (/^\s*(KBank|K\+|K\s*PLUS|SCB|BBL|Krungthai|KTB|TTB|BAY|PromptPay|Payment\s*Completed)\s*[+\-]?\s*$/i.test(text))
-      return reject('bank name only');
-    if (/x{2,}/i.test(text) && /\d/.test(text)) return reject('masked account number');
-    if (/^(MS\.|MR\.|MRS\.|MISS|นาย|นาง|นางสาว|น\.ส\.)\s*/i.test(text)) return reject('sender name prefix');
-    if (!/[ก-๙]{3,}|[a-zA-Z]{3,}/.test(text)) return reject('no real word run');
-    if (ignorePatterns.some(p => p.test(text))) return reject('matched ignore pattern');
-    if (text.length > 40) return reject('too long');
-    const thaiWords = text.match(/[ก-๙]{2,}/g) || [];
-    if (thaiWords.length >= 5) return reject('too many thai word runs (sentence-like)');
-    const numbers = text.match(/\d/g) || [];
-    if (numbers.length >= 5) return reject('too many digits');
-    const meaningfulChars = (text.match(/[ก-๙a-zA-Z0-9]/g) || []).length;
-    if (meaningfulChars < text.length * 0.5) return reject('too much noise/symbols');
-    if (meaningfulChars < 5) return reject('too few meaningful chars');
-    return true;
+  const reject = (reason) => {
+    if (debugLabel) console.log(`❌ [${debugLabel}] rejected "${text}" → ${reason}`);
+    return false;
   };
+
+  if (!text || text.length < 2) return reject('too short');
+  // ✅ เคสพิเศษ: "เติมเงินพร้อมเพย์" คือชื่อปลายทางจริงของรายการ (ไม่ใช่แค่บอกช่องทางจ่าย)
+  // ต้อง allow ก่อนเช็ค ignorePatterns อื่นๆ เพราะไม่งั้นจะโดน /พร้อมเพย์/ ตัดทิ้งทุกครั้ง
+  if (/^เติมเงินพร้อมเพย์$/i.test(text.trim())) return true;
+
+  if (/^\s*(KBank|K\+|K\s*PLUS|SCB|BBL|Krungthai|KTB|TTB|BAY|PromptPay|Payment\s*Completed)\s*[+\-]?\s*$/i.test(text))
+    return reject('bank name only');
+  if (/x{2,}/i.test(text) && /\d/.test(text)) return reject('masked account number');
+  if (/^(MS\.|MR\.|MRS\.|MISS|นาย|นาง|นางสาว|น\.ส\.)\s*/i.test(text)) return reject('sender name prefix');
+  if (!/[ก-๙]{3,}|[a-zA-Z]{3,}/.test(text)) return reject('no real word run');
+  if (ignorePatterns.some(p => p.test(text))) return reject('matched ignore pattern');
+  if (text.length > 40) return reject('too long');
+  const thaiWords = text.match(/[ก-๙]{2,}/g) || [];
+  if (thaiWords.length >= 5) return reject('too many thai word runs (sentence-like)');
+  const numbers = text.match(/\d/g) || [];
+  if (numbers.length >= 5) return reject('too many digits');
+  const meaningfulChars = (text.match(/[ก-๙a-zA-Z0-9]/g) || []).length;
+  if (meaningfulChars < text.length * 0.5) return reject('too much noise/symbols');
+  if (meaningfulChars < 5) return reject('too few meaningful chars');
+  return true;
+};
 
   // =================================
   // 1. ลองใช้ Backend Merchant ก่อน
@@ -246,7 +251,7 @@ export default function ConfirmReceiptScreen() {
 
   const backendName = cleanName(backendMerchant);
 
-  if (isValidMerchant(backendName, 'backend')) {
+  if (isValidMerchant(backendName, 'backend')) {   // ← เพิ่ม 'backend'
     return backendName;
   }
   // =================================
@@ -267,18 +272,19 @@ export default function ConfirmReceiptScreen() {
     const lines = scopedLines
       .map(line => cleanName(line))
       .filter(line => line.length > 0);
-  // ✅ หาเลขบัญชีที่ถูกปิดบังก่อน (เช่น xxx-x-x7251-x)
+  // ✅ ใหม่: หาเลขบัญชีที่ถูกปิดบังก่อน (เช่น xxx-x-x7251-x)
     // ชื่อผู้รับ/ร้านค้าบนสลิปโอนเงินมักอยู่ "บรรทัดถัดไป" เสมอ — แม่นกว่า scoring มาก
     const accountIndex = lines.findIndex(
       (l) => /x{2,}[-=\s]?x[-=\s]?x?\d{2,4}[-=\s]?x?/i.test(l)
     );
     if (accountIndex !== -1) {
       for (let i = accountIndex + 1; i < Math.min(accountIndex + 4, lines.length); i++) {
-        if (isValidMerchant(lines[i], 'after-account')) {
+        if (isValidMerchant(lines[i], 'after-account')) {   // ← เพิ่ม label
           return lines[i];
         }
       }
     }
+
 
     // ชื่อร้านมักอยู่ช่วงบนของใบเสร็จ
     const topLines = lines.slice(0, 15);
@@ -287,7 +293,7 @@ export default function ConfirmReceiptScreen() {
     const candidates = topLines
       .map((line, index) => {
 
-        if (!isValidMerchant(line, 'candidate')) {
+        if (!isValidMerchant(line, 'candidate')) {   // ← เพิ่ม label
           return null;
         }
 
@@ -404,14 +410,14 @@ const initialCategoryId = (() => {
 const [merchant, setMerchant] = useState(detectedMerchant);
 const [amount, setAmount] = useState(params.amount || '');
 const [date, setDate] = useState(isoToDisplayDate(params.date)); // ว่างถ้า backend หาไม่เจอ — ให้ผู้ใช้รู้ตัวและกรอกเอง
-// เก็บเป็น category_id (ตัวเลข) ตรงกับตาราง Supabase — ไม่ใช่ label string อีกต่อไป
-const [categoryId, setCategoryId] = useState(initialCategoryId);
-const [categoryModalVisible, setCategoryModalVisible] = useState(false);
-const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card'); // 'Card' | 'Cash' | 'Transfer'
-const [showOriginal, setShowOriginal] = useState(false);
+  // เก็บเป็น category_id (ตัวเลข) ตรงกับตาราง Supabase — ไม่ใช่ label string อีกต่อไป
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card'); // 'Card' | 'Cash' | 'Transfer'
+  const [showOriginal, setShowOriginal] = useState(false);
 
-// label ปัจจุบันสำหรับแสดงผลใน UI เท่านั้น (state จริงคือ categoryId)
-const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
+  // label ปัจจุบันสำหรับแสดงผลใน UI เท่านั้น (state จริงคือ categoryId)
+  const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
 
   const handleConfirmSave = async () => {
     try {
@@ -451,7 +457,7 @@ const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORI
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fcfbfe' }}>
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container}showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -511,31 +517,16 @@ const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORI
         />
       </View>
 
-      {/* ธนาคาร / เลขอ้างอิง (แสดงเฉพาะสลิปโอนเงิน) */}
-      {isTransferSlip && (bankName || transactionId) && (
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          {bankName ? (
-            <View style={{ flex: 1, marginRight: transactionId ? 8 : 0 }}>
-              <Text style={styles.labelTitle}>ธนาคาร</Text>
-              <View style={styles.inputBox}>
-                <Ionicons name="business-outline" size={18} color="#5f3dc4" style={{ marginRight: 8 }} />
-                <Text style={styles.inputText}>{bankName}</Text>
-              </View>
-            </View>
-          ) : null}
-          {transactionId ? (
-            <View style={{ flex: bankName ? 1.4 : 1, marginLeft: bankName ? 8 : 0 }}>
-              <Text style={styles.labelTitle}>เลขอ้างอิง</Text>
-              <View style={styles.inputBox}>
-                <Ionicons name="barcode-outline" size={18} color="#5f3dc4" style={{ marginRight: 8 }} />
-                <Text style={styles.inputText} numberOfLines={1} ellipsizeMode="tail">
-                  {transactionId}
-                </Text>
-              </View>
-            </View>
-          ) : null}
+      {/* ธนาคาร (แสดงเฉพาะสลิปโอนเงิน) */}
+      {isTransferSlip && bankName ? (
+        <View>
+          <Text style={styles.labelTitle}>ธนาคาร</Text>
+          <View style={styles.inputBox}>
+            <Ionicons name="business-outline" size={18} color="#5f3dc4" style={{ marginRight: 8 }} />
+            <Text style={styles.inputText}>{bankName}</Text>
+          </View>
         </View>
-      )}
+      ) : null}
 
       {/* Total Amount */}
       <Text style={styles.labelTitle}>{isTransferSlip ? 'จำนวนเงินที่โอน' : 'Total Amount'}</Text>

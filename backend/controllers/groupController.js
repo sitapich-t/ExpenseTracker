@@ -198,7 +198,14 @@ exports.createGroupTransaction = async (req, res) => {
 
     if (error) throw error;
 
-    const { data: group }
+    const { data: group } = await supabase
+      .from('groups')
+      .select('total_spend')
+      .eq('id', id)
+      .single();
+    
+    const newTotalSpend = (group?.total_spend || 0) + totalAmount;
+    await supabase.from('groups').update({ total_spend: newTotalSpend }).eq('id', id);
     return res.json({
       success: true,
       message: 'บันทึกรายการสำเร็จ',
