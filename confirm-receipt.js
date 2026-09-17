@@ -143,7 +143,6 @@ function extractMerchant(ocrText, backendMerchant) {
 
 ];
 
-
     // ทำความสะอาดชื่อ
   const cleanName = (text) => {
     if (!text) return '';
@@ -518,31 +517,16 @@ const [date, setDate] = useState(isoToDisplayDate(params.date)); // ว่าง
         />
       </View>
 
-      {/* ธนาคาร / เลขอ้างอิง (แสดงเฉพาะสลิปโอนเงิน) */}
-      {isTransferSlip && (bankName || transactionId) && (
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          {bankName ? (
-            <View style={{ flex: 1, marginRight: transactionId ? 8 : 0 }}>
-              <Text style={styles.labelTitle}>ธนาคาร</Text>
-              <View style={styles.inputBox}>
-                <Ionicons name="business-outline" size={18} color="#5f3dc4" style={{ marginRight: 8 }} />
-                <Text style={styles.inputText}>{bankName}</Text>
-              </View>
-            </View>
-          ) : null}
-          {transactionId ? (
-            <View style={{ flex: bankName ? 1.4 : 1, marginLeft: bankName ? 8 : 0 }}>
-              <Text style={styles.labelTitle}>เลขอ้างอิง</Text>
-              <View style={styles.inputBox}>
-                <Ionicons name="barcode-outline" size={18} color="#5f3dc4" style={{ marginRight: 8 }} />
-                <Text style={styles.inputText} numberOfLines={1} ellipsizeMode="tail">
-                  {transactionId}
-                </Text>
-              </View>
-            </View>
-          ) : null}
+      {/* ธนาคาร (แสดงเฉพาะสลิปโอนเงิน) */}
+      {isTransferSlip && bankName ? (
+        <View>
+          <Text style={styles.labelTitle}>ธนาคาร</Text>
+          <View style={styles.inputBox}>
+            <Ionicons name="business-outline" size={18} color="#5f3dc4" style={{ marginRight: 8 }} />
+            <Text style={styles.inputText}>{bankName}</Text>
+          </View>
         </View>
-      )}
+      ) : null}
 
       {/* Total Amount */}
       <Text style={styles.labelTitle}>{isTransferSlip ? 'จำนวนเงินที่โอน' : 'Total Amount'}</Text>
