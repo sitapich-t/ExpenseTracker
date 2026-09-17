@@ -1,7 +1,11 @@
 // เก็บ keyword -> category_id ตรงกับตาราง categories จริงใน Supabase (ยืนยันแล้ว 9 หมวด)
 // 1=Food, 2=Shopping, 3=Travel, 4=Transport, 5=Study, 6=Entertainment, 7=Health, 8=Bills, 9=Other
 const CATEGORY_KEYWORD_MAP = [
-  { categoryId: 1, keywords: ['7-eleven', 'เซเว่น', 'โลตัส', 'ร้านอาหาร', 'restaurant', 'cafe', 'ข้าว', 'ก๋วยเตี๋ยว'] }, // Food
+  { categoryId: 1, keywords: [
+    '7-eleven', 'เซเว่น', 'โลตัส', 'ร้านอาหาร', 'restaurant', 'cafe', 'ข้าว', 'ก๋วยเตี๋ยว',
+    'soup', 'ซุป', 'อาหาร', 'food', 'ก๋วยจั๊บ', 'ผัด', 'ต้ม', 'แกง', 'ยำ',
+    'เมนู', 'จาน', 'กับข้าว', 'อร่อย', 'เสิร์ฟ', 'เสริฟ',
+  ] }, // Food
   { categoryId: 2, keywords: ['lazada', 'shopee', 'central', 'robinson'] },                                            // Shopping
   { categoryId: 3, keywords: ['booking.com', 'agoda', 'airline', 'โรงแรม'] },                                          // Travel
   { categoryId: 4, keywords: ['grab', 'bts', 'mrt', 'ปตท', 'taxi', 'บางจาก'] },                                        // Transport

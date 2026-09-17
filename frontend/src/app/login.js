@@ -72,7 +72,7 @@ if (!email || !password) {
           <Ionicons name="wallet-outline" size={80} color="#5f3dc4" />
         </View>
         <Text style={styles.appName}>Expense Tracker</Text>
-        <Text style={styles.subtitle}>จัดการการเงินของคุณได้อย่างง่ายดาย</Text>
+        <Text style={styles.subtitle}>จัดการการเงินของคุณได้อย่างง่าย</Text>
       </View>
 
       <View style={styles.card}>
@@ -120,11 +120,6 @@ if (!email || !password) {
           <Text style={styles.registerText}>ยังไม่มีบัญชีใช่ไหม? </Text>
           <TouchableOpacity onPress={() => router.push('/register')}>
             <Text style={styles.registerLink}>สมัครสมาชิก</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.otpContainer}>
-          <TouchableOpacity onPress={() => router.push('/verify-otp')}>
-            <Text style={styles.otpLink}>ลงทะเบียนแล้วแต่ยังไม่ได้ยืนยัน OTP?</Text>
           </TouchableOpacity>
         </View>
       </View>

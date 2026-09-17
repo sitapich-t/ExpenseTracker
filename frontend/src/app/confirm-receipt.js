@@ -8,6 +8,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { API_URL, getToken } from '@/lib/api';
 import { getScannedImage, clearScannedImage } from '@/utils/scannedImageStore';
 
+// ---------- Helper: แปลง ISO string -> DD/MM/YYYY สำหรับแสดงผลใน UI ----------
+function isoToDisplayDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const yyyy = d.getUTCFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+// ---------- Helper: แปลง DD/MM/YYYY กลับเป็น ISO string ตอนบันทึก ----------
+function displayDateToIso(display) {
+  const match = String(display).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match.map(Number);
+  return new Date(Date.UTC(yyyy, mm - 1, dd)).toISOString();
+}
+
 // รายการหมวดหมู่ให้เลือก — ต้องตรงกับตาราง categories ใน Supabase เป๊ะ
 // id คือ category_id จริง, label คือ name จริงในตาราง (1-9 ยืนยันแล้ว)
 const CATEGORIES = [
@@ -35,10 +54,10 @@ export default function ConfirmReceiptScreen() {
   console.log('📸 Confirm imageUri (data URI):', imageUri ? imageUri.slice(0, 40) : '(none)');
 
   // ================================
-// ดึง "ชื่อร้าน" จากผล OCR
-// ================================
+  // ดึง "ชื่อร้าน" จากผล OCR
+  // ================================
 
-function extractMerchant(ocrText, backendMerchant) {
+  function extractMerchant(ocrText, backendMerchant) {
   // คำที่ไม่ใช่ชื่อร้าน
   const ignorePatterns = [
     /ใบเสร็จ/i,
@@ -79,7 +98,6 @@ function extractMerchant(ocrText, backendMerchant) {
     /ชำระ/i,
     /สิทธิ์/i,
     /สามารถ/i,
-    // คำสถานะ/UI ของแอปชำระเงินดิจิทัล (สลิปโอนเงิน ไม่ใช่ใบเสร็จร้านค้า)
     /payment\s*completed/i,
     /payment\s*success/i,
     /transaction\s*id/i,
@@ -89,16 +107,50 @@ function extractMerchant(ocrText, backendMerchant) {
     /ทำรายการสำเร็จ/i,
     /qr\s*code/i,
     /อ้างอิง/i,
-  ];
+    // ชื่อธนาคาร/แอปธนาคาร ไม่ใช่ชื่อผู้รับ/ร้านค้า
+    /\bkbank\b/i,
+    /\bk\s*\+\b/i,
+    /\bk\s*plus\b/i,
+    /\bscb\b/i,
+    /\bbbl\b/i,
+    /\bkrungthai\b/i,
+    /\bktb\b/i,
+    /\bttb\b/i,
+    /\bbay\b/i,
+    /พร้อม[เแ]พย์/i,
+    /promptpay/i,
+    /กสิกรไทย/i,
+    /ไทยพาณิชย์/i,
+    /กรุงเทพ/i,
+    /กรุงไทย/i,
+    /กรุงศรี/i,
+    /^ไปยัง\b/i,        // "ไปยัง" = label แปลว่า "To"
+    /^จาก\b/i,           // เผื่อสลิปบางแบบใช้ "จาก" (From)
+    /เติมเงินสำเร็จ/i,   // หัวข้อสถานะ ไม่ใช่ชื่อผู้รับ
+    /การเติมเงิน/i,
+    /จำนวนเงิน/i,
+    /จำนวน/i,
+    /top\s*up/i,
+    /ข้อมูลเพิ่มเติม/i,
+    /ผู้ให้บริการ/i,
+    /ผู้รับเงิน/i,
+    /ผู้โอน/i,
+    /สแกน/i,
+    /คิวอาร์โค้ด/i,
+    /ตรวจสอบ/i,
+    /สถานะ/i,
+];
 
-  // ทำความสะอาดชื่อ
+
+    // ทำความสะอาดชื่อ
   const cleanName = (text) => {
     if (!text) return '';
 
     let name = String(text)
+      .normalize('NFC')
+      .replace(/\u0E4D\u0E32/g, '\u0E33') // แก้สระอำที่ OCR แยกชิ้น (นิคหิต+า) ให้เป็นตัวเดียว
       .replace(/\r/g, '')
       .trim();
-
     // ลบอักขระขยะด้านหน้า
     name = name.replace(/^[^ก-๙a-zA-Z0-9]+/, '');
 
@@ -123,56 +175,68 @@ function extractMerchant(ocrText, backendMerchant) {
     // ช่องว่างซ้ำ
     name = name.replace(/\s+/g, ' ').trim();
 
+        // ✅ ใหม่: ตัดคำท้าย/หน้าที่เป็นขยะ OCR
+    // เกณฑ์ที่แม่นกว่าเดิม: คำจะถือว่า "ไม่ใช่ขยะ" ก็ต่อเมื่อมีตัวอักษรจริง
+    // (ไทยหรืออังกฤษ) เรียงติดกันอย่างน้อย 2 ตัว เช่น "อีวี" ผ่าน แต่
+    // "๑]ง" ไม่ผ่าน (มีแค่ "ง" ตัวเดียวโดดๆ ที่เหลือเป็นเลข/สัญลักษณ์)
+    const hasRealWordRun = (w) => /[a-zA-Zก-๙]{2,}/.test(w);
+
+    let words = name.split(' ').filter(Boolean);
+
+    // ตัดจากท้าย
+    while (words.length > 1 && !hasRealWordRun(words[words.length - 1])) {
+      words.pop();
+    }
+
+    // ตัดจากหน้า (เผื่อขยะ OCR หลุดมาปนกับคำจริงด้านหน้าแบบ "๑] ดู สปาร์ค")
+    while (words.length > 1 && !hasRealWordRun(words[0])) {
+      words.shift();
+    }
+
+    name = words.join(' ').trim();
+
+    // ✅ คำ UI ที่ OCR อ่านหลุดมาจากปุ่ม/ไอคอนบนสลิป (เช่น "ดู" จากปุ่ม
+    // "ดูต้นฉบับ/View Original" ที่ซ้อนทับกับชื่อผู้รับในภาพ) — ตัดเฉพาะคำหน้าแรก
+    // แต่ถ้าขึ้นต้นด้วย "จาก" (From) ทิ้งทั้งบรรทัด เพราะคือฝั่งผู้โอน ไม่ใช่ผู้รับเงิน
+    words = name.split(' ');
+    if (words.length > 1 && words[0].toLowerCase() === 'จาก') {
+      return '';
+    }
+    const leadingUiJunk = ['ดู', 'ดูรายละเอียด', 'ดูต้นฉบับ', 'view', 'ไปยัง', 'จาก'];
+    if (words.length > 1 && leadingUiJunk.includes(words[0].toLowerCase())) {
+      words.shift();
+      name = words.join(' ').trim();
+    }
+
     return name;
   };
 
   // ตรวจว่าดูเหมือนชื่อร้านหรือไม่
-  const isValidMerchant = (text) => {
-    if (!text || text.length < 2) {
+  const isValidMerchant = (text, debugLabel = '') => {
+    const reject = (reason) => {
+      if (debugLabel) console.log(`❌ [${debugLabel}] rejected "${text}" → ${reason}`);
       return false;
-    }
+    };
 
-    // ต้องมีตัวอักษรที่ "ติดกัน" อย่างน้อย 2 ตัว (กันขยะแบบ ม "ท ที่เป็นตัวอักษรโดดๆ)
-    if (!/[ก-๙]{2,}|[a-zA-Z]{2,}/.test(text)) {
-      return false;
-    }
+    if (!text || text.length < 2) return reject('too short');
+    // ✅ เคสพิเศษ: "เติมเงินพร้อมเพย์" คือชื่อปลายทางจริงของรายการ (ไม่ใช่แค่บอกช่องทางจ่าย)
+    // ต้อง allow ก่อนเช็ค ignorePatterns อื่นๆ เพราะไม่งั้นจะโดน /พร้อมเพย์/ ตัดทิ้งทุกครั้ง
+    if (/^เติมเงินพร้อมเพย์$/i.test(text.trim())) return true;
 
-    // ไม่เอาข้อความที่มีคำต้องห้าม
-    if (ignorePatterns.some(pattern => pattern.test(text))) {
-      return false;
-    }
-
-    // ชื่อร้านไม่ควรยาวเป็นประโยค
-    if (text.length > 40) {
-      return false;
-    }
-
-    // ถ้ามีภาษาไทยติดกันยาวมาก มักเป็นประโยคจาก OCR
+    if (/^\s*(KBank|K\+|K\s*PLUS|SCB|BBL|Krungthai|KTB|TTB|BAY|PromptPay|Payment\s*Completed)\s*[+\-]?\s*$/i.test(text))
+      return reject('bank name only');
+    if (/x{2,}/i.test(text) && /\d/.test(text)) return reject('masked account number');
+    if (/^(MS\.|MR\.|MRS\.|MISS|นาย|นาง|นางสาว|น\.ส\.)\s*/i.test(text)) return reject('sender name prefix');
+    if (!/[ก-๙]{3,}|[a-zA-Z]{3,}/.test(text)) return reject('no real word run');
+    if (ignorePatterns.some(p => p.test(text))) return reject('matched ignore pattern');
+    if (text.length > 40) return reject('too long');
     const thaiWords = text.match(/[ก-๙]{2,}/g) || [];
-
-    if (thaiWords.length >= 5) {
-      return false;
-    }
-
-    // ถ้ามีตัวเลขเยอะ ไม่เอา
+    if (thaiWords.length >= 5) return reject('too many thai word runs (sentence-like)');
     const numbers = text.match(/\d/g) || [];
-
-    if (numbers.length >= 5) {
-      return false;
-    }
-
-    // กันบรรทัดที่ส่วนใหญ่เป็นสัญลักษณ์/ขยะ OCR ปนตัวอักษรจริงแค่นิดเดียว
+    if (numbers.length >= 5) return reject('too many digits');
     const meaningfulChars = (text.match(/[ก-๙a-zA-Z0-9]/g) || []).length;
-
-    if (meaningfulChars < text.length * 0.5) {
-      return false;
-    }
-
-    // เศษขยะสั้นๆ (เช่น "โร" ที่มาจากโลโก้/ตัวอักษรหลุด) ไม่ควรถูกนับเป็นชื่อร้าน
-    if (meaningfulChars < 4) {
-      return false;
-    }
-
+    if (meaningfulChars < text.length * 0.5) return reject('too much noise/symbols');
+    if (meaningfulChars < 5) return reject('too few meaningful chars');
     return true;
   };
 
@@ -182,20 +246,39 @@ function extractMerchant(ocrText, backendMerchant) {
 
   const backendName = cleanName(backendMerchant);
 
-  if (isValidMerchant(backendName)) {
+  if (isValidMerchant(backendName, 'backend')) {
     return backendName;
   }
-
   // =================================
   // 2. ถ้า Backend ส่งชื่อผิด
   // ให้หาใหม่จาก OCR Text
   // =================================
 
   if (ocrText) {
-    const lines = String(ocrText)
-      .split('\n')
+    const rawLines = String(ocrText)
+      .normalize('NFC')
+      .replace(/\u0E4D\u0E32/g, '\u0E33')
+      .split('\n');
+    // ตัดทุกบรรทัดตั้งแต่ "ข้อมูลเพิ่มเติมจากผู้ให้บริการ" เป็นต้นไปทิ้ง
+    // เพราะเป็นข้อมูลของผู้โอน/ธนาคารต้นทาง ไม่ใช่ผู้รับเงิน
+    const infoIndex = rawLines.findIndex(l => /ข้อมูลเพิ่มเติมจากผู้ให้บริการ/i.test(l));
+    const scopedLines = infoIndex !== -1 ? rawLines.slice(0, infoIndex) : rawLines;
+
+    const lines = scopedLines
       .map(line => cleanName(line))
       .filter(line => line.length > 0);
+  // ✅ หาเลขบัญชีที่ถูกปิดบังก่อน (เช่น xxx-x-x7251-x)
+    // ชื่อผู้รับ/ร้านค้าบนสลิปโอนเงินมักอยู่ "บรรทัดถัดไป" เสมอ — แม่นกว่า scoring มาก
+    const accountIndex = lines.findIndex(
+      (l) => /x{2,}[-=\s]?x[-=\s]?x?\d{2,4}[-=\s]?x?/i.test(l)
+    );
+    if (accountIndex !== -1) {
+      for (let i = accountIndex + 1; i < Math.min(accountIndex + 4, lines.length); i++) {
+        if (isValidMerchant(lines[i], 'after-account')) {
+          return lines[i];
+        }
+      }
+    }
 
     // ชื่อร้านมักอยู่ช่วงบนของใบเสร็จ
     const topLines = lines.slice(0, 15);
@@ -204,7 +287,7 @@ function extractMerchant(ocrText, backendMerchant) {
     const candidates = topLines
       .map((line, index) => {
 
-        if (!isValidMerchant(line)) {
+        if (!isValidMerchant(line, 'candidate')) {
           return null;
         }
 
@@ -320,15 +403,15 @@ const initialCategoryId = (() => {
 // State
 const [merchant, setMerchant] = useState(detectedMerchant);
 const [amount, setAmount] = useState(params.amount || '');
-const [date, setDate] = useState(params.date || '');
-  // เก็บเป็น category_id (ตัวเลข) ตรงกับตาราง Supabase — ไม่ใช่ label string อีกต่อไป
-  const [categoryId, setCategoryId] = useState(initialCategoryId);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card'); // 'Card' | 'Cash' | 'Transfer'
-  const [showOriginal, setShowOriginal] = useState(false);
+const [date, setDate] = useState(isoToDisplayDate(params.date)); // ว่างถ้า backend หาไม่เจอ — ให้ผู้ใช้รู้ตัวและกรอกเอง
+// เก็บเป็น category_id (ตัวเลข) ตรงกับตาราง Supabase — ไม่ใช่ label string อีกต่อไป
+const [categoryId, setCategoryId] = useState(initialCategoryId);
+const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card'); // 'Card' | 'Cash' | 'Transfer'
+const [showOriginal, setShowOriginal] = useState(false);
 
-  // label ปัจจุบันสำหรับแสดงผลใน UI เท่านั้น (state จริงคือ categoryId)
-  const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
+// label ปัจจุบันสำหรับแสดงผลใน UI เท่านั้น (state จริงคือ categoryId)
+const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
 
   const handleConfirmSave = async () => {
     try {
@@ -345,7 +428,7 @@ const [date, setDate] = useState(params.date || '');
           type: 'expense',
           category_id: categoryId, // ← ส่งเลข id จริง ตรงกับ FK ในตาราง categories
           merchant: merchant,
-          transaction_date: date || new Date().toISOString(),
+          transaction_date: displayDateToIso(date) || new Date().toISOString(),
           paymentMethod: paymentMethod,
         }),
       });
@@ -368,7 +451,7 @@ const [date, setDate] = useState(params.date || '');
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fcfbfe' }}>
-    <ScrollView style={styles.container}showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>

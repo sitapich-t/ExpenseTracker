@@ -12,13 +12,13 @@ exports.getMyGroups = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
 
     const { data, error } = await supabase
-      .from('groups')
-      .select('*')
-      .eq('created_by', userId)
-      .order('created_at', { ascending: false });
+      .from('group_members')
+      .select('group_id, groups (*)')
+      .eq('user_id', userId)
 
     if (error) throw error;
-    return res.json({ success: true, groups: data || [] });
+    const groups = data ? data.map(item => item.group).filter(Boolean) : [];
+    return res.json({ success: true, groups });
   } catch (err) {
     console.error('❌ Fetch groups error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
@@ -161,11 +161,16 @@ exports.createGroupTransaction = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id || req.user.user_id;
-    const { title, type, amount, merchant, category, date, paid_by } = req.body || {};
+    const { title, type, amount, merchant, sc_rate = 0, vat_rate = 0, category, date, paid_by } = req.body || {};
 
     if (!title || !amount) {
       return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
     }
+
+    const baseAmount = transactionService.parseAmount(amount);
+    const scAmount = baseAmount * (parseFloat(sc_rate) / 100);
+    const vatAmount = (baseAmount + scAmount) * (parseFloat(vat_rate) / 100);
+    const totalAmount = baseAmount + scAmount + vatAmount;
 
     const newTransaction = {
       id: uuidv4(),
@@ -173,10 +178,16 @@ exports.createGroupTransaction = async (req, res) => {
       created_by: paid_by || userId,
       title: transactionService.normalizeTitle(title),
       type: type || 'expense',
-      amount: transactionService.parseAmount(amount),
+      subtotal: baseAmount,
+      sc_rate: parseFloat(scAmount),
+      sc_amount: scAmount,
+      vat_rate: parseFloat(vatAmount),
+      vat_amount: vatAmount,
+      amount: totalAmount,
       merchant: merchant || 'General',
       category: category || 'General',
       transaction_date: transactionService.resolveDate(date),
+      slip_url: slip_url || null,
     };
 
     const { data, error } = await supabase
@@ -187,6 +198,7 @@ exports.createGroupTransaction = async (req, res) => {
 
     if (error) throw error;
 
+    const { data: group }
     return res.json({
       success: true,
       message: 'บันทึกรายการสำเร็จ',

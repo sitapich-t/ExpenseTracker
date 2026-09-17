@@ -421,7 +421,7 @@ exports.scanReceipt = async (req, res) => {
       success: true,
       merchant: result.merchant || '',
       total: result.total || 0,
-      date: result.date || new Date().toISOString(),
+      date: result.date || null, // ปล่อยว่างถ้าอ่านวันที่จากสลิปไม่ได้ ให้ผู้ใช้กรอกเอง ไม่ควรเดาเป็นวันนี้
       parsedText: result.parsedText || '',
       documentType: result.documentType || 'receipt',
       bankName: result.bankName || null,

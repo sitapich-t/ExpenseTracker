@@ -9,7 +9,7 @@ const GMAIL_USER = process.env.GMAIL_USER || 'sitapich@gmail.com';
 const GMAIL_PASS = process.env.GMAIL_PASS || 'hdfi owka mitt rfva';
 
 // ==========================================
-// MAILTRAP TRANSPORT CONFIGURATION
+// NODEMAILER TRANSPORT CONFIGURATION
 // ==========================================
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -23,8 +23,8 @@ const transporter = nodemailer.createTransport({
 async function sendOtpEmail(toEmail, otpCode) {
   try {
     await transporter.sendMail({
-      from: `"Expense Tracker" <${GMAIL_USER}>`, // ต้องใช้ Gmail เดียวกับที่ตั้งค่าไว้
-      to: toEmail, // อีเมลของผู้ใช้ทุกคนที่มาสมัคร
+      from: `"Expense Tracker" <${GMAIL_USER}>`,
+      to: toEmail, 
       subject: 'รหัส OTP สำหรับยืนยันตัวตน - Expense Tracker',
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
