@@ -20,24 +20,113 @@ const MOCK_RESULT = {
   isMock: true,
 };
 
-// ---------- Helper: ตรวจสอบประเภทเอกสารและช่องทางการชำระเงิน ----------
-function detectDocumentTypeAndPaymentMethod(text) {
-  const isSlip = /(Payment\s*Completed|โอนเงินสำเร็จ|Transaction\s*ID|Scan\s*for\s*Verify|K\+|SCB|PromptPay|พร้อมเพย์|เลขที่รายการ|รหัสอ้างอิง)/i.test(text);
+// 🔍 1. ฟังก์ชันจำแนกประเภทเอกสาร (รองรับ SCB / Kept / K+)
+function detectDocumentTypeAndPaymentMethod(rawText) {
+  if (!rawText) return { documentType: 'receipt', paymentMethod: 'cash' };
+  const text = rawText.toLowerCase();
+
+  const slipKeywords = [
+    'successful transfer', 'transaction successful', 'transfer successful',
+    'payment completed', 'transfer completed', 'top-up completed',
+    'scan to verify', 'scan for verify', 'verify the transfer status',
+    'ref id', 'transaction id', 'โอนแล้ว', 'โอนเงินสำเร็จ', 'ทำรายการสำเร็จ', 'ชำระเงินสำเร็จ'
+  ];
+
+  const isSlip = slipKeywords.some(kw => text.includes(kw)) ||
+                 (text.includes('from') && text.includes('to') && text.includes('amount'));
 
   if (isSlip) {
-    return {
-      documentType: 'slip',
-      paymentMethod: 'e-banking', // สลิปโอนเงินกำหนดเป็น e-banking
-    };
+    return { documentType: 'slip', paymentMethod: 'bank_transfer' };
   }
-
-  return {
-    documentType: 'receipt',
-    paymentMethod: 'cash', // Default สำหรับใบเสร็จทั่วไป
-  };
+  return { documentType: 'receipt', paymentMethod: 'cash' };
 }
 
-// ---------- Helper: ดึงชื่อร้านค้า/ผู้รับโอนเงิน ----------
+// 🧾 2. สกัดชื่อร้านจากใบเสร็จ (ข้ามคำขยะ POS และคำว่า "ระบบขายหน้าร้าน")
+function extractReceiptMerchant(rawText) {
+  if (!rawText) return '';
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const ignoreKeywords = /^(ใบเสร็จ|ใบกำกับภาษี|พนักงาน|เจ้าของ|ระบบขายหน้าร้าน|POS|เสิร์ฟ|โต๊ะ|Table|Tax Invoice|Receipt|Welcome)/i;
+
+  for (const line of lines) {
+    if (ignoreKeywords.test(line)) continue;
+    if (line.length > 2 && !/^[\d\s\W]+$/.test(line)) {
+      return line;
+    }
+  }
+  return '';
+}
+
+// 🧾 3. สกัดยอดเงินจากใบเสร็จ (แก้ปัญหา ฿ กลายเป็นเลข 8)
+function extractReceiptTotalAmount(rawText) {
+  if (!rawText) return 0;
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const totalLine = lines.find(l => /(?:รวมทั้งหมด|รวมทั้งสิ้น|ยอดรวม|Total|Net Amount)/i.test(l));
+
+  if (totalLine) {
+    let cleanedLine = totalLine
+      .replace(/[฿Bb]/g, '')
+      .replace(/รวมทั้งหมด|รวมทั้งสิ้น|ยอดรวม|Total|Net Amount/gi, '');
+
+    const match = cleanedLine.match(/(\d+(?:\,\d+)*\.\d{2})/);
+    if (match) {
+      let amountStr = match[1].replace(/,/g, '');
+      if (amountStr.length > 6 && amountStr.startsWith('8')) {
+        amountStr = amountStr.substring(1);
+      }
+      return parseFloat(amountStr);
+    }
+  }
+  return 0;
+}
+
+// 📄 4. สกัดชื่อผู้รับจากสลิปโอนเงิน
+function extractRecipientFromSlip(rawText) {
+  if (!rawText) return '';
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // กรณี SCB/Kept ที่มีคำว่า TO / To
+  const toIndex = lines.findIndex(l => /^TO$/i.test(l) || /^To$/i.test(l));
+  if (toIndex !== -1 && toIndex + 1 < lines.length) {
+    const recipientLine = lines[toIndex + 1];
+    if (!/^[\d\-xX=]{6,}$/i.test(recipientLine)) return recipientLine;
+  }
+
+  // กรณี K+ อ่านย้อนยึดจากตำแหน่งผู้โอน
+  let senderEndIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/KBank|Kasikorn/i.test(lines[i]) || /x{2,}/i.test(lines[i]) || /^[\d\-xX=]{6,}$/i.test(lines[i])) {
+      senderEndIndex = i;
+    }
+  }
+
+  if (senderEndIndex !== -1 && senderEndIndex + 1 < lines.length) {
+    const recipientLines = [];
+    for (let i = senderEndIndex + 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (/(?:Transaction ID|Amount|Fee|เลขที่รายการ|จำนวนเงิน|Ref ID)/i.test(line)) break;
+      if (/^[\d\s\-]{7,}$/.test(line)) break;
+      if (/^(?:[A-Z0-9]{10,}|LICENSED|COPYRIGHT)/i.test(line)) break;
+      if (/^PromptPay ID$/i.test(line)) continue;
+      if (line.length <= 2 || /^[\=\+\-\*\.\_]+$/.test(line)) continue;
+
+      recipientLines.push(line);
+      if (recipientLines.length >= 2) break;
+    }
+    if (recipientLines.length > 0) return recipientLines.join(' ');
+  }
+  return '';
+}
+
+// 📄 5. สกัดยอดเงินจากสลิปโอนเงิน (รองรับ THB และ Baht)
+function extractAmountFromSlip(rawText) {
+  if (!rawText) return 0;
+  const match = rawText.match(/(?:Amount|AMOUNT|จำนวนเงิน)[\s\n]*:?[\s\n]*([\d,]+\.\d{2})/i) ||
+                rawText.match(/([\d,]+\.\d{2})\s*(?:Baht|THB|บาท)/i);
+  if (match) return parseFloat(match[1].replace(/,/g, ''));
+  return 0;
+}
+
+// 🏪 6. สกัดชื่อร้านค้า/ผู้รับโอนเงินจากข้อความ OCR (กรณีทั่วไป ใบเสร็จ/สลิป)
 function extractMerchant(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -70,7 +159,7 @@ function extractMerchant(text) {
     }
   }
 
-    // เคสสลิป/ใบเสร็จ: หาตามคีย์เวิร์ดนำหน้า (เช่น ไปยัง, ถึง, To, Merchant, ร้านค้า)
+  // เคสสลิป/ใบเสร็จ: หาตามคีย์เวิร์ดนำหน้า (เช่น ไปยัง, ถึง, To, Merchant, ร้านค้า)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const match = line.match(/(?:ไปยัง|ถึง|to|merchant|ร้านค้า|ชำระให้|โอนให้)[\s:]*(.*)/i);
@@ -91,13 +180,13 @@ function extractMerchant(text) {
   return '';
 }
 
-// ---------- Helper: ดึง Transaction ID ----------
+// 🔢 7. สกัด Transaction ID
 function extractTransactionId(text) {
   const match = text.match(/(?:Transaction\s*ID|เลขที่รายการ|รหัสอ้างอิง)[\s:]*([A-Za-z0-9]+)/i);
   return match ? match[1] : null;
 }
 
-// ---------- Helper: ดึงชื่อธนาคาร ----------
+// 🏦 8. สกัดชื่อธนาคาร
 function extractBankName(text) {
   const infoIndex = text.search(/ข้อมูลเพิ่มเติมจากผู้ให้บริการ/i);
   const scopedText = infoIndex !== -1 ? text.slice(0, infoIndex) : text;
@@ -108,7 +197,7 @@ function extractBankName(text) {
     { pattern: /BBL|กรุงเทพ/i, name: 'ธนาคารกรุงเทพ' },
     { pattern: /Krungthai|กรุงไทย|KTB/i, name: 'ธนาคารกรุงไทย' },
     { pattern: /TTB|ทหารไทยธนชาต/i, name: 'ธนาคารทีทีบี' },
-    { pattern: /BAY|กรุงศรี/i, name: 'ธนาคารกรุงศรีอยุธยา' },
+    { pattern: /BAY|KMA|Krungsri|krungsri|กรุงศรี/i, name: 'ธนาคารกรุงศรีอยุธยา' },
   ];
 
   // ✅ ค้นหาจาก text เต็ม ไม่ตัด scope เพราะชื่อธนาคารต้นทางมักอยู่หลังจุดตัด
@@ -125,7 +214,8 @@ function extractBankName(text) {
   if (/PromptPay|พร้อมเพย์/i.test(scopedText)) return 'PromptPay';
   return null;
 }
-// ---------- Helper: ดึงยอดรวมจากข้อความ OCR ด้วย regex ----------
+
+// 💰 9. สกัดยอดรวมจากข้อความ OCR ด้วย regex (รองรับใบเสร็จ/สลิป)
 function extractTotal(text) {
   const patternGroups = [
     {
@@ -173,7 +263,48 @@ function extractTotal(text) {
   return 0;
 }
 
-// ---------- Helper: เดาว่าปี 2 หลักเป็น ค.ศ. หรือ พ.ศ. โดยเทียบกับปีปัจจุบัน ----------
+// 🧺 10. สกัดรายการสินค้า (Line Items) จากใบเสร็จ
+function extractLineItems(parsedText) {
+  if (!parsedText) return [];
+  const lines = parsedText.split('\n');
+  const items = [];
+  let isItemSection = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // 1. เริ่มอ่านเมื่อเจอคำว่า "รายการสินค้า"
+    if (/รายการสินค้า/i.test(line)) {
+      isItemSection = true;
+      continue;
+    }
+
+    // 2. หยุดอ่านเมื่อถึงบรรทัดสรุปยอด
+    if (isItemSection && /(ยอด|สุทธิ|เงินสด|เงินทอน|total|net)/i.test(line)) {
+      break;
+    }
+
+    if (isItemSection) {
+      // Regex จับ: [จำนวนชิ้น (ถ้ามี)] + [ชื่อสินค้า] + [ราคาที่มีทศนิยม]
+      // รองรับทั้ง "1 ขนมรีบกั้ง (ผสมเนื้อ 42.00" และ "1 M-Stamp(uan) 0.00N"
+      const match = line.match(/^(\d+\s+)?(.+?)\s+([\d,]+\.\d{2})/);
+
+      if (match) {
+        const qty = match[1] ? parseInt(match[1].trim(), 10) : 1;
+        const name = match[2].trim();
+        const price = parseFloat(match[3].replace(/,/g, ''));
+
+        if (name && !isNaN(price)) {
+          items.push({ name, quantity: qty, price });
+        }
+      }
+    }
+  }
+  return items;
+}
+
+// 📅 11. เดาว่าปี 2 หลักเป็น ค.ศ. หรือ พ.ศ. โดยเทียบกับปีปัจจุบัน
 function convertTwoDigitYear(y2) {
   const currentYear = new Date().getFullYear();
   const asCE = 2000 + y2;              // ตีความเป็น ค.ศ. เช่น 26 -> 2026
@@ -199,7 +330,7 @@ const monthsTh = {
   'ธันวาคม': 11, 'ธ.ค.': 11,
 };
 
-// ---------- Helper: ดึงวันที่จากข้อความ OCR ----------
+// 📅 12. สกัดวันที่จากข้อความ OCR
 function extractDate(text) {
   // แก้ OCR อ่านเดือนไทยแบบย่อผิดบ่อย เช่น "ก.ุย." ที่จริงคือ "ก.ย." (มีสระ ุ แทรกผิดระหว่างจุด)
   text = text.replace(/([ก-๙])\.\s*ุ?\s*([ก-๙])\./g, '$1.$2.');
@@ -275,17 +406,13 @@ exports.scanReceipt = async ({ file, image } = {}) => {
   let rawText = '';
   try {
     const worker = await Tesseract.createWorker('tha+eng', 1, {
-      // oem = 1 -> LSTM engine เท่านั้น (neural net รุ่นใหม่ แม่นกว่า legacy engine
-      // โดยเฉพาะกับภาษาไทยที่มีสระ/วรรณยุกต์ซับซ้อน)
       logger: () => {},
     });
 
-    // ลองหลาย PSM (Page Segmentation Mode) แล้วเลือกผลที่ confidence สูงสุด
-    // เพราะสลิปที่มีกราฟิก/พื้นหลังปนกับตัวหนังสือ แต่ละภาพเหมาะกับ PSM ไม่เท่ากัน
     const psmModesToTry = [
-      Tesseract.PSM.SPARSE_TEXT,        // 11: ข้อความกระจัดกระจาย ปนกับกราฟิก/พื้นหลัง (เหมาะกับสลิปธนาคาร)
-      Tesseract.PSM.SINGLE_COLUMN,      // 4: คอลัมน์เดียว ขนาดตัวอักษรไม่เท่ากัน (เหมาะกับใบเสร็จ)
-      Tesseract.PSM.AUTO,               // 3: default เดิม เผื่อสองแบบบนแม่นน้อยกว่า
+      Tesseract.PSM.SINGLE_BLOCK, // 6: บังคับอ่านบรรทัดซ้ายไปขวา
+      Tesseract.PSM.AUTO_LAYOUT,  // 1: Auto detection
+      Tesseract.PSM.SINGLE_COLUMN // 4: ตัวสำรอง
     ];
 
     let bestResult = null;
@@ -306,10 +433,7 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     await worker.terminate();
 
     rawText = (bestResult?.text || '').trim().normalize('NFC');
-    // แก้สระ "ำ" ที่ OCR อ่านแยกเป็นนิคหิต (ํ) + สระอา (า) แทนที่จะเป็นตัวเดียว
-    // เช่น "จำนวน" อ่านเป็น "จํานวน" — ต้องแปลงเองเพราะ Unicode NFC ไม่ได้จัดการเคสนี้ให้
     rawText = rawText.replace(/\u0E4D\u0E32/g, '\u0E33');
-    // แก้คำที่ OCR อ่านผิดบ่อยสำหรับป้ายบริการมาตรฐาน (ไม่ใช่ชื่อคน จึง fix ตรงๆ ได้)
     rawText = rawText.replace(/พร้อม[เแ]{1,2}พย์/gi, 'พร้อมเพย์');
     rawText = applyMerchantCorrections(rawText);
     console.log('📊 OCR confidence (best PSM):', bestResult?.confidence);
@@ -317,26 +441,55 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     console.error('❌ Tesseract OCR error:', err.message);
     throw new Error('ไม่สามารถประมวลผล OCR ได้ กรุณาลองใหม่อีกครั้ง หรือถ่ายรูปให้ชัดเจนขึ้น');
   }
+
   if (!rawText) {
     throw new Error('อ่านข้อความจากรูปไม่ได้เลย กรุณาถ่ายรูปให้ชัดเจนขึ้นและมีแสงเพียงพอ');
   }
 
-  // ดึงข้อมูลต่างๆ
+  // 1. กำหนด parsedText จาก rawText
+  const parsedText = rawText;
+
+  // 2. ตรวจจับประเภทเอกสาร และวิธีชำระเงิน (รองรับ SCB / Kept / K+ / ใบเสร็จ)
   const { documentType, paymentMethod } = detectDocumentTypeAndPaymentMethod(rawText);
-  const merchant = extractMerchant(rawText);
-  const total = extractTotal(rawText);
+
+  // 3. ดึงข้อมูล Merchant, Total และ Items แยกตามประเภทเอกสาร
+  let total = 0;
+  let merchant = '';
+  let items = [];
+
+  if (documentType === 'slip' || documentType === 'transfer_slip') {
+    // 📄 Logic สำหรับสลิปโอนเงิน (K+, SCB, Kept, Krungthai ฯลฯ)
+    total = extractAmountFromSlip(rawText) || extractTotal(rawText) || 0;
+    merchant = extractRecipientFromSlip(rawText) || extractMerchant(rawText);
+  } else {
+    // 🧾 Logic สำหรับใบเสร็จซื้อสินค้าปกติ (เช่น ร้าน Yo-i, POS หน้าร้าน)
+    total = extractReceiptTotalAmount(rawText) || extractTotal(rawText) || 0;
+    merchant = extractReceiptMerchant(rawText) || extractMerchant(rawText);
+    items = extractLineItems(parsedText);
+  }
+
+  // 4. ดึงข้อมูล Metadata อื่นๆ
   const date = extractDate(rawText);
   const bankName = extractBankName(rawText);
   const transactionId = extractTransactionId(rawText);
+  const categoryId = 1; // หมวดหมู่เริ่มต้น
 
+  console.log('=== RAW OCR TEXT ===');
+  console.log(rawText);
+  console.log('====================');
+
+  // 5. ส่ง Plain Object กลับออกไป
   return {
-    merchant,         // e.g. "Ksher_SANOOK GAME ZONE"
-    total,            // e.g. 120.00
-    date,             // ISO Date String
-    paymentMethod,    // "e-banking"
-    documentType,     // "slip" หรือ "receipt"
-    bankName,         // e.g. "ธนาคารกสิกรไทย"
-    transactionId,    // e.g. "016241124912DPM14401"
-    parsedText: rawText,
+    success: true,
+    merchant: merchant,
+    total: total,
+    date: date,
+    parsedText: parsedText,
+    items: items,
+    documentType: documentType,
+    paymentMethod: paymentMethod,
+    bankName: bankName,
+    transactionId: transactionId,
+    categoryId: categoryId,
   };
 };

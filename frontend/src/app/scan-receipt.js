@@ -86,18 +86,26 @@ export default function ScanReceiptScreen() {
 
       const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
 
+      console.log('=== OCR API RESPONSE ===', JSON.stringify(data, null, 2));
+      
       // ส่งข้อมูลอื่นๆ ไปยัง confirm-receipt ผ่าน params ตามปกติ (ไม่ใช่รูป)
       router.push({
         pathname: '/confirm-receipt',
         params: {
           merchant: data.merchant || '',
-          amount: data.total != null ? String(data.total) : '',
+
+          // 1. ปรับการเช็กยอดสุทธิ: ลองหา netTotal / totalAmount ก่อน ถ้าไม่มีค่อยใช้ data.total
+          amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
+
           date: data.date || '',
           parsedText: data.parsedText || '',
           categoryId: data.categoryId != null ? String(data.categoryId) : '',
           documentType: isSlip ? 'transfer_slip' : 'receipt',
           bankName: data.bankName || '',
           transactionId: data.transactionId || '',
+
+          // 2. ✨ เพิ่มการส่ง lineItems (แปลง Array เป็น JSON String)
+          lineItems: JSON.stringify(data.items || []),        
         },
       });
     } catch (error) {
