@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "labExpensesApp",
-    "slug": "labExpensesApp",
+    "name": "Expense Tracker",
+    "slug": "expense-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

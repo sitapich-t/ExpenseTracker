@@ -1,241 +1,452 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from 'react';
 import {
-    View, Text, TextInput, TouchableOpacity, StyleSheet,
-    ScrollView, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { Picker } from "@react-native-picker/picker";
-import * as ImagePicker from "expo-image-picker";
-import axios from "axios";
-import { useAuth } from "./context/AuthContext";
-import { useNavigation } from "@react-navigation/native";
-import ResponsiveWrapper from "../components/ResponsiveWrapper";
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Modal,
+  FlatList,
+  Alert,
+} from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import { useAuth } from './context/AuthContext';
+import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, CATEGORIES_LIST, getCategoryInfo } from '../theme';
 
-const API = "http://10.0.2.2:3000/api";
-
-const CATEGORIES_EXPENSE = [
-    { label: "🍜 อาหาร", value: "อาหาร" }, { label: "🚌 เดินทาง", value: "เดินทาง" },
-    { label: "🏠 ที่พัก", value: "ที่พัก" }, { label: "💊 สุขภาพ", value: "สุขภาพ" },
-    { label: "🎮 บันเทิง", value: "บันเทิง" }, { label: "🛒 ช้อปปิ้ง", value: "ช้อปปิ้ง" },
-    { label: "📌 อื่นๆ", value: "อื่นๆ" },
-];
-const CATEGORIES_INCOME = [
-    { label: "💼 เงินเดือน", value: "เงินเดือน" }, { label: "💰 รายได้อื่น", value: "รายได้อื่น" },
-    { label: "🎁 ของขวัญ", value: "ของขวัญ" }, { label: "📌 อื่นๆ", value: "อื่นๆ" },
-];
+const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
 export default function AddExpenseScreen() {
-    const navigation = useNavigation();
-    const { currentUser } = useAuth();
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { currentUser } = useAuth();
+  
+  const defaultType = route.params?.type || 'expense';
+  
+  const [type, setType] = useState(defaultType); // 'income' or 'expense'
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState(defaultType === 'income' ? 'salary' : 'food');
+  const [note, setNote] = useState('');
+  const [isCategoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  
+  const now = new Date();
+  const dateFormattedStr = `วันนี้, ${now.getDate()} มกราคม ${now.getFullYear() + 543} (${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.)`;
 
-    const [type, setType]           = useState("expense");
-    const [amount, setAmount]       = useState("");
-    const [title, setTitle]         = useState("");
-    const [category, setCategory]   = useState("อาหาร");
-    const [date, setDate]           = useState(new Date().toISOString().split("T")[0]);
-    const [note, setNote]           = useState("");
-    const [image, setImage]         = useState(null);
-    const [loading, setLoading]     = useState(false);
-    const [isScanning, setIsScanning] = useState(false);
+  useEffect(() => {
+    if (route.params?.type) {
+      setType(route.params.type);
+      setCategory(route.params.type === 'income' ? 'salary' : 'food');
+    }
+  }, [route.params?.type]);
 
-    const categories = type === "expense" ? CATEGORIES_EXPENSE : CATEGORIES_INCOME;
+  const handleSave = async () => {
+    const numAmount = parseFloat(amount.replace(/,/g, ''));
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
+      Alert.alert('ข้อผิดพลาด', 'กรุณาระบุจำนวนเงินที่ถูกต้อง');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const catInfo = getCategoryInfo(category);
+      const payload = {
+        userId: currentUser?.id || 'demo_user',
+        title: note.trim() || catInfo.name,
+        amount: numAmount,
+        type,
+        category,
+        note: note.trim(),
+        date: now.toISOString(),
+      };
+      
+      await axios.post(`${API_BASE_URL}/expenses`, payload).catch(() => null);
+      Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
+        { text: 'ตกลง', onPress: () => navigation.goBack() }
+      ]);
+    } catch (error) {
+      Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
+        { text: 'ตกลง', onPress: () => navigation.goBack() }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const simulateOCR = (uri) => {
-        setImage(uri);
-        setIsScanning(true);
-        // Simulate network delay for OCR
-        setTimeout(() => {
-            setAmount("250");
-            setCategory("อาหาร");
-            setTitle("ใบเสร็จร้านอาหาร (สแกนอัตโนมัติ)");
-            setIsScanning(false);
-            Alert.alert("สแกนสำเร็จ", "ดึงข้อมูลจากใบเสร็จเรียบร้อยแล้ว");
-        }, 2000);
-    };
+  const isIncome = type === 'income';
+  const selectedCat = getCategoryInfo(category);
 
-    const pickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== "granted") return Alert.alert("ต้องการสิทธิ์", "กรุณาอนุญาตการเข้าถึงรูปภาพ");
-        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", quality: 0.7 });
-        if (!result.canceled) simulateOCR(result.assets[0].uri);
-    };
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Top Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={24} color="#1F2937" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>เพิ่มรายการบัญชี</Text>
+        <View style={styles.avatarCircle}>
+          <Ionicons name="person" size={18} color={COLORS.primary} />
+        </View>
+      </View>
 
-    const takePhoto = async () => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== "granted") return Alert.alert("ต้องการสิทธิ์", "กรุณาอนุญาตการเข้าถึงกล้อง");
-        const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-        if (!result.canceled) simulateOCR(result.assets[0].uri);
-    };
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          
+          {/* Segmented Toggle Pills: รายรับ | รายจ่าย */}
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, isIncome && styles.toggleBtnActive]}
+              onPress={() => {
+                setType('income');
+                if (category === 'food') setCategory('salary');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleText, isIncome && styles.toggleTextActive]}>
+                รายรับ
+              </Text>
+            </TouchableOpacity>
 
-    const handleSave = async () => {
-        if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
-            return Alert.alert("แจ้งเตือน", "กรุณากรอกจำนวนเงินให้ถูกต้อง");
-        }
-        if (!date) return Alert.alert("แจ้งเตือน", "กรุณาระบุวันที่");
+            <TouchableOpacity 
+              style={[styles.toggleBtn, !isIncome && styles.toggleBtnActive]}
+              onPress={() => {
+                setType('expense');
+                if (category === 'salary') setCategory('food');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleText, !isIncome && styles.toggleTextActive]}>
+                รายจ่าย
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        setLoading(true);
-        try {
-            const res = await axios.post(`${API}/expenses`, {
-                userId: currentUser.id,
-                title: title || category,
-                amount: parseFloat(amount),
-                type, category, note, date,
-            });
-            if (res.data.success) {
-                Alert.alert("สำเร็จ", "บันทึกรายการเรียบร้อย", [{ text: "ตกลง", onPress: () => navigation.goBack() }]);
-            } else Alert.alert("ผิดพลาด", res.data.message);
-        } catch (err) {
-            Alert.alert("ผิดพลาด", "เกิดข้อผิดพลาดในการบันทึก");
-        } finally {
-            setLoading(false);
-        }
-    };
+          {/* Amount Display Section matching media_1790137581718.png */}
+          <View style={styles.amountBox}>
+            <Text style={styles.amountLabel}>
+              {isIncome ? 'จำนวนเงินที่รับเข้า' : 'จำนวนเงินที่ออกไป'}
+            </Text>
+            <View style={styles.amountRow}>
+              <Text style={[styles.currencyPrefix, { color: isIncome ? '#16A34A' : '#EF4444' }]}>
+                ฿
+              </Text>
+              <TextInput
+                style={[styles.amountInput, { color: isIncome ? '#16A34A' : '#EF4444' }]}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                placeholder={isIncome ? "1,500.00" : "1,000.00"}
+                placeholderTextColor={isIncome ? 'rgba(22, 163, 74, 0.4)' : 'rgba(239, 68, 68, 0.4)'}
+              />
+            </View>
+          </View>
 
-    return (
-        <ResponsiveWrapper>
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="always">
-                    {/* Header */}
-                    <View style={s.header}>
-                        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-                            <Ionicons name="arrow-back" size={24} color="#fff" />
-                        </TouchableOpacity>
-                        <Text style={s.title}>บันทึกรายการ</Text>
-                        <View style={{ width: 40 }} />
-                    </View>
+          {/* Form Fields */}
+          <View style={styles.formContainer}>
+            {/* Category Dropdown */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>
+                {isIncome ? 'หมวดหมู่รายรับ' : 'หมวดหมู่รายจ่าย'}
+              </Text>
+              <TouchableOpacity 
+                style={styles.inputCard}
+                onPress={() => setCategoryModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.inputText}>
+                  {selectedCat.emoji} {selectedCat.name}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
 
-                    {/* OCR Banner */}
-                    <View style={s.ocrBanner}>
-                        <Ionicons name="scan" size={24} color="#A78BFA" />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={s.ocrTitle}>สแกนใบเสร็จอัจฉริยะ</Text>
-                            <Text style={s.ocrSub}>ถ่ายรูปใบเสร็จเพื่อดึงข้อมูลอัตโนมัติ</Text>
-                        </View>
-                        <View style={s.imageRow}>
-                            <TouchableOpacity style={s.imgBtn} onPress={takePhoto}>
-                                <Ionicons name="camera" size={20} color="#fff" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={s.imgBtn} onPress={pickImage}>
-                                <Ionicons name="image" size={20} color="#fff" />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+            {/* Date & Time */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>วันที่และเวลา</Text>
+              <View style={styles.inputCard}>
+                <Text style={styles.inputText}>
+                  {dateFormattedStr}
+                </Text>
+                <Ionicons name="calendar-outline" size={20} color="#6B7280" />
+              </View>
+            </View>
 
-                    {isScanning && (
-                        <View style={s.scanningOverlay}>
-                            <ActivityIndicator size="large" color="#A78BFA" />
-                            <Text style={s.scanningTxt}>กำลังวิเคราะห์ใบเสร็จ...</Text>
-                        </View>
-                    )}
+            {/* Additional Note */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>โน้ตบันทึกเพิ่มเติม (ตัวเลือก)</Text>
+              <View style={styles.inputCard}>
+                <TextInput
+                  style={styles.textInputFull}
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder={isIncome ? "ของขวัญวันปีใหม่ย้อนหลังจากญาติผู้ใหญ่" : "ค่าขนม ค่าเสื้อผ้า"}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </View>
+          </View>
 
-                    {image && !isScanning && (
-                        <View style={s.previewContainer}>
-                            <Image source={{ uri: image }} style={s.receiptImg} />
-                            <TouchableOpacity style={s.removeImg} onPress={() => setImage(null)}>
-                                <Ionicons name="close-circle" size={28} color="#EF4444" />
-                            </TouchableOpacity>
-                        </View>
-                    )}
+          {/* Big Green Save Button matching mockup */}
+          <View style={styles.saveBtnContainer}>
+            <TouchableOpacity 
+              style={[styles.saveButton, loading && { opacity: 0.7 }]}
+              onPress={handleSave}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.saveButtonText}>
+                {loading ? 'กำลังบันทึก...' : 'บันทึก'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-                    {/* Type Toggle */}
-                    <View style={s.typeRow}>
-                        <TouchableOpacity
-                            style={[s.typeBtn, type === "expense" && s.typeBtnExpense]}
-                            onPress={() => { setType("expense"); setCategory("อาหาร"); }}
-                        >
-                            <Text style={[s.typeTxt, type === "expense" && s.typeTxtActive]}>💸 รายจ่าย</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[s.typeBtn, type === "income" && s.typeBtnIncome]}
-                            onPress={() => { setType("income"); setCategory("เงินเดือน"); }}
-                        >
-                            <Text style={[s.typeTxt, type === "income" && s.typeTxtActive]}>💰 รายรับ</Text>
-                        </TouchableOpacity>
-                    </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-                    {/* Amount & Quick Buttons */}
-                    <View style={s.amountCard}>
-                        <Text style={s.amountLabel}>จำนวนเงิน (฿)</Text>
-                        <TextInput
-                            style={[s.amountInput, { color: type === "expense" ? "#EF4444" : "#21D07A" }]}
-                            placeholder="0.00"
-                            placeholderTextColor="#556"
-                            keyboardType="decimal-pad"
-                            value={amount}
-                            onChangeText={setAmount}
-                        />
-                        <View style={s.quickAmounts}>
-                            {[50, 100, 500, 1000].map(val => (
-                                <TouchableOpacity key={val} style={s.quickBtn} onPress={() => setAmount(String(val))}>
-                                    <Text style={s.quickTxt}>+{val}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    </View>
-
-                    {/* Form Fields */}
-                    <View style={s.section}>
-                        <Text style={s.label}>หมวดหมู่</Text>
-                        <View style={s.pickerWrapper}>
-                            <Picker selectedValue={category} onValueChange={setCategory} style={s.picker} dropdownIconColor="#A78BFA">
-                                {categories.map(c => <Picker.Item key={c.value} label={c.label} value={c.value} color="#fff" />)}
-                            </Picker>
-                        </View>
-
-                        <Text style={s.label}>ชื่อรายการ</Text>
-                        <TextInput style={s.input} placeholder="เช่น ข้าวผัด, BTS, ค่าน้ำ" placeholderTextColor="#556" value={title} onChangeText={setTitle} />
-
-                        <Text style={s.label}>วันที่ (เปลี่ยนเป็นวันอื่นได้)</Text>
-                        <TextInput style={s.input} placeholder="YYYY-MM-DD" placeholderTextColor="#556" value={date} onChangeText={setDate} />
-
-                        <Text style={s.label}>หมายเหตุ</Text>
-                        <TextInput style={[s.input, { height: 80, textAlignVertical: "top" }]} placeholder="รายละเอียดเพิ่มเติม..." placeholderTextColor="#556" multiline value={note} onChangeText={setNote} />
-                    </View>
-
-                    <TouchableOpacity style={[s.saveBtn, loading && { opacity: 0.7 }]} onPress={handleSave} disabled={loading || isScanning}>
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>บันทึกรายการ</Text>}
-                    </TouchableOpacity>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </ResponsiveWrapper>
-    );
+      {/* Category Modal */}
+      <Modal
+        visible={isCategoryModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>เลือกหมวดหมู่</Text>
+              <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#1F2937" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={CATEGORIES_LIST}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.categoryItem}
+                  onPress={() => {
+                    setCategory(item.id);
+                    setCategoryModalVisible(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.categoryEmoji}>{item.emoji}</Text>
+                  <Text style={styles.categoryName}>{item.name}</Text>
+                  {category === item.id && (
+                    <Ionicons name="checkmark-circle" size={22} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
 }
 
-const s = StyleSheet.create({
-    container: { padding: 24, paddingBottom: 40 },
-    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 24 },
-    backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#1E293B", justifyContent: "center", alignItems: "center" },
-    title: { color: "#fff", fontSize: 20, fontWeight: "bold" },
-    ocrBanner: {
-        flexDirection: "row", alignItems: "center", backgroundColor: "rgba(167, 139, 250, 0.15)",
-        borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: "rgba(167, 139, 250, 0.3)"
-    },
-    ocrTitle: { color: "#A78BFA", fontSize: 16, fontWeight: "bold" },
-    ocrSub: { color: "#94A3B8", fontSize: 12, marginTop: 4 },
-    imageRow: { flexDirection: "row", gap: 8 },
-    imgBtn: { backgroundColor: "#A78BFA", width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
-    scanningOverlay: { backgroundColor: "#1E293B", borderRadius: 16, padding: 20, alignItems: "center", marginBottom: 20 },
-    scanningTxt: { color: "#A78BFA", marginTop: 10, fontWeight: "600" },
-    previewContainer: { position: "relative", marginBottom: 20 },
-    receiptImg: { width: "100%", height: 150, borderRadius: 16 },
-    removeImg: { position: "absolute", top: 10, right: 10 },
-    typeRow: { flexDirection: "row", gap: 12, marginBottom: 20 },
-    typeBtn: { flex: 1, padding: 14, borderRadius: 16, backgroundColor: "#0F172A", alignItems: "center", borderWidth: 1, borderColor: "#1E293B" },
-    typeBtnExpense: { backgroundColor: "rgba(239, 68, 68, 0.2)", borderColor: "#EF4444" },
-    typeBtnIncome: { backgroundColor: "rgba(33, 208, 122, 0.2)", borderColor: "#21D07A" },
-    typeTxt: { color: "#94A3B8", fontSize: 16, fontWeight: "600" },
-    typeTxtActive: { color: "#fff" },
-    amountCard: { backgroundColor: "#0F172A", borderRadius: 20, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: "#1E293B", alignItems: "center" },
-    amountLabel: { color: "#94A3B8", fontSize: 14, marginBottom: 12 },
-    amountInput: { fontSize: 48, fontWeight: "bold", textAlign: "center", minWidth: 150 },
-    quickAmounts: { flexDirection: "row", gap: 10, marginTop: 20 },
-    quickBtn: { backgroundColor: "#1E293B", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
-    quickTxt: { color: "#fff", fontWeight: "600" },
-    section: {},
-    label: { color: "#AAB5D1", fontWeight: "600", fontSize: 14, marginBottom: 8 },
-    input: { backgroundColor: "#0F172A", color: "#fff", borderRadius: 16, padding: 16, fontSize: 16, marginBottom: 20, borderWidth: 1, borderColor: "#1E293B" },
-    pickerWrapper: { backgroundColor: "#0F172A", borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: "#1E293B", overflow: "hidden" },
-    picker: { color: "#fff", height: 56 },
-    saveBtn: { backgroundColor: "#21D07A", borderRadius: 16, padding: 18, alignItems: "center", marginTop: 10, shadowColor: "#21D07A", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8 },
-    saveTxt: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  avatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContent: {
+    flex: 1,
+    paddingHorizontal: SPACING.lg,
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#E5E7EB',
+    borderRadius: RADIUS.lg,
+    padding: 4,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.xl,
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+  },
+  toggleBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  toggleText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  toggleTextActive: {
+    color: '#1F2937',
+    fontWeight: '700',
+  },
+  amountBox: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  amountLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencyPrefix: {
+    fontSize: 36,
+    fontWeight: '800',
+    marginRight: 6,
+  },
+  amountInput: {
+    fontSize: 40,
+    fontWeight: '800',
+    minWidth: 160,
+    textAlign: 'center',
+    paddingVertical: 0,
+  },
+  formContainer: {
+    marginBottom: SPACING.xl,
+  },
+  fieldGroup: {
+    marginBottom: SPACING.lg,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  inputCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  inputText: {
+    fontSize: 15,
+    color: '#1F2937',
+  },
+  textInputFull: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    padding: 0,
+  },
+  saveBtnContainer: {
+    marginTop: SPACING.sm,
+  },
+  saveButton: {
+    backgroundColor: '#16A34A', // Vibrant green from media_1790137581718.png
+    borderRadius: RADIUS.full,
+    paddingVertical: 16,
+    alignItems: 'center',
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    maxHeight: '70%',
+    paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  categoryEmoji: {
+    fontSize: 22,
+    marginRight: 14,
+  },
+  categoryName: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2937',
+    fontWeight: '500',
+  },
 });

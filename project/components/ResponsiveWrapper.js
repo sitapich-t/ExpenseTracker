@@ -1,15 +1,15 @@
-import React from "react";
-import { View, StyleSheet, useWindowDimensions, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import React from 'react';
+import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function ResponsiveWrapper({ children }) {
+export default function ResponsiveWrapper({ children, style }) {
     const { width } = useWindowDimensions();
     const isDesktop = width > 768;
 
     return (
-        <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
-            <View style={s.background}>
-                <View style={[s.container, isDesktop && s.desktopContainer]}>
+        <SafeAreaView style={[styles.safe, style]} edges={['top', 'left', 'right']}>
+            <View style={[styles.outer, isDesktop && styles.outerDesktop]}>
+                <View style={[styles.inner, isDesktop && styles.innerDesktop]}>
                     {children}
                 </View>
             </View>
@@ -17,27 +17,35 @@ export default function ResponsiveWrapper({ children }) {
     );
 }
 
-const s = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: "#060A13" },
-    background: {
+const styles = StyleSheet.create({
+    safe: {
         flex: 1,
-        backgroundColor: "#060A13",
-        alignItems: "center",
+        backgroundColor: '#F3F4F6',
     },
-    container: {
+    outer: {
         flex: 1,
-        width: "100%",
-        backgroundColor: "#0B1120",
+        backgroundColor: '#F3F4F6',
     },
-    desktopContainer: {
-        maxWidth: 800,
-        borderLeftWidth: 1,
-        borderRightWidth: 1,
-        borderColor: "#23304F",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 20,
+    outerDesktop: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 20,
+    },
+    inner: {
+        flex: 1,
+        backgroundColor: '#F3F4F6',
+    },
+    innerDesktop: {
+        maxWidth: 480,
+        width: '100%',
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
         elevation: 10,
-    }
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+    },
 });

@@ -1,126 +1,308 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
-    View, Text, TextInput, TouchableOpacity, Alert, Image,
-    StyleSheet, ScrollView, KeyboardAvoidingView, Platform,
-    ActivityIndicator,
-} from "react-native";
-import axios from "axios";
-import * as ImagePicker from "expo-image-picker";
-import { Ionicons } from "@expo/vector-icons";
-import ResponsiveWrapper from "../components/ResponsiveWrapper";
-import ParticleBackground from "../components/ParticleBackground";
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../theme';
+import ResponsiveWrapper from '../components/ResponsiveWrapper';
 
-const API = "http://10.0.2.2:3000/api";
+export default function RegisterScreen() {
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-export default function RegisterScreen({ navigation }) {
-    const [forms, setForms] = useState({ name: "", email: "", username: "", password: "", confirmPassword: "", image: null });
-    const [showPass, setShowPass]    = useState(false);
-    const [showConf, setShowConf]    = useState(false);
-    const [loading, setLoading]      = useState(false);
+  const navigation = useNavigation();
 
-    const handleRegister = async () => {
-        if (!forms.name || !forms.email || !forms.username || !forms.password) {
-            return Alert.alert("แจ้งเตือน", "กรุณากรอกข้อมูลให้ครบ");
-        }
-        if (forms.password !== forms.confirmPassword) {
-            return Alert.alert("แจ้งเตือน", "รหัสผ่านต้องตรงกัน");
-        }
-        setLoading(true);
-        try {
-            const res = await axios.post(`${API}/register`, {
-                username: forms.username,
-                email: forms.email,
-                password: forms.password,
-            });
-            if (res.data.success) {
-                Alert.alert("สำเร็จ", "สมัครสมาชิกเรียบร้อย", [
-                    { text: "ตกลง", onPress: () => navigation.navigate("Login") },
-                ]);
-            } else {
-                Alert.alert("ผิดพลาด", res.data.message);
-            }
-        } catch {
-            Alert.alert("ผิดพลาด", "เกิดข้อผิดพลาดในการสมัครสมาชิก");
-        } finally {
-            setLoading(false);
-        }
-    };
+  const handleRegister = async () => {
+    if (!fullName || !username || !email || !password || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
 
-    return (
-        <ResponsiveWrapper>
-            <ParticleBackground />
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="always">
-                    <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color="#fff" />
-                    </TouchableOpacity>
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
 
-                    <Text style={s.title}>สร้างบัญชีใหม่</Text>
-                    <Text style={s.subtitle}>เริ่มบันทึกและวิเคราะห์ค่าใช้จ่ายของคุณ</Text>
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://10.0.2.2:3000/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, email, password }),
+      });
 
-                    <View style={s.form}>
-                        <Text style={s.label}>ชื่อ-นามสกุล</Text>
-                        <TextInput style={s.input} placeholder="ชื่อ นามสกุล" placeholderTextColor="#556" value={forms.name} onChangeText={t => setForms({ ...forms, name: t })} />
+      const data = await response.json();
 
-                        <Text style={s.label}>อีเมล</Text>
-                        <TextInput style={s.input} placeholder="example@email.com" placeholderTextColor="#556" keyboardType="email-address" autoCapitalize="none" onChangeText={t => setForms({ ...forms, email: t })} />
+      if (data.success) {
+        Alert.alert('Success', 'Account created successfully', [
+          { text: 'OK', onPress: () => navigation.navigate('OTP') }
+        ]);
+      } else {
+        Alert.alert('สมัครไม่สำเร็จ', data.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      Alert.alert('Error', 'Unable to connect to server. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-                        <Text style={s.label}>ชื่อผู้ใช้</Text>
-                        <TextInput style={s.input} placeholder="username" placeholderTextColor="#556" autoCapitalize="none" onChangeText={t => setForms({ ...forms, username: t })} />
+  return (
+    <ResponsiveWrapper>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          
+          <View style={styles.content}>
+            {/* Header Icon */}
+            <View style={styles.iconContainer}>
+              <View style={styles.iconCircle}>
+                <Text style={styles.emoji}>👨‍🎓</Text>
+              </View>
+            </View>
 
-                        <Text style={s.label}>รหัสผ่าน</Text>
-                        <View>
-                            <TextInput style={s.input} placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" placeholderTextColor="#556" secureTextEntry={!showPass} onChangeText={t => setForms({ ...forms, password: t })} />
-                            <TouchableOpacity style={s.eyeBtn} onPress={() => setShowPass(v => !v)}>
-                                <Ionicons name={showPass ? "eye-off-outline" : "eye-outline"} size={20} color="#bbb" />
-                            </TouchableOpacity>
-                        </View>
+            {/* Titles */}
+            <View style={styles.titleContainer}>
+              <Text style={styles.title}>Create Account</Text>
+              <Text style={styles.subtitle}>Join Expense Tracker to manage your finances.</Text>
+            </View>
 
-                        <Text style={s.label}>ยืนยันรหัสผ่าน</Text>
-                        <View>
-                            <TextInput style={s.input} placeholder="ยืนยันรหัสผ่านอีกครั้ง" placeholderTextColor="#556" secureTextEntry={!showConf} onChangeText={t => setForms({ ...forms, confirmPassword: t })} />
-                            <TouchableOpacity style={s.eyeBtn} onPress={() => setShowConf(v => !v)}>
-                                <Ionicons name={showConf ? "eye-off-outline" : "eye-outline"} size={20} color="#bbb" />
-                            </TouchableOpacity>
-                        </View>
+            {/* Form */}
+            <View style={styles.formContainer}>
+              {/* Full Name Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color={COLORS.gray} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Full Name"
+                  placeholderTextColor={COLORS.gray}
+                  value={fullName}
+                  onChangeText={setFullName}
+                />
+              </View>
 
-                        <TouchableOpacity style={[s.btn, loading && { opacity: 0.7 }]} onPress={handleRegister} disabled={loading}>
-                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>สมัครสมาชิก</Text>}
-                        </TouchableOpacity>
+              {/* Username Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-circle-outline" size={20} color={COLORS.gray} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Username"
+                  placeholderTextColor={COLORS.gray}
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                />
+              </View>
 
-                        <View style={s.row}>
-                            <Text style={s.grayText}>มีบัญชีแล้ว? </Text>
-                            <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-                                <Text style={s.linkText}>เข้าสู่ระบบ</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </ResponsiveWrapper>
-    );
+              {/* Email Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={COLORS.gray} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email Address"
+                  placeholderTextColor={COLORS.gray}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Password Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={COLORS.gray} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={COLORS.gray}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={COLORS.gray}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Confirm Password Input */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={COLORS.gray} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Confirm Password"
+                  placeholderTextColor={COLORS.gray}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={COLORS.gray}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Register Button */}
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={handleRegister}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.registerButtonText}>Register</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Footer */}
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Already have an account? </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                <Text style={styles.loginLink}>Login</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ResponsiveWrapper>
+  );
 }
 
-const s = StyleSheet.create({
-    container: { flexGrow: 1, padding: 24, paddingTop: 40, zIndex: 1 },
-    backBtn: { marginBottom: 16, width: 40 },
-    title: { fontSize: 32, fontWeight: "bold", color: "#fff", marginBottom: 6 },
-    subtitle: { color: "#8F9BB3", fontSize: 15, marginBottom: 32 },
-    form: {},
-    label: { color: "#AAB5D1", marginBottom: 8, fontWeight: "600", fontSize: 14 },
-    input: {
-        backgroundColor: "rgba(23, 33, 58, 0.8)", color: "#fff", borderRadius: 14,
-        padding: 16, fontSize: 16, marginBottom: 16,
-        borderWidth: 1, borderColor: "rgba(35, 48, 79, 0.8)",
-    },
-    eyeBtn: { position: "absolute", right: 14, top: 14 },
-    btn: {
-        backgroundColor: "#21D07A", borderRadius: 14,
-        padding: 18, alignItems: "center", marginTop: 12,
-        shadowColor: "#21D07A", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5,
-    },
-    btnText: { color: "#fff", fontWeight: "bold", fontSize: 18 },
-    row: { flexDirection: "row", justifyContent: "center", marginTop: 30, marginBottom: 32 },
-    grayText: { color: "#888", fontSize: 14 },
-    linkText: { color: "#21D07A", fontWeight: "bold", fontSize: 14 },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: SPACING.lg,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  iconContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F3E8FF', // Light purple bg
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emoji: {
+    fontSize: 28,
+  },
+  titleContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  title: {
+    fontSize: FONTS.h2,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: FONTS.body,
+    color: COLORS.gray,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  formContainer: {
+    marginBottom: SPACING.xl,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    height: 56,
+  },
+  inputIcon: {
+    marginRight: SPACING.sm,
+  },
+  input: {
+    flex: 1,
+    fontSize: FONTS.body,
+    color: COLORS.text,
+    height: '100%',
+  },
+  eyeIcon: {
+    padding: SPACING.xs,
+  },
+  registerButton: {
+    backgroundColor: COLORS.primary,
+    height: 56,
+    borderRadius: RADIUS.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+    ...SHADOWS.small,
+  },
+  registerButtonText: {
+    color: COLORS.white,
+    fontSize: FONTS.button,
+    fontWeight: 'bold',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+  },
+  footerText: {
+    color: COLORS.gray,
+    fontSize: FONTS.body,
+  },
+  loginLink: {
+    color: COLORS.primary,
+    fontSize: FONTS.body,
+    fontWeight: 'bold',
+  },
 });
