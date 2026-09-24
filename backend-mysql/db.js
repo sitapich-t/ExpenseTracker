@@ -1,10 +1,10 @@
 const mysql = require("mysql2");
 
 const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "Paer",       // ถ้าตั้งรหัสผ่าน MySQL ให้ใส่ตรงนี้
-    database: "expense_tracker"
+    host: process.env.DB_HOST || "localhost",
+    user: process.env.DB_USER || "root",
+    password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : "Paer",       // ถ้าตั้งรหัสผ่าน MySQL ให้ใส่ตรงนี้ หรือตั้ง DB_PASSWORD
+    database: process.env.DB_NAME || "expense_tracker"
 });
 
 db.connect((err) => {
