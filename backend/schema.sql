@@ -57,3 +57,13 @@ CREATE TABLE IF NOT EXISTS category_budgets (
 CREATE INDEX idx_expenses_user_date ON expenses(user_id, date);
 CREATE INDEX idx_expenses_user_type ON expenses(user_id, type);
 
+-- ─── Seed Data สำหรับเริ่มต้นใช้งานทันที ────────
+INSERT INTO users (id, username, email, password)
+VALUES (1, 'peet', 'peet@email.com', '$2b$10$AVgFUBCxfZeDJXlkXIEPFOCtu0miEkvSmyDvG1sfEdo5.91sLiv72')
+ON DUPLICATE KEY UPDATE username = VALUES(username);
+
+INSERT INTO budgets (user_id, daily_budget, monthly_budget)
+VALUES (1, 6666.67, 200000.00)
+ON DUPLICATE KEY UPDATE monthly_budget = VALUES(monthly_budget);
+
+
