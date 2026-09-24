@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
     View,
     Text,
@@ -11,7 +11,8 @@ import {
     Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import axios from 'axios';
 import { useAuth } from "./context/AuthContext";
 import { SHADOWS } from "../theme";
 import ResponsiveWrapper from "../components/ResponsiveWrapper";
@@ -21,12 +22,30 @@ export default function ProfileScreen() {
     const { currentUser, logout } = useAuth();
 
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const [profile, setProfile] = useState(null);
+
+    useFocusEffect(
+        useCallback(() => {
+            const fetchProfile = async () => {
+                if (!currentUser?.id) return;
+                try {
+                    const res = await axios.get(`http://10.0.2.2:3000/api/users/${currentUser.id}`);
+                    if (res.data?.success && res.data.data) {
+                        setProfile(res.data.data);
+                    }
+                } catch (e) {
+                    console.log('Error fetching profile:', e.message);
+                }
+            };
+            fetchProfile();
+        }, [currentUser])
+    );
 
     // Profile attributes with fallbacks matching Figma
-    const name = currentUser?.name || "peet";
-    const email = currentUser?.email || "peet@email.com";
-    const studentId = currentUser?.studentId || "pt1569";
-    const avatar = currentUser?.avatar || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80";
+    const name = profile?.name || profile?.username || currentUser?.name || currentUser?.username || 'ผู้ใช้งาน';
+    const email = profile?.email || currentUser?.email || "peet@email.com";
+    const studentId = profile?.studentId || currentUser?.studentId || "pt1569";
+    const avatar = profile?.avatar || currentUser?.avatar || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80";
 
     const handleLogout = () => {
         Alert.alert(

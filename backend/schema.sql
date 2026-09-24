@@ -41,6 +41,19 @@ CREATE TABLE IF NOT EXISTS budgets (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ─── Category Budgets ────────────────────────────
+CREATE TABLE IF NOT EXISTS category_budgets (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    user_id    INT           NOT NULL,
+    category   VARCHAR(100)  NOT NULL,
+    amount     DECIMAL(10,2) DEFAULT 0,
+    month      VARCHAR(7)    NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY user_cat_month (user_id, category, month),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- ─── Index สำหรับ query เร็วขึ้น ─────────────────
 CREATE INDEX idx_expenses_user_date ON expenses(user_id, date);
 CREATE INDEX idx_expenses_user_type ON expenses(user_id, type);
+

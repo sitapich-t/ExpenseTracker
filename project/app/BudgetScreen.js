@@ -47,14 +47,14 @@ export default function BudgetScreen() {
       ]);
       
       if (budgetRes.data?.success && budgetRes.data.data) {
-        setTotalBudget(budgetRes.data.data.monthly_budget.toString());
+        setTotalBudget((budgetRes.data.data.monthly_budget ?? 20000).toString());
       }
       
       if (catRes.data?.success && Array.isArray(catRes.data.data) && catRes.data.data.length > 0) {
         const fetchedCats = catRes.data.data;
         const mergedCats = DEFAULT_CATEGORIES.map(defaultCat => {
           const found = fetchedCats.find(c => c.category === defaultCat.name);
-          return found ? { ...defaultCat, amount: found.amount.toString() } : defaultCat;
+          return found ? { ...defaultCat, amount: (found.amount ?? 0).toString() } : defaultCat;
         });
         setCategories(mergedCats);
       } else {
@@ -101,11 +101,12 @@ export default function BudgetScreen() {
         return;
       }
 
-      await axios.post(`${API_URL}/budget`, {
+      const budgetSaveRes = await axios.post(`${API_URL}/budget`, {
         userId: user.id,
         monthlyBudget: numericTotal,
         dailyBudget: numericTotal / 30
       });
+      if (!budgetSaveRes.data?.success) throw new Error('Budget save failed');
 
       const catPromises = categories.map(cat => {
         const catAmount = parseFloat(String(cat.amount).replace(/,/g, '')) || 0;
@@ -117,7 +118,8 @@ export default function BudgetScreen() {
         });
       });
 
-      await Promise.all(catPromises);
+      const catSaveRes = await Promise.all(catPromises);
+      if (catSaveRes.some(res => !res.data?.success)) throw new Error('Category save failed');
       Alert.alert('สำเร็จ', 'บันทึกงบประมาณเรียบร้อยแล้ว');
     } catch (err) {
       console.error('Error saving budget:', err);
@@ -147,7 +149,7 @@ export default function BudgetScreen() {
           <TouchableOpacity onPress={() => changeMonth(-1)}>
             <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
           </TouchableOpacity>
-          <Text style={styles.monthSelectorText}>{`< ${monthName} ${thaiYear} >`}</Text>
+          <Text style={styles.monthSelectorText}>{`${monthName} ${thaiYear}`}</Text>
           <TouchableOpacity onPress={() => changeMonth(1)}>
             <Ionicons name="chevron-forward" size={24} color={COLORS.primary} />
           </TouchableOpacity>

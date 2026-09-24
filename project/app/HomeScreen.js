@@ -9,7 +9,6 @@ import {
   SafeAreaView,
   StatusBar,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,16 +65,25 @@ export default function HomeScreen() {
         });
       }
       
+      // Calculate actual totalExpense from the fetched summary data
+      const fetchedTotalExpense = summaryRes?.data?.success && summaryRes.data.data
+        ? (summaryRes.data.data.totalExpense ?? 0)
+        : 0;
+      
       if (budgetRes?.data?.success && budgetRes.data.data) {
         const b = budgetRes.data.data;
         setBudget({
           amount: Number(b.monthly_budget) || 52000,
-          spent: summary.totalExpense || 8420,
+          spent: fetchedTotalExpense || 8420,
         });
       }
       
-      if (expensesRes?.data?.success && Array.isArray(expensesRes.data.data) && expensesRes.data.data.length > 0) {
-        setRecentTransactions(expensesRes.data.data.slice(0, 10));
+      if (expensesRes?.data?.success && Array.isArray(expensesRes.data.data)) {
+        if (expensesRes.data.data.length > 0) {
+          setRecentTransactions(expensesRes.data.data.slice(0, 10));
+        } else {
+          setRecentTransactions([]);
+        }
       } else {
         // High fidelity mock data matching mockup in media_1790137581718.png
         setRecentTransactions([
@@ -166,9 +174,9 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.transactionInfo}>
-          <Text style={styles.transactionTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.transactionTitle} numberOfLines={1}>{item.title || item.category || cat.name || 'รายการ'}</Text>
           <Text style={styles.transactionSubtitle}>
-            หมวดหมู่: {item.categoryName || cat.name} • {item.timeStr || new Date(item.date).toLocaleDateString('th-TH')}
+            หมวดหมู่: {item.category || item.categoryName || cat.name} • {item.timeStr || (item.date ? item.date.substring(0, 10) : '')}
           </Text>
         </View>
 
@@ -207,6 +215,7 @@ export default function HomeScreen() {
       <FlatList
         data={recentTransactions}
         keyExtractor={(item) => item.id.toString()}
+        renderItem={renderTransactionItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

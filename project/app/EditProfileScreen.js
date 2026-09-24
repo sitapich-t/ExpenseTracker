@@ -27,7 +27,7 @@ export default function EditProfileScreen() {
     const { currentUser, updateUser } = useAuth();
 
     // Form states initialized with current profile
-    const [name, setName] = useState(currentUser?.name || "peet");
+    const [name, setName] = useState(currentUser?.name || currentUser?.username || '');
     const [email, setEmail] = useState(currentUser?.email || "peet@email.com");
     const [phone, setPhone] = useState(currentUser?.phone || "098-765-4321");
     const [studentId, setStudentId] = useState(currentUser?.studentId || "pt1569");
@@ -68,19 +68,26 @@ export default function EditProfileScreen() {
         }
 
         try {
-            // Try to update on server first
+            // Update on server
             try {
-                await axios.put(`${API_URL}/users/${currentUser?.id}`, {
-                    username: name.trim(),
-                    email: email.trim(),
+              if (currentUser?.id) {
+                const res = await axios.put(`${API_URL}/users/${currentUser.id}`, {
+                  username: name.trim(),
                 });
+                if (!res.data?.success) {
+                  Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถบันทึกข้อมูลบนเซิร์ฟเวอร์ได้');
+                  return;
+                }
+              }
             } catch (e) {
-                // Server update failed, still save locally
-                console.log('Server update skipped:', e.message);
+              console.log('Server update error:', e.message);
+              Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+              return;
             }
 
             await updateUser({
                 name: name.trim(),
+                username: name.trim(),
                 email: email.trim(),
                 phone: phone.trim(),
                 studentId: studentId.trim(),

@@ -7,13 +7,12 @@ import {
   ScrollView,
   SafeAreaView,
   Alert,
-  Image,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { useAuth } from './context/AuthContext';
-import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, THAI_MONTHS, THAI_MONTHS_SHORT, THAI_DAYS_SHORT, getCategoryInfo } from '../theme';
+import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, THAI_MONTHS, THAI_MONTHS_SHORT, getCategoryInfo } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
 
 const API_URL = 'http://10.0.2.2:3000/api';
@@ -111,15 +110,15 @@ export default function HistoryScreen() {
   // 3 view tabs matching Figma mockup: วัน, สัปดาห์, เดือน
   const [activeTab, setActiveTab] = useState('day'); // 'day', 'week', 'month'
   const [currentMonthIndex, setCurrentMonthIndex] = useState(new Date().getMonth()); // current month
-  const currentYear = new Date().getFullYear();
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
   // State for API data
   const [dayTransactions, setDayTransactions] = useState(MOCK_DAY_TRANSACTIONS);
   const [weekGroups, setWeekGroups] = useState(MOCK_WEEK_GROUPS);
   const [monthGroups, setMonthGroups] = useState(MOCK_MONTH_GROUPS);
-  const [totalIncome, setTotalIncome] = useState(15000);
-  const [totalExpense, setTotalExpense] = useState(2550);
-  const [balance, setBalance] = useState(12450);
+  const [totalIncome, setTotalIncome] = useState(0);
+  const [totalExpense, setTotalExpense] = useState(0);
+  const [balance, setBalance] = useState(0);
 
   // Helper: format YYYY-MM for API
   const getMonthParam = useCallback((monthIdx, year) => {
@@ -207,16 +206,16 @@ export default function HistoryScreen() {
         setBalance(parseFloat(s.balance) || 0);
       } else {
         // fallback
-        setTotalIncome(15000);
-        setTotalExpense(2550);
-        setBalance(12450);
+        setTotalIncome(0);
+        setTotalExpense(0);
+        setBalance(0);
       }
 
-      if (allExpenses.length > 0) {
+      if (expRes.data?.success) {
         // --- DAY tab: filter today only ---
         const todayStr = getTodayStr();
         const todayTx = allExpenses.filter((tx) => tx.date && tx.date.substring(0, 10) === todayStr);
-        setDayTransactions(todayTx.length > 0 ? todayTx : MOCK_DAY_TRANSACTIONS);
+        setDayTransactions(todayTx);
 
         // --- WEEK tab: filter this week, group by date ---
         const { start: weekStart, end: weekEnd } = getWeekRange();
@@ -225,11 +224,7 @@ export default function HistoryScreen() {
           const d = new Date(tx.date);
           return d >= weekStart && d <= weekEnd;
         });
-        if (weekTx.length > 0) {
-          setWeekGroups(groupByDate(weekTx, formatWeekDateTitle));
-        } else {
-          setWeekGroups(MOCK_WEEK_GROUPS);
-        }
+        setWeekGroups(groupByDate(weekTx, formatWeekDateTitle));
 
         // --- MONTH tab: group all expenses by date ---
         setMonthGroups(groupByDate(allExpenses, formatMonthDateTitle));
@@ -245,9 +240,9 @@ export default function HistoryScreen() {
       setDayTransactions(MOCK_DAY_TRANSACTIONS);
       setWeekGroups(MOCK_WEEK_GROUPS);
       setMonthGroups(MOCK_MONTH_GROUPS);
-      setTotalIncome(15000);
-      setTotalExpense(2550);
-      setBalance(12450);
+      setTotalIncome(0);
+      setTotalExpense(0);
+      setBalance(0);
     }
   }, [userId, currentMonthIndex, currentYear, getMonthParam]);
 
@@ -292,11 +287,23 @@ export default function HistoryScreen() {
   };
 
   const handleNextMonth = () => {
-    setCurrentMonthIndex((prev) => (prev + 1) % 12);
+    setCurrentMonthIndex((prev) => {
+      if (prev === 11) {
+        setCurrentYear((y) => y + 1);
+        return 0;
+      }
+      return prev + 1;
+    });
   };
 
   const handlePrevMonth = () => {
-    setCurrentMonthIndex((prev) => (prev - 1 + 12) % 12);
+    setCurrentMonthIndex((prev) => {
+      if (prev === 0) {
+        setCurrentYear((y) => y - 1);
+        return 11;
+      }
+      return prev - 1;
+    });
   };
 
   const renderTransactionCard = (item) => {

@@ -17,7 +17,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { useAuth } from './context/AuthContext';
-import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, CATEGORIES_LIST, getCategoryInfo } from '../theme';
+import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, CATEGORIES_LIST, getCategoryInfo, THAI_MONTHS } from '../theme';
 
 const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
@@ -36,7 +36,7 @@ export default function AddExpenseScreen() {
   const [loading, setLoading] = useState(false);
   
   const now = new Date();
-  const dateFormattedStr = `วันนี้, ${now.getDate()} มกราคม ${now.getFullYear() + 543} (${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.)`;
+  const dateFormattedStr = `วันนี้, ${now.getDate()} ${THAI_MONTHS[now.getMonth()]} ${now.getFullYear() + 543} (${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.)`;
 
   useEffect(() => {
     if (route.params?.type) {
@@ -60,19 +60,22 @@ export default function AddExpenseScreen() {
         title: note.trim() || catInfo.name,
         amount: numAmount,
         type,
-        category,
+        category: catInfo.name,
         note: note.trim(),
-        date: now.toISOString(),
+        date: now.toISOString().split('T')[0],
       };
       
-      await axios.post(`${API_BASE_URL}/expenses`, payload).catch(() => null);
-      Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
-        { text: 'ตกลง', onPress: () => navigation.goBack() }
-      ]);
+      const res = await axios.post(`${API_BASE_URL}/expenses`, payload);
+      if (res.data && res.data.success) {
+        Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
+          { text: 'ตกลง', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถบันทึกรายการได้');
+      }
     } catch (error) {
-      Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
-        { text: 'ตกลง', onPress: () => navigation.goBack() }
-      ]);
+      console.log('Save expense error:', error);
+      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่');
     } finally {
       setLoading(false);
     }

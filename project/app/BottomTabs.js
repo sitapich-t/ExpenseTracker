@@ -64,7 +64,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
                         } else if (route.name === "กลุ่ม") {
                             return (
                                 <MaterialCommunityIcons
-                                    name="line-scan"
+                                    name="account-group-outline"
                                     size={iconSize}
                                     color={iconColor}
                                 />
