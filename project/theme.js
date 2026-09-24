@@ -43,6 +43,9 @@ export const COLORS = {
   darkCard: '#16213E',
   darkBorder: '#2A2D4A',
 
+  // Aliases
+  text: '#1F2937',
+
   // Shadows
   shadowColor: '#000',
 };
@@ -51,18 +54,19 @@ export const FONTS = {
   regular: undefined,
   medium: undefined,
   bold: undefined,
-  h1: { fontSize: 28, fontWeight: '700' },
-  h2: { fontSize: 24, fontWeight: '700' },
-  h3: { fontSize: 20, fontWeight: '600' },
-  h4: { fontSize: 18, fontWeight: '600' },
-  body: { fontSize: 16, fontWeight: '400' },
-  bodyBold: { fontSize: 16, fontWeight: '600' },
-  small: { fontSize: 14, fontWeight: '400' },
-  smallBold: { fontSize: 14, fontWeight: '600' },
-  caption: { fontSize: 12, fontWeight: '400' },
-  captionBold: { fontSize: 12, fontWeight: '600' },
-  amount: { fontSize: 36, fontWeight: '700' },
-  amountLarge: { fontSize: 40, fontWeight: '700' },
+  h1: 28,
+  h2: 24,
+  h3: 20,
+  h4: 18,
+  body: 16,
+  bodyBold: 16,
+  small: 14,
+  smallBold: 14,
+  caption: 12,
+  captionBold: 12,
+  amount: 36,
+  amountLarge: 40,
+  button: 16,
 };
 
 export const SPACING = {

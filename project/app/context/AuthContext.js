@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const DEFAULT_USER = {
-    id: "u1",
+    id: 1,
     name: "peet",
+    username: "peet",
     email: "peet@email.com",
     phone: "098-765-4321",
     studentId: "pt1569",
@@ -33,7 +34,12 @@ export function AuthProvider({ children }) {
 
     // ─── บันทึก user หลัง login สำเร็จ ──────────────────────────────────
     const login = async (userObj) => {
-        const fullUser = { ...DEFAULT_USER, ...userObj };
+        const fullUser = {
+            ...DEFAULT_USER,
+            ...userObj,
+            name: userObj.username || userObj.name || DEFAULT_USER.name,
+            username: userObj.username || userObj.name || DEFAULT_USER.username,
+        };
         setCurrentUser(fullUser);
         await AsyncStorage.setItem("user", JSON.stringify(fullUser));
     };

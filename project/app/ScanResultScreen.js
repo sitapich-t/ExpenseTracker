@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import axios from 'axios';
 import { useAuth } from './context/AuthContext';
-import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../theme';
+import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, getCategoryInfo } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
 
 export default function ScanResultScreen() {
@@ -45,25 +45,26 @@ export default function ScanResultScreen() {
                 return;
             }
 
-            await axios.post('http://10.0.2.2:3000/api/expenses', {
+            const res = await axios.post('http://10.0.2.2:3000/api/expenses', {
                 userId,
                 title: storeName,
                 amount: totalAmount,
                 type: 'expense',
-                category: storeCategory,
+                category: getCategoryInfo(storeCategory).name,
                 note: items.map(i => `${i.name} ฿${formatAmount(i.price)}`).join(', '),
-                date: date,
+                date: (date || new Date().toISOString()).split('T')[0],
             });
 
-            Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
-                { text: 'ตกลง', onPress: () => navigation.navigate('Home') },
-            ]);
+            if (res.data?.success) {
+                Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
+                    { text: 'ตกลง', onPress: () => navigation.navigate('Home') },
+                ]);
+            } else {
+                Alert.alert('ข้อผิดพลาด', 'ไม่สามารถบันทึกรายการได้');
+            }
         } catch (error) {
             console.error('Save error:', error);
-            // Still navigate for demo
-            Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว (Demo)', [
-                { text: 'ตกลง', onPress: () => navigation.navigate('Home') },
-            ]);
+            Alert.alert('ข้อผิดพลาด', 'ไม่สามารถบันทึกรายการได้');
         } finally {
             setSaving(false);
         }
