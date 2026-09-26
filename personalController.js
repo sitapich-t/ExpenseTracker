@@ -258,7 +258,7 @@ exports.getTransactionById = async (req, res) => {
 exports.createTransaction = async (req, res) => {
   try {
     const userId = req.user.id || req.user.user_id;
-    const { title, type, amount, merchant, category_id, date, transaction_date, parsedText, items } = req.body || {};
+    const { title, type, amount, merchant, category_id, date, transaction_date, parsedText, items, vat, serviceCharge, netAmount } = req.body || {};
 
     if (!title || !amount) {
       return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
@@ -273,7 +273,10 @@ exports.createTransaction = async (req, res) => {
       merchant: merchant || 'General',
       category_id: transactionService.resolveCategoryId({ category_id, merchant, parsedText }),
       transaction_date: transactionService.resolveDate(date || transaction_date),
-      items: Array.isArray(items) ? items : [],   // ← เพิ่มบรรทัดนี้: บันทึก line items ลง DB
+      items: Array.isArray(items) ? items : [],
+      vat: transactionService.parseAmount(vat),
+      service_charge: transactionService.parseAmount(serviceCharge),
+      net_amount: netAmount !== undefined ? transactionService.parseAmount(netAmount) : transactionService.parseAmount(amount),
     };
 
     const { data, error } = await supabase
@@ -422,9 +425,12 @@ exports.scanReceipt = async (req, res) => {
       success: true,
       merchant: result.merchant || '',
       total: result.total || 0,
-      date: result.date || null, // ปล่อยว่างถ้าอ่านวันที่จากสลิปไม่ได้ ให้ผู้ใช้กรอกเอง ไม่ควรเดาเป็นวันนี้
+      netAmount: result.netAmount ?? result.total ?? 0,
+      vat: result.vat || 0,
+      serviceCharge: result.serviceCharge || 0,
+      date: result.date || null,
       parsedText: result.parsedText || '',
-      items: result.items || [],   // ← เพิ่มบรรทัดนี้: ส่ง line items ที่ OCR สกัดได้กลับไปด้วย
+      items: result.items || [],
       documentType: result.documentType || 'receipt',
       bankName: result.bankName || null,
       transactionId: result.transactionId || null,

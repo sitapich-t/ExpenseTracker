@@ -169,6 +169,9 @@ export default function ConfirmReceiptScreen() {
   // States
   const [merchant, setMerchant] = useState(detectedMerchant);
   const [amount, setAmount] = useState(params.amount || '');
+  const [vat, setVat] = useState(params.vat || '0');
+  const [serviceCharge, setServiceCharge] = useState(params.serviceCharge || '0');
+
   const [date, setDate] = useState(isoToDisplayDate(params.date));
   const [categoryId, setCategoryId] = useState(initialCategoryId);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
@@ -184,12 +187,13 @@ export default function ConfirmReceiptScreen() {
   useEffect(() => {
     setMerchant(detectedMerchant);
     setAmount(params.amount || '');
+    setVat(params.vat || '0');
+    setServiceCharge(params.serviceCharge || '0');
     setDate(isoToDisplayDate(params.date));
     setCategoryId(initialCategoryId);
     setLineItems(initialLineItems);
     setPaymentMethod(isTransferSlip ? 'Transfer' : 'Card');
-  }, [params.merchant, params.amount, params.date, params.lineItems, params.documentType]);
-
+  }, [params.merchant, params.amount, params.vat, params.serviceCharge, params.date, params.lineItems, params.documentType]);
   const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
   // ----------------------------------------------------
   // Helper Logic สำหรับจัดการ Line Items
@@ -240,12 +244,15 @@ export default function ConfirmReceiptScreen() {
         body: JSON.stringify({
           title: merchant,
           amount: parseFloat(amount) || 0,
+          netAmount: (parseFloat(amount) || 0) - (parseFloat(vat) || 0) - (parseFloat(serviceCharge) || 0),
+          vat: parseFloat(vat) || 0,
+          serviceCharge: parseFloat(serviceCharge) || 0,
           type: 'expense',
           category_id: categoryId,
           merchant: merchant,
           transaction_date: displayDateToIso(date) || new Date().toISOString(),
           paymentMethod: paymentMethod,
-          items: lineItems, // ✨ ส่งรายการย่อยไปด้วย
+          items: lineItems,
         }),
       });
 
@@ -397,6 +404,37 @@ export default function ConfirmReceiptScreen() {
             keyboardType="numeric"
           />
         </View>
+
+        {/* VAT & Service Charge (เฉพาะใบเสร็จ ไม่ใช่สลิปโอนเงิน) */}
+        {!isTransferSlip && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.labelTitle}>VAT</Text>
+              <View style={styles.inputBox}>
+                <Text style={styles.currencySymbol}>฿</Text>
+                <TextInput
+                  style={styles.inputText}
+                  value={String(vat)}
+                  onChangeText={setVat}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={styles.labelTitle}>Service Charge</Text>
+              <View style={styles.inputBox}>
+                <Text style={styles.currencySymbol}>฿</Text>
+                <TextInput
+                  style={styles.inputText}
+                  value={String(serviceCharge)}
+                  onChangeText={setServiceCharge}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Date & Category Row */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
