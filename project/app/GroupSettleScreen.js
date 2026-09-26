@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,62 +13,131 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
 
+// Default group members if none passed via route params
+const DEFAULT_MEMBERS = [
+  { id: '1', name: 'นนท์ (ฉัน)', color: '#EF4444' },
+  { id: '2', name: 'พลอย', color: '#10B981' },
+  { id: '3', name: 'เตีย', color: '#F59E0B' },
+  { id: '4', name: 'มาร์ช', color: '#8B5CF6' },
+];
+
+// Default bills matching GroupDetailScreen
+const DEFAULT_BILLS = [
+  {
+    id: 'b1',
+    title: 'ค่าอาหารค่ำซีฟู้ด 🦐',
+    payer: 'พลอย',
+    splitText: 'แชร์ทุกคน',
+    amount: '5,400',
+  },
+  {
+    id: 'b2',
+    title: 'ค่าที่พักพูลวิลล่า 🌴',
+    payer: 'เตีย',
+    splitText: 'แชร์ทุกคน',
+    amount: '4,000',
+  },
+  {
+    id: 'b3',
+    title: 'ค่าน้ำมันรถเดินทาง 🚗',
+    payer: 'มาร์ช',
+    splitText: 'แชร์ทุกคน',
+    amount: '3,000',
+  },
+];
+
 export default function GroupSettleScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const location = route.params?.groupName || 'Hua Hin';
+
+  const location = route.params?.groupName || 'ทริปหัวหิน 2026 🏖️';
+  const members = (route.params?.members && route.params.members.length > 0)
+    ? route.params.members
+    : DEFAULT_MEMBERS;
+  const bills = (route.params?.bills && route.params.bills.length > 0)
+    ? route.params.bills
+    : DEFAULT_BILLS;
 
   // 2 modes matching Figma mockup: "ทั้งหมด" (raw transactions) vs "จ่าย" (debt simplification)
   const [activeTab, setActiveTab] = useState('summary'); // 'all', 'summary'
   const [remindedList, setRemindedList] = useState([]);
 
-  // Mock raw transactions ("ทั้งหมด")
-  const rawTransactions = [
-    {
-      id: 'r1',
-      from: 'แพร',
-      to: 'บล็อก',
-      note: 'จ่ายค่าอาหารกลางวันร้านมิชลิน',
-      amount: '60',
-    },
-    {
-      id: 'r2',
-      from: 'วุฒิ',
-      to: 'บล็อก',
-      note: 'จ่ายค่าอาหารกลางวันร้านมิชลิน',
-      amount: '60',
-    },
-    {
-      id: 'r3',
-      from: 'บล็อก',
-      to: 'วุฒิ',
-      note: 'จ่ายค่าน้ำมันรถเที่ยวเกาะ',
-      amount: '150',
-    },
-    {
-      id: 'r4',
-      from: 'แพร',
-      to: 'วุฒิ',
-      note: 'จ่ายค่าน้ำมันรถเที่ยวเกาะ',
-      amount: '150',
-    },
-  ];
+  // Calculate raw transactions and simplified debts dynamically
+  const { rawTransactions, simplifiedDebts } = useMemo(() => {
+    const memberNames = members.map((m) => m.name);
+    const n = memberNames.length;
+    if (n === 0) return { rawTransactions: [], simplifiedDebts: [] };
 
-  // Simplified net debts ("จ่าย" - Debt Simplification)
-  const simplifiedDebts = [
-    {
-      id: 's1',
-      from: 'แพร',
-      to: 'วุฒิ',
-      amount: '210',
-    },
-    {
-      id: 's2',
-      from: 'บล็อก',
-      to: 'วุฒิ',
-      amount: '30',
-    },
-  ];
+    const raw = [];
+    const netBalances = {};
+    memberNames.forEach((name) => {
+      netBalances[name] = 0;
+    });
+
+    bills.forEach((b, bIdx) => {
+      const totalAmount = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
+      const perPerson = Math.round((totalAmount / n) * 100) / 100;
+      const payer = b.payer;
+
+      if (netBalances[payer] !== undefined) {
+        netBalances[payer] += totalAmount;
+      }
+
+      memberNames.forEach((name, mIdx) => {
+        netBalances[name] -= perPerson;
+        if (name !== payer) {
+          raw.push({
+            id: `r_${b.id || bIdx}_${mIdx}`,
+            from: name,
+            to: payer,
+            note: b.title,
+            amount: perPerson.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+          });
+        }
+      });
+    });
+
+    // Debt Simplification (greedy matching of debtors and creditors)
+    const debtors = [];
+    const creditors = [];
+
+    Object.entries(netBalances).forEach(([name, balance]) => {
+      const rounded = Math.round(balance * 100) / 100;
+      if (rounded < -0.01) {
+        debtors.push({ name, amount: -rounded });
+      } else if (rounded > 0.01) {
+        creditors.push({ name, amount: rounded });
+      }
+    });
+
+    const simplified = [];
+    let dIdx = 0;
+    let cIdx = 0;
+    let sId = 1;
+
+    while (dIdx < debtors.length && cIdx < creditors.length) {
+      const debtor = debtors[dIdx];
+      const creditor = creditors[cIdx];
+      const amount = Math.min(debtor.amount, creditor.amount);
+
+      if (amount > 0.01) {
+        simplified.push({
+          id: `s_${sId++}`,
+          from: debtor.name,
+          to: creditor.name,
+          amount: amount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+        });
+      }
+
+      debtor.amount -= amount;
+      creditor.amount -= amount;
+
+      if (debtor.amount <= 0.01) dIdx++;
+      if (creditor.amount <= 0.01) cIdx++;
+    }
+
+    return { rawTransactions: raw, simplifiedDebts: simplified };
+  }, [members, bills]);
 
   const handleSendReminder = (debt) => {
     setRemindedList((prev) => [...prev, debt.id]);
@@ -117,7 +186,7 @@ export default function GroupSettleScreen() {
 
           <View style={styles.metaBadge}>
             <Ionicons name="people" size={14} color="#6D28D9" />
-            <Text style={styles.metaBadgeText}>3 คน</Text>
+            <Text style={styles.metaBadgeText}>{members.length} คน</Text>
           </View>
         </View>
 
@@ -155,49 +224,15 @@ export default function GroupSettleScreen() {
                 รายการชำระย่อยตามบิลย่อย ({rawTransactions.length} รายการ)
               </Text>
 
-              {rawTransactions.map((item) => (
-                <View key={item.id} style={styles.rawCard}>
-                  <View style={styles.rawCardContent}>
-                    {/* From -> To row */}
-                    <View style={styles.personFlowRow}>
-                      <View style={styles.personPillPurple}>
-                        <Text style={styles.personTextPurple}>{item.from}</Text>
-                      </View>
-                      <Ionicons name="arrow-forward" size={14} color="#94A3B8" style={{ marginHorizontal: 6 }} />
-                      <View style={styles.personPillGreen}>
-                        <Text style={styles.personTextGreen}>{item.to}</Text>
-                      </View>
-                    </View>
-
-                    {/* Subtitle with clock */}
-                    <View style={styles.subNoteRow}>
-                      <Ionicons name="time-outline" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
-                      <Text style={styles.subNoteText}>{item.note}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.rawCardRight}>
-                    <Text style={styles.rawAmount}>฿{item.amount}</Text>
-                    <Ionicons name="chevron-down" size={16} color="#CBD5E1" />
-                  </View>
+              {rawTransactions.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>ยังไม่มีรายการบิลในกลุ่มนี้</Text>
                 </View>
-              ))}
-            </View>
-          )}
-
-          {/* View 2: จ่าย (Simplified Net Debts with Red Bell ทวงเงิน) */}
-          {activeTab === 'summary' && (
-            <View>
-              <Text style={styles.sectionSubtitle}>
-                สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
-              </Text>
-
-              {simplifiedDebts.map((item) => {
-                const isReminded = remindedList.includes(item.id);
-                return (
-                  <View key={item.id} style={styles.settleRowCard}>
-                    {/* Left info box */}
-                    <View style={styles.settleLeftBox}>
+              ) : (
+                rawTransactions.map((item) => (
+                  <View key={item.id} style={styles.rawCard}>
+                    <View style={styles.rawCardContent}>
+                      {/* From -> To row */}
                       <View style={styles.personFlowRow}>
                         <View style={styles.personPillPurple}>
                           <Text style={styles.personTextPurple}>{item.from}</Text>
@@ -208,24 +243,70 @@ export default function GroupSettleScreen() {
                         </View>
                       </View>
 
-                      <Text style={styles.settleAmount}>฿{item.amount}</Text>
+                      {/* Subtitle with clock */}
+                      <View style={styles.subNoteRow}>
+                        <Ionicons name="time-outline" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
+                        <Text style={styles.subNoteText}>{item.note}</Text>
+                      </View>
                     </View>
 
-                    {/* Red Bell Button for ทวงเงิน */}
-                    <TouchableOpacity
-                      style={[styles.bellBtn, isReminded && styles.bellBtnReminded]}
-                      onPress={() => handleSendReminder(item)}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons
-                        name={isReminded ? 'checkmark' : 'notifications'}
-                        size={20}
-                        color="#FFFFFF"
-                      />
-                    </TouchableOpacity>
+                    <View style={styles.rawCardRight}>
+                      <Text style={styles.rawAmount}>฿{item.amount}</Text>
+                      <Ionicons name="chevron-down" size={16} color="#CBD5E1" />
+                    </View>
                   </View>
-                );
-              })}
+                ))
+              )}
+            </View>
+          )}
+
+          {/* View 2: จ่าย (Simplified Net Debts with Red Bell ทวงเงิน) */}
+          {activeTab === 'summary' && (
+            <View>
+              <Text style={styles.sectionSubtitle}>
+                สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
+              </Text>
+
+              {simplifiedDebts.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>ไม่มีหนี้ค้างชำระในกลุ่มนี้ หรือเคลียร์บิลเรียบร้อยแล้ว ✨</Text>
+                </View>
+              ) : (
+                simplifiedDebts.map((item) => {
+                  const isReminded = remindedList.includes(item.id);
+                  return (
+                    <View key={item.id} style={styles.settleRowCard}>
+                      {/* Left info box */}
+                      <View style={styles.settleLeftBox}>
+                        <View style={styles.personFlowRow}>
+                          <View style={styles.personPillPurple}>
+                            <Text style={styles.personTextPurple}>{item.from}</Text>
+                          </View>
+                          <Ionicons name="arrow-forward" size={14} color="#94A3B8" style={{ marginHorizontal: 6 }} />
+                          <View style={styles.personPillGreen}>
+                            <Text style={styles.personTextGreen}>{item.to}</Text>
+                          </View>
+                        </View>
+
+                        <Text style={styles.settleAmount}>฿{item.amount}</Text>
+                      </View>
+
+                      {/* Red Bell Button for ทวงเงิน */}
+                      <TouchableOpacity
+                        style={[styles.bellBtn, isReminded && styles.bellBtnReminded]}
+                        onPress={() => handleSendReminder(item)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons
+                          name={isReminded ? 'checkmark' : 'notifications'}
+                          size={20}
+                          color="#FFFFFF"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
             </View>
           )}
         </ScrollView>
@@ -444,5 +525,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  emptyContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: '#94A3B8',
+    fontSize: 14,
   },
 });

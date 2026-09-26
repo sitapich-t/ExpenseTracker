@@ -91,7 +91,7 @@ export default function GroupDetailScreen() {
           {/* Settle Bill Banner CTA */}
           <TouchableOpacity 
             style={styles.settleCtaBtn}
-            onPress={() => navigation.navigate('GroupSettle', { groupName })}
+            onPress={() => navigation.navigate('GroupSettle', { groupName, members, bills })}
             activeOpacity={0.85}
           >
             <View style={styles.settleCtaLeft}>
