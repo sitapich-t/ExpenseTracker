@@ -203,9 +203,9 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={20} color={COLORS.primary} />
+            <Ionicons name="wallet-outline" size={20} color={COLORS.primary} />
           </View>
-          <Text style={styles.headerTitle}>Expense Tracker</Text>
+          <Text style={styles.headerTitle}>peet Wallet</Text>
         </View>
         <TouchableOpacity style={styles.headerBellBtn} activeOpacity={0.7}>
           <Ionicons name="notifications-outline" size={22} color="#1F2937" />
@@ -221,23 +221,23 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <>
-            {/* Balance Card matching media_1790137581718.png */}
+            {/* Balance Card matching mockup */}
             <View style={styles.balanceCard}>
-              <Text style={styles.balanceLabel}>ยอดเงินคงเหลือทั้งหมด</Text>
+              <Text style={styles.balanceLabel}>ยอดรวมทั้งหมด</Text>
               <Text style={styles.balanceAmount}>฿{formatCurrency(summary.totalBalance)}</Text>
               
               <View style={styles.chipsRow}>
                 <View style={styles.chipItem}>
-                  <Text style={styles.chipLabel}>รายรับ (เดือนนี้)</Text>
+                  <Text style={styles.chipLabel}>งบประมาณ</Text>
                   <Text style={[styles.chipValue, { color: '#4ADE80' }]}>
-                    ฿{Number(summary.totalIncome).toLocaleString('th-TH')}
+                    ฿{Number(budget.amount).toLocaleString('th-TH')}
                   </Text>
                 </View>
                 <View style={styles.chipDivider} />
                 <View style={styles.chipItem}>
-                  <Text style={styles.chipLabel}>รายจ่าย (เดือนนี้)</Text>
+                  <Text style={styles.chipLabel}>ใช้ไปแล้ว</Text>
                   <Text style={[styles.chipValue, { color: '#F87171' }]}>
-                    ฿{Number(summary.totalExpense).toLocaleString('th-TH')}
+                    ฿{Number(budget.spent).toLocaleString('th-TH')}
                   </Text>
                 </View>
               </View>
@@ -255,52 +255,52 @@ export default function HomeScreen() {
 
             {/* Quick Action Buttons (matching mockup) */}
             <View style={styles.quickActionsRow}>
-              {/* Scan to Pay / QR */}
-              <TouchableOpacity 
-                style={styles.actionCard}
-                onPress={() => navigation.navigate('JoinGroup')}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.actionIconBox, { backgroundColor: '#F3E8FF' }]}>
-                  <Ionicons name="qr-code-outline" size={24} color={COLORS.primary} />
-                </View>
-                <Text style={styles.actionTitle}>สแกนจ่าย</Text>
-              </TouchableOpacity>
-
-              {/* Scan Receipt / OCR */}
-              <TouchableOpacity 
-                style={styles.actionCard}
-                onPress={() => navigation.navigate('UploadSlip')}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.actionIconBox, { backgroundColor: '#DCFCE7' }]}>
-                  <Ionicons name="camera-outline" size={24} color="#16A34A" />
-                </View>
-                <Text style={styles.actionTitle}>สแกนใบเสร็จ</Text>
-              </TouchableOpacity>
-
-              {/* Add Expense / Income Record */}
+              {/* Add Expense */}
               <TouchableOpacity 
                 style={styles.actionCard}
                 onPress={() => navigation.navigate('AddExpense', { type: 'expense' })}
                 activeOpacity={0.8}
               >
-                <View style={[styles.actionIconBox, { backgroundColor: '#EDE9FE' }]}>
-                  <Ionicons name="add-circle-outline" size={24} color={COLORS.primary} />
+                <View style={[styles.actionIconBox, { backgroundColor: '#FEE2E2' }]}>
+                  <Ionicons name="remove-circle-outline" size={24} color="#EF4444" />
                 </View>
-                <Text style={styles.actionTitle}>บันทึกบิล</Text>
+                <Text style={styles.actionTitle}>เพิ่มรายจ่าย</Text>
               </TouchableOpacity>
 
-              {/* Set Monthly Budget */}
+              {/* Scan Receipt */}
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={() => navigation.navigate('UploadSlip')}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: '#F3E8FF' }]}>
+                  <Ionicons name="scan-outline" size={24} color={COLORS.primary} />
+                </View>
+                <Text style={styles.actionTitle}>สแกนใบเสร็จ</Text>
+              </TouchableOpacity>
+
+              {/* Add Income */}
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={() => navigation.navigate('AddExpense', { type: 'income' })}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: '#DCFCE7' }]}>
+                  <Ionicons name="add-circle-outline" size={24} color="#16A34A" />
+                </View>
+                <Text style={styles.actionTitle}>เพิ่มรายรับ</Text>
+              </TouchableOpacity>
+
+              {/* Set Budget */}
               <TouchableOpacity 
                 style={styles.actionCard}
                 onPress={() => navigation.navigate('Budget')}
                 activeOpacity={0.8}
               >
-                <View style={[styles.actionIconBox, { backgroundColor: '#FEF3C7' }]}>
-                  <Ionicons name="wallet-outline" size={24} color="#D97706" />
+                <View style={[styles.actionIconBox, { backgroundColor: '#DBEAFE' }]}>
+                  <Ionicons name="wallet-outline" size={24} color="#3B82F6" />
                 </View>
-                <Text style={styles.actionTitle}>ตั้งงบประมาณ</Text>
+                <Text style={styles.actionTitle}>ตั้งงบ</Text>
               </TouchableOpacity>
             </View>
 
@@ -308,7 +308,7 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>รายการล่าสุด</Text>
               <TouchableOpacity 
-                onPress={() => navigation.navigate('รายจ่าย')}
+                onPress={() => navigation.navigate('รายการ')}
                 activeOpacity={0.7}
               >
                 <Text style={styles.seeAllText}>ดูทั้งหมด</Text>

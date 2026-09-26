@@ -82,7 +82,7 @@ export default function JoinGroupScreen() {
 
             <TouchableOpacity 
               style={styles.scannerContainer}
-              onPress={handleSimulateScan}
+              onPress={() => navigation.navigate('ScanQRCode')}
               activeOpacity={0.9}
             >
               {/* Corner brackets */}
@@ -98,7 +98,7 @@ export default function JoinGroupScreen() {
             </TouchableOpacity>
 
             <Text style={styles.scannerSubtext}>
-              นำกล้องไปสแกนที่ QR Code ของหัวหน้ากลุ่ม
+              แตะเพื่อเปิดกล้องสแกน QR Code
             </Text>
           </View>
 

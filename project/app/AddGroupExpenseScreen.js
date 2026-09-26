@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Alert,
   Modal,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -49,10 +50,19 @@ export default function AddGroupExpenseScreen() {
   const [showPayerModal, setShowPayerModal] = useState(false);
   const [members, setMembers] = useState(initialMembers);
 
+  const [includeVatSc, setIncludeVatSc] = useState(false);
+  const [serviceCharge, setServiceCharge] = useState('10');
+  const [vat, setVat] = useState('7');
+
+  // Compute total with tax
+  const rawAmount = parseFloat(amount.replace(/,/g, '')) || 0;
+  const scAmount = includeVatSc ? rawAmount * (parseFloat(serviceCharge) || 0) / 100 : 0;
+  const vatAmount = includeVatSc ? (rawAmount + scAmount) * (parseFloat(vat) || 0) / 100 : 0;
+  const totalWithTax = rawAmount + scAmount + vatAmount;
+
   // Compute equal split per selected person
-  const numAmount = parseFloat(amount.replace(/,/g, '')) || 0;
   const selectedCount = members.filter((m) => m.selected).length;
-  const perPerson = selectedCount > 0 ? (numAmount / selectedCount).toFixed(2) : '0.00';
+  const perPerson = selectedCount > 0 ? (totalWithTax / selectedCount).toFixed(2) : '0.00';
 
   const toggleMember = (id) => {
     setMembers((prev) =>
@@ -65,19 +75,19 @@ export default function AddGroupExpenseScreen() {
   };
 
   const handleSave = () => {
-    if (!title.trim() || numAmount <= 0) {
+    if (!title.trim() || totalWithTax <= 0) {
       Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อรายการและยอดเงิน');
       return;
     }
 
     addGroupBill(groupId, {
       title: title.trim(),
-      amount: numAmount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+      amount: totalWithTax.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
       category: selectedCategory,
       payer: payer,
     });
 
-    Alert.alert('บันทึกสำเร็จ! 🎉', `บันทึกรายการ "${title}" ฿${amount} เข้ากลุ่มเรียบร้อยแล้ว`, [
+    Alert.alert('บันทึกสำเร็จ! 🎉', `บันทึกรายการ "${title}" ฿${totalWithTax.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} เข้ากลุ่มเรียบร้อยแล้ว`, [
       {
         text: 'ตกลง',
         onPress: () => {
@@ -141,6 +151,46 @@ export default function AddGroupExpenseScreen() {
                 onChangeText={setAmount}
                 keyboardType="numeric"
               />
+            </View>
+
+            {/* VAT & Service Charge Section */}
+            <View style={{ marginTop: 14, padding: 12, backgroundColor: '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 14, color: '#1E293B', fontWeight: '600' }}>คิด VAT & Service Charge</Text>
+                <Switch
+                  value={includeVatSc}
+                  onValueChange={setIncludeVatSc}
+                  trackColor={{ false: '#CBD5E1', true: '#6D28D9' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              {includeVatSc && (
+                <View style={{ marginTop: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 13, color: '#64748B' }}>Service Charge (%)</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, width: 80, textAlign: 'right' }}
+                      value={serviceCharge}
+                      onChangeText={setServiceCharge}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: '#64748B' }}>VAT (%)</Text>
+                    <TextInput
+                      style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, width: 80, textAlign: 'right' }}
+                      value={vat}
+                      onChangeText={setVat}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 14, color: '#1E293B', fontWeight: '700' }}>ยอดรวมหลังภาษี:</Text>
+                    <Text style={{ fontSize: 16, color: '#6D28D9', fontWeight: '800' }}>฿{totalWithTax.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                  </View>
+                </View>
+              )}
             </View>
 
             <Text style={[styles.inputLabel, { marginTop: 14, marginBottom: 8 }]}>หมวดหมู่</Text>

@@ -7,12 +7,16 @@ import {
   ScrollView,
   SafeAreaView,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import axios from 'axios';
 import { SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
 import { useGroup } from './context/GroupContext';
+import { useAuth } from './context/AuthContext';
 
 // Default group members if none passed via route params
 const DEFAULT_MEMBERS = [
@@ -62,6 +66,19 @@ export default function GroupSettleScreen() {
   // 2 modes matching Figma mockup: "ทั้งหมด" (raw transactions) vs "จ่าย" (debt simplification)
   const [activeTab, setActiveTab] = useState('summary'); // 'all', 'summary'
   const [remindedList, setRemindedList] = useState([]);
+  const [slipImage, setSlipImage] = useState(null);
+  const { currentUser } = useAuth();
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setSlipImage(result.assets[0].uri);
+    }
+  };
 
   // Calculate raw transactions and simplified debts dynamically
   const { rawTransactions, simplifiedDebts } = useMemo(() => {
@@ -159,7 +176,28 @@ export default function GroupSettleScreen() {
         { text: 'ยกเลิก', style: 'cancel' },
         {
           text: 'บันทึกการเคลียร์บิล',
-          onPress: () => {
+          onPress: async () => {
+            // ตัดยอดเข้าการเงินส่วนบุคคลอัตโนมัติ
+            try {
+              for (const d of simplifiedDebts) {
+                if (d.from === 'นนท์ (ฉัน)' || d.from === 'ฉัน' || d.from === 'นนท์') {
+                  const userDebtAmount = parseFloat(d.amount.replace(/,/g, '')) || 0;
+                  const payload = {
+                    userId: currentUser?.id,
+                    title: `เคลียร์บิล: ${location}`,
+                    amount: userDebtAmount,
+                    type: 'expense',
+                    category: 'group',
+                    note: `ตัดยอดจากกลุ่ม ${location}`,
+                    date: new Date().toISOString(),
+                  };
+                  await axios.post('http://10.0.2.2:3000/api/expenses', payload);
+                }
+              }
+            } catch (e) {
+              console.log('Auto-deduct error:', e.message);
+            }
+
             if (groupId) {
               settleGroup(groupId);
             }
@@ -215,7 +253,7 @@ export default function GroupSettleScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.segmentText, activeTab === 'summary' && styles.segmentTextActive]}>
-              จ่าย
+              ง่าย
             </Text>
           </TouchableOpacity>
         </View>
@@ -320,6 +358,24 @@ export default function GroupSettleScreen() {
 
         {/* Bottom Button: บันทึกการเคลียร์บิล */}
         <View style={styles.bottomBar}>
+          {slipImage && (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 }}>
+              <Image source={{ uri: slipImage }} style={{ width: 80, height: 100, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' }} />
+              <TouchableOpacity onPress={() => setSlipImage(null)} style={{ marginLeft: -12, marginTop: -8, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 2 }}>
+                <Ionicons name="close-circle" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          )}
+          {!slipImage && (
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginBottom: 12, borderRadius: 14, borderWidth: 1, borderColor: '#CBD5E1', borderStyle: 'dashed' }}
+              onPress={handlePickImage}
+            >
+              <Ionicons name="attach" size={20} color="#64748B" />
+              <Text style={{ fontSize: 14, color: '#64748B', fontWeight: '600', marginLeft: 6 }}>📎 แนบสลิปการโอนเงิน</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={styles.saveSettleBtn}
             onPress={handleSaveSettle}

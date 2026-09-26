@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -102,7 +101,7 @@ function formatShortBaht(num) {
 // Week mock data matching Figma (fallback)
 const weekDataMock = {
   totalExpense: '฿1,245.50',
-  comparison: '-12% จากสัปดาห์ก่อน',
+  comparison: 'ประมาณ -12% จากสัปดาห์ก่อน',
   budgetRemaining: '฿4,754.50',
   budgetGoal: 'เป้าหมาย ฿6,000',
   budgetProgress: 0.21, // 21%
@@ -129,7 +128,7 @@ const weekDataMock = {
 // Month mock data matching Figma (fallback)
 const monthDataMock = {
   totalExpense: '฿5,420.00',
-  comparison: '-5% จากเดือนก่อน',
+  comparison: 'ประมาณ -5% จากเดือนก่อน',
   budgetRemaining: '฿12,580.00',
   budgetGoal: 'เป้าหมาย ฿18,000',
   budgetProgress: 0.30, // 30%
@@ -290,7 +289,7 @@ export default function ReportScreen() {
 
           setWeekData({
             totalExpense: formatBaht(totalExp),
-            comparison: '-12% จากสัปดาห์ก่อน',
+            comparison: 'ประมาณ -12% จากสัปดาห์ก่อน',
             budgetRemaining: formatBaht(Math.max(budgetRemaining, 0)),
             budgetGoal: `เป้าหมาย ${formatBaht(weeklyBudget)}`,
             budgetProgress,
@@ -319,7 +318,7 @@ export default function ReportScreen() {
 
           setMonthData({
             totalExpense: formatBaht(totalExp),
-            comparison: '-5% จากเดือนก่อน',
+            comparison: 'ประมาณ -5% จากเดือนก่อน',
             budgetRemaining: formatBaht(Math.max(budgetRemaining, 0)),
             budgetGoal: `เป้าหมาย ${formatBaht(monthlyBudget)}`,
             budgetProgress,
@@ -358,7 +357,7 @@ export default function ReportScreen() {
 
   return (
     <ResponsiveWrapper>
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         {/* Header Bar */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -389,7 +388,7 @@ export default function ReportScreen() {
                   <Ionicons name="chevron-back" size={14} color="#6D28D9" />
                 </TouchableOpacity>
                 <Text style={styles.monthPillText}>
-                  {THAI_MONTHS[monthIndex]} 2026
+                  {THAI_MONTHS[monthIndex]} {new Date().getFullYear() + 543}
                 </Text>
                 <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Ionicons name="chevron-forward" size={14} color="#6D28D9" />
@@ -505,7 +504,7 @@ export default function ReportScreen() {
             </>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </ResponsiveWrapper>
   );
 }

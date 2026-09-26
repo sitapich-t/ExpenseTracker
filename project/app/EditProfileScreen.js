@@ -3,7 +3,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     ScrollView,
     TouchableOpacity,
     TextInput,
@@ -73,6 +72,10 @@ export default function EditProfileScreen() {
               if (currentUser?.id) {
                 const res = await axios.put(`${API_URL}/users/${currentUser.id}`, {
                   username: name.trim(),
+                  email: email.trim(),
+                  phone: phone.trim(),
+                  studentId: studentId.trim(),
+                  birthDate: birthDate.trim(),
                 });
                 if (!res.data?.success) {
                   Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถบันทึกข้อมูลบนเซิร์ฟเวอร์ได้');
@@ -112,7 +115,7 @@ export default function EditProfileScreen() {
 
     return (
         <ResponsiveWrapper>
-            <SafeAreaView style={styles.safeArea}>
+            <View style={styles.safeArea}>
                 <KeyboardAvoidingView
                     behavior={Platform.OS === "ios" ? "padding" : undefined}
                     style={{ flex: 1 }}
@@ -255,7 +258,7 @@ export default function EditProfileScreen() {
                         </TouchableOpacity>
                     </ScrollView>
                 </KeyboardAvoidingView>
-            </SafeAreaView>
+            </View>
         </ResponsiveWrapper>
     );
 }

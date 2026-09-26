@@ -25,7 +25,8 @@ const DARK_THEME = {
   error: '#FF4C4C',
 };
 
-export default function OTPScreen() {
+export default function OTPScreen({ route }) {
+  const { email } = route?.params || {};
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timer, setTimer] = useState(30);
   const inputRefs = useRef([]);
@@ -112,10 +113,7 @@ export default function OTPScreen() {
             <View style={styles.textContainer}>
               <Text style={styles.title}>ยืนยันรหัส OTP</Text>
               <Text style={styles.description}>
-                เราได้ส่งรหัสยืนยันไปที่อีเมลที่ใช้สมัคร
-              </Text>
-              <Text style={styles.maskedEmail}>
-                และอีเมลที่ลงท้ายด้วย 08X-XXX-X456
+                {`เราได้ส่งรหัสยืนยันไปที่อีเมล ${email ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'your@email.com'}`}
               </Text>
             </View>
 

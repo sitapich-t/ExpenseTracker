@@ -15,8 +15,8 @@ const DEFAULT_USER = {
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-    const [currentUser, setCurrentUser] = useState(DEFAULT_USER);
-    const [loading, setLoading] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     // ─── โหลด session จาก AsyncStorage เมื่อ app เริ่ม ───────────────────
     useEffect(() => {
@@ -25,10 +25,10 @@ export function AuthProvider({ children }) {
                 if (json) {
                     setCurrentUser(JSON.parse(json));
                 } else {
-                    setCurrentUser(DEFAULT_USER);
+                    setCurrentUser(null);
                 }
             })
-            .catch(() => setCurrentUser(DEFAULT_USER))
+            .catch(() => setCurrentUser(null))
             .finally(() => setLoading(false));
     }, []);
 

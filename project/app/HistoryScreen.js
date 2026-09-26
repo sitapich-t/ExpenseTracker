@@ -65,8 +65,24 @@ const MOCK_MONTH_GROUPS = [
   },
 ];
 
+// Add a mapping from Thai names to English keys
+const thaiToKeyMap = {
+  'อาหารและเครื่องดื่ม': 'food',
+  'การเดินทาง': 'transport',
+  'เดินทาง': 'transport',
+  'ที่พัก': 'housing',
+  'บันเทิง': 'entertainment',
+  'ความบันเทิง': 'entertainment',
+  'ช้อปปิ้ง': 'shopping',
+  'อุปกรณ์การเรียน': 'education',
+  'สุขภาพ': 'health',
+  'อื่น ๆ': 'other',
+  'อื่นๆ': 'other',
+};
+
 // Map category id to Ionicons icon name and colors
 function getCategoryIcon(category) {
+  const mappedCategory = thaiToKeyMap[category] || category;
   const mapping = {
     food: { icon: 'restaurant-outline', iconBg: '#FFF7ED', iconColor: '#EA580C' },
     transport: { icon: 'car-outline', iconBg: '#EFF6FF', iconColor: '#2563EB' },
@@ -82,7 +98,7 @@ function getCategoryIcon(category) {
     gift: { icon: 'gift-outline', iconBg: '#FFF1F2', iconColor: '#F43F5E' },
     other: { icon: 'ellipsis-horizontal-outline', iconBg: '#F3F4F6', iconColor: '#6B7280' },
   };
-  return mapping[category] || mapping.other;
+  return mapping[mappedCategory] || mapping.other;
 }
 
 // Transform API expense item into UI transaction item
@@ -145,22 +161,22 @@ export default function HistoryScreen() {
     return { start, end };
   };
 
-  // Format a date string to Thai group title for week tab: "จันทร์ 15 ก.ย. 2026"
+  // Format a date string to Thai group title for week tab: "จันทร์ 15 ก.ย. 2569"
   const formatWeekDateTitle = (dateStr) => {
     const d = new Date(dateStr);
     const dayName = THAI_DAYS_FULL[d.getDay()];
     const dayNum = d.getDate();
     const monthShort = THAI_MONTHS_SHORT[d.getMonth()];
-    const year = d.getFullYear();
+    const year = d.getFullYear() + 543;
     return `${dayName} ${dayNum} ${monthShort} ${year}`;
   };
 
-  // Format a date string to Thai group title for month tab: "15 กันยายน 2026"
+  // Format a date string to Thai group title for month tab: "15 กันยายน 2569"
   const formatMonthDateTitle = (dateStr) => {
     const d = new Date(dateStr);
     const dayNum = d.getDate();
     const monthFull = THAI_MONTHS[d.getMonth()];
-    const year = d.getFullYear();
+    const year = d.getFullYear() + 543;
     return `${dayNum} ${monthFull} ${year}`;
   };
 
@@ -309,25 +325,36 @@ export default function HistoryScreen() {
   const renderTransactionCard = (item) => {
     const isIncome = item.type === 'income';
     return (
-      <TouchableOpacity
-        key={item.id}
-        style={styles.transactionCard}
-        onLongPress={() => handleDeleteTransaction(item.id)}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.iconBox, { backgroundColor: item.iconBg }]}>
-          <Ionicons name={item.icon} size={22} color={item.iconColor} />
-        </View>
+      <View key={item.id} style={styles.transactionCardWrapper}>
+        <TouchableOpacity
+          style={styles.transactionCard}
+          onLongPress={() => handleDeleteTransaction(item.id)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.iconBox, { backgroundColor: item.iconBg }]}>
+            <Ionicons name={item.icon} size={22} color={item.iconColor} />
+          </View>
 
-        <View style={styles.transactionInfo}>
-          <Text style={styles.transactionTitle}>{item.title}</Text>
-          <Text style={styles.transactionSub}>{item.categoryName}</Text>
-        </View>
+          <View style={styles.transactionInfo}>
+            <Text style={styles.transactionTitle}>{item.title}</Text>
+            <Text style={styles.transactionSub}>{item.categoryName}</Text>
+          </View>
 
-        <Text style={[styles.transactionAmount, isIncome ? styles.incomeText : styles.expenseText]}>
-          {isIncome ? `+${formatAmount(item.amount)}` : `-${formatAmount(item.amount)}`}
-        </Text>
-      </TouchableOpacity>
+          <View style={styles.amountAndActions}>
+            <Text style={[styles.transactionAmount, isIncome ? styles.incomeText : styles.expenseText]}>
+              {isIncome ? `+${formatAmount(item.amount)}` : `-${formatAmount(item.amount)}`}
+            </Text>
+            <View style={styles.actionButtons}>
+              <TouchableOpacity onPress={() => navigation.navigate('AddExpense', { editItem: item })} style={styles.actionIcon}>
+                <Ionicons name="pencil" size={18} color="#64748B" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDeleteTransaction(item.id)} style={styles.actionIcon}>
+                <Ionicons name="trash" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </View>
     );
   };
 
@@ -459,7 +486,7 @@ export default function HistoryScreen() {
                   <Ionicons name="chevron-back" size={18} color="#4B5563" />
                 </TouchableOpacity>
                 <Text style={styles.monthSelectorText}>
-                  {THAI_MONTHS[currentMonthIndex]} {currentYear}
+                  {THAI_MONTHS[currentMonthIndex]} {currentYear + 543}
                 </Text>
                 <TouchableOpacity onPress={handleNextMonth} style={styles.monthNavBtn}>
                   <Ionicons name="chevron-forward" size={18} color="#4B5563" />
@@ -715,6 +742,20 @@ const styles = StyleSheet.create({
   transactionSub: {
     fontSize: 12,
     color: '#64748B',
+  },
+  transactionCardWrapper: {
+    flex: 1,
+  },
+  amountAndActions: {
+    alignItems: 'flex-end',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  actionIcon: {
+    marginLeft: 12,
+    padding: 2,
   },
   transactionAmount: {
     fontSize: 15,

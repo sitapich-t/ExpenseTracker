@@ -23,6 +23,7 @@ import JoinGroupScreen from "./app/JoinGroupScreen";
 import UploadSlipScreen from "./app/UploadSlipScreen";
 import ScanResultScreen from "./app/ScanResultScreen";
 import EditProfileScreen from "./app/EditProfileScreen";
+import NotificationScreen from "./app/NotificationScreen";
 import ResponsiveWrapper from "./components/ResponsiveWrapper";
 import { COLORS } from "./theme";
 
@@ -63,6 +64,7 @@ function RootNavigator() {
                 <Stack.Screen name="ScanQRCode" component={ScanQRCodeScreen} />
                 <Stack.Screen name="JoinGroup" component={JoinGroupScreen} />
                 <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+                <Stack.Screen name="Notification" component={NotificationScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

@@ -3,7 +3,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     ScrollView,
     TouchableOpacity,
     Alert,
@@ -67,7 +66,7 @@ export default function ProfileScreen() {
 
     return (
         <ResponsiveWrapper>
-            <SafeAreaView style={styles.safeArea}>
+            <View style={styles.safeArea}>
                 <ScrollView
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
@@ -85,9 +84,9 @@ export default function ProfileScreen() {
                         {/* User Name */}
                         <Text style={styles.userName}>{name}</Text>
 
-                        {/* Sub details: studentId • email */}
+                        {/* Sub details: username • email */}
                         <Text style={styles.userSubDetails}>
-                            {studentId} • {email}
+                            {currentUser?.username || 'user'} • {email}
                         </Text>
 
                         {/* Edit Profile Button Pill */}
@@ -235,7 +234,7 @@ export default function ProfileScreen() {
                         </TouchableOpacity>
                     </View>
                 </ScrollView>
-            </SafeAreaView>
+            </View>
         </ResponsiveWrapper>
     );
 }

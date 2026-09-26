@@ -46,14 +46,14 @@ export default function RegisterScreen() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ username, email, password }),
+        body: JSON.stringify({ fullName, username, email, password }),
       });
 
       const data = await response.json();
 
       if (data.success) {
         Alert.alert('Success', 'Account created successfully', [
-          { text: 'OK', onPress: () => navigation.navigate('OTP') }
+          { text: 'OK', onPress: () => navigation.navigate('OTP', { email: email }) }
         ]);
       } else {
         Alert.alert('สมัครไม่สำเร็จ', data.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่');

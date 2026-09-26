@@ -26,12 +26,13 @@ export default function AddExpenseScreen() {
   const route = useRoute();
   const { currentUser } = useAuth();
   
-  const defaultType = route.params?.type || 'expense';
+  const editItem = route.params?.editItem;
+  const defaultType = editItem ? editItem.type : (route.params?.type || 'expense');
   
   const [type, setType] = useState(defaultType); // 'income' or 'expense'
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(defaultType === 'income' ? 'salary' : 'food');
-  const [note, setNote] = useState('');
+  const [amount, setAmount] = useState(editItem ? (editItem.amount ? editItem.amount.toString() : '') : '');
+  const [category, setCategory] = useState(editItem ? (editItem.category || (defaultType === 'income' ? 'salary' : 'food')) : (defaultType === 'income' ? 'salary' : 'food'));
+  const [note, setNote] = useState(editItem ? (editItem.note || '') : '');
   const [isCategoryModalVisible, setCategoryModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   
@@ -39,11 +40,16 @@ export default function AddExpenseScreen() {
   const dateFormattedStr = `วันนี้, ${now.getDate()} ${THAI_MONTHS[now.getMonth()]} ${now.getFullYear() + 543} (${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.)`;
 
   useEffect(() => {
-    if (route.params?.type) {
+    if (editItem) {
+      setType(editItem.type);
+      setAmount(editItem.amount ? editItem.amount.toString() : '');
+      setCategory(editItem.category || (editItem.type === 'income' ? 'salary' : 'food'));
+      setNote(editItem.title || editItem.note || '');
+    } else if (route.params?.type) {
       setType(route.params.type);
       setCategory(route.params.type === 'income' ? 'salary' : 'food');
     }
-  }, [route.params?.type]);
+  }, [route.params?.type, editItem]);
 
   const handleSave = async () => {
     const numAmount = parseFloat(amount.replace(/,/g, ''));
@@ -60,18 +66,30 @@ export default function AddExpenseScreen() {
         title: note.trim() || catInfo.name,
         amount: numAmount,
         type,
-        category: catInfo.name,
+        category: catInfo.id || category,
+        categoryName: catInfo.name,
         note: note.trim(),
         date: now.toISOString().split('T')[0],
       };
       
-      const res = await axios.post(`${API_BASE_URL}/expenses`, payload);
-      if (res.data && res.data.success) {
-        Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
-          { text: 'ตกลง', onPress: () => navigation.goBack() }
-        ]);
+      if (editItem) {
+        const res = await axios.put(`${API_BASE_URL}/expenses/${editItem.id}`, payload);
+        if (res.data && res.data.success) {
+          Alert.alert('สำเร็จ', 'แก้ไขรายการเรียบร้อยแล้ว', [
+            { text: 'ตกลง', onPress: () => navigation.goBack() }
+          ]);
+        } else {
+          Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถแก้ไขรายการได้');
+        }
       } else {
-        Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถบันทึกรายการได้');
+        const res = await axios.post(`${API_BASE_URL}/expenses`, payload);
+        if (res.data && res.data.success) {
+          Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
+            { text: 'ตกลง', onPress: () => navigation.goBack() }
+          ]);
+        } else {
+          Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถบันทึกรายการได้');
+        }
       }
     } catch (error) {
       console.log('Save expense error:', error);
@@ -95,7 +113,7 @@ export default function AddExpenseScreen() {
         >
           <Ionicons name="chevron-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>เพิ่มรายการบัญชี</Text>
+        <Text style={styles.headerTitle}>{editItem ? 'แก้ไขรายการ' : 'เพิ่มรายการบัญชี'}</Text>
         <View style={styles.avatarCircle}>
           <Ionicons name="person" size={18} color={COLORS.primary} />
         </View>
@@ -107,21 +125,8 @@ export default function AddExpenseScreen() {
       >
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
           
-          {/* Segmented Toggle Pills: รายรับ | รายจ่าย */}
+          {/* Segmented Toggle Pills: รายจ่าย | รายรับ */}
           <View style={styles.toggleContainer}>
-            <TouchableOpacity 
-              style={[styles.toggleBtn, isIncome && styles.toggleBtnActive]}
-              onPress={() => {
-                setType('income');
-                if (category === 'food') setCategory('salary');
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.toggleText, isIncome && styles.toggleTextActive]}>
-                รายรับ
-              </Text>
-            </TouchableOpacity>
-
             <TouchableOpacity 
               style={[styles.toggleBtn, !isIncome && styles.toggleBtnActive]}
               onPress={() => {
@@ -132,6 +137,19 @@ export default function AddExpenseScreen() {
             >
               <Text style={[styles.toggleText, !isIncome && styles.toggleTextActive]}>
                 รายจ่าย
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.toggleBtn, isIncome && styles.toggleBtnActive]}
+              onPress={() => {
+                setType('income');
+                if (category === 'food') setCategory('salary');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleText, isIncome && styles.toggleTextActive]}>
+                รายรับ
               </Text>
             </TouchableOpacity>
           </View>
@@ -201,16 +219,16 @@ export default function AddExpenseScreen() {
             </View>
           </View>
 
-          {/* Big Green Save Button matching mockup */}
+          {/* Save Button matching mockup */}
           <View style={styles.saveBtnContainer}>
             <TouchableOpacity 
-              style={[styles.saveButton, loading && { opacity: 0.7 }]}
+              style={[styles.saveButton, loading && { opacity: 0.7 }, { backgroundColor: isIncome ? '#16A34A' : '#EF4444', shadowColor: isIncome ? '#16A34A' : '#EF4444' }]}
               onPress={handleSave}
               disabled={loading}
               activeOpacity={0.85}
             >
               <Text style={styles.saveButtonText}>
-                {loading ? 'กำลังบันทึก...' : 'บันทึก'}
+                {loading ? 'กำลังบันทึก...' : (editItem ? 'บันทึกการแก้ไข' : 'บันทึก')}
               </Text>
             </TouchableOpacity>
           </View>

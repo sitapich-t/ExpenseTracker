@@ -58,12 +58,17 @@ export default function GroupDetailScreen() {
             <Ionicons name="arrow-back" size={24} color="#1E293B" />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{groupName}</Text>
-          <TouchableOpacity 
-            style={styles.bellButton}
-            onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
-          >
-            <Ionicons name="notifications-outline" size={20} color="#1E293B" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => navigation.navigate('GroupQRCode', { groupId, groupName })}>
+              <Ionicons name="qr-code-outline" size={24} color="#1E293B" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.bellButton}
+              onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
+            >
+              <Ionicons name="notifications-outline" size={20} color="#1E293B" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView 

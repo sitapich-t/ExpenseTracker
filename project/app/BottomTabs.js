@@ -53,7 +53,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
                                     color={iconColor}
                                 />
                             );
-                        } else if (route.name === "รายจ่าย") {
+                        } else if (route.name === "รายการ") {
                             return (
                                 <MaterialCommunityIcons
                                     name="receipt-text-outline"
@@ -133,7 +133,7 @@ export default function BottomTabs() {
             }}
         >
             <Tab.Screen name="หน้าแรก" component={HomeScreen} />
-            <Tab.Screen name="รายจ่าย" component={HistoryScreen} />
+            <Tab.Screen name="รายการ" component={HistoryScreen} />
             <Tab.Screen name="กลุ่ม" component={GroupListScreen} />
             <Tab.Screen name="วิเคราะห์" component={ReportScreen} />
             <Tab.Screen name="โปรไฟล์" component={ProfileScreen} />
