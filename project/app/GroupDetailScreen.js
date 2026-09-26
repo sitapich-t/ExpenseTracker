@@ -13,45 +13,41 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
+import { useGroup } from './context/GroupContext';
 
 export default function GroupDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const groupName = route.params?.groupName || 'ทริปหัวหิน 2026 🏖️';
+  const { getGroup } = useGroup();
+
+  const groupId = route.params?.groupId || '1';
+  const group = getGroup(groupId);
+
+  const groupName = group?.name || route.params?.groupName || 'ทริปหัวหิน 2026 🏖️';
+  const members = (group?.members && group.members.length > 0)
+    ? group.members
+    : [
+        { id: '1', name: 'นนท์ (ฉัน)', color: '#EF4444' },
+        { id: '2', name: 'พลอย', color: '#10B981' },
+        { id: '3', name: 'เตีย', color: '#F59E0B' },
+        { id: '4', name: 'มาร์ช', color: '#8B5CF6' },
+      ];
+  const bills = group?.bills || [];
   const [note, setNote] = useState('');
 
-  // Mock members matching mockup
-  const members = [
-    { id: '1', name: 'นนท์ (ฉัน)', color: '#EF4444' },
-    { id: '2', name: 'พลอย', color: '#10B981' },
-    { id: '3', name: 'เตีย', color: '#F59E0B' },
-    { id: '4', name: 'มาร์ช', color: '#8B5CF6' },
-  ];
+  // Dynamic calculations:
+  const totalAmount = bills.reduce((sum, b) => {
+    return sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0);
+  }, 0);
 
-  // Group bills matching mockup
-  const bills = [
-    {
-      id: 'b1',
-      title: 'ค่าอาหารค่ำซีฟู้ด 🦐',
-      payer: 'พลอย',
-      splitText: 'แชร์ทุกคน',
-      amount: '5,400',
-    },
-    {
-      id: 'b2',
-      title: 'ค่าที่พักพูลวิลล่า 🌴',
-      payer: 'เตีย',
-      splitText: 'แชร์ทุกคน',
-      amount: '4,000',
-    },
-    {
-      id: 'b3',
-      title: 'ค่าน้ำมันรถเดินทาง 🚗',
-      payer: 'มาร์ช',
-      splitText: 'แชร์ทุกคน',
-      amount: '3,000',
-    },
-  ];
+  const n = members.length || 1;
+  const perPerson = Math.round((totalAmount / n) * 100) / 100;
+
+  const userPaid = bills
+    .filter((b) => b.payer === 'นนท์ (ฉัน)' || b.payer === 'ฉัน' || b.payer === 'นนท์')
+    .reduce((sum, b) => sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0), 0);
+
+  const netBalance = userPaid - perPerson;
 
   return (
     <ResponsiveWrapper>
@@ -77,21 +73,35 @@ export default function GroupDetailScreen() {
           {/* Purple Summary Card */}
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>ยอดสรุปในกลุ่มนี้</Text>
-            <Text style={styles.summaryAmount}>3,100.00</Text>
+            <Text style={styles.summaryAmount}>
+              {group?.settled || totalAmount === 0
+                ? '0.00'
+                : Math.abs(netBalance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
             
             <View style={styles.summaryFooterRow}>
               <View style={styles.receiveStatusPill}>
-                <View style={styles.greenDot} />
-                <Text style={styles.receiveStatusText}>คุณจะได้รับเงินสุทธิ</Text>
+                <View style={[styles.greenDot, { backgroundColor: group?.settled ? '#60A5FA' : netBalance >= 0 ? '#10B981' : '#F97316' }]} />
+                <Text style={styles.receiveStatusText}>
+                  {group?.settled
+                    ? 'เคลียร์บิลเรียบร้อยแล้ว'
+                    : totalAmount === 0
+                    ? 'ยังไม่มีค่าใช้จ่าย'
+                    : netBalance >= 0
+                    ? 'คุณจะได้รับเงินสุทธิ'
+                    : 'คุณมียอดค้างจ่าย'}
+                </Text>
               </View>
-              <Text style={styles.groupTotalText}>ยอดรวมกลุ่ม 12,400.00</Text>
+              <Text style={styles.groupTotalText}>
+                ยอดรวมกลุ่ม {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
             </View>
           </View>
 
           {/* Settle Bill Banner CTA */}
           <TouchableOpacity 
             style={styles.settleCtaBtn}
-            onPress={() => navigation.navigate('GroupSettle', { groupName, members, bills })}
+            onPress={() => navigation.navigate('GroupSettle', { groupId: group?.id || groupId, groupName, members, bills })}
             activeOpacity={0.85}
           >
             <View style={styles.settleCtaLeft}>
@@ -104,9 +114,9 @@ export default function GroupDetailScreen() {
             <Ionicons name="chevron-forward" size={20} color="#6D28D9" />
           </TouchableOpacity>
 
-          {/* Section 1: สมาชิกกลุ่ม (4 คน) */}
+          {/* Section 1: สมาชิกกลุ่ม */}
           <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>สมาชิกกลุ่ม (4 คน)</Text>
+            <Text style={styles.sectionTitle}>สมาชิกกลุ่ม ({members.length} คน)</Text>
           </View>
 
           <ScrollView 
@@ -125,24 +135,32 @@ export default function GroupDetailScreen() {
           {/* Section 2: รายการบิลกลุ่ม */}
           <View style={styles.billSectionHeader}>
             <Text style={styles.sectionTitle}>รายการบิลกลุ่ม</Text>
-            <Text style={styles.totalBillSub}>ยอดรวม 12,400.00</Text>
+            <Text style={styles.totalBillSub}>
+              ยอดรวม {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
           </View>
 
           {/* Bill List */}
-          {bills.map((bill) => (
-            <View key={bill.id} style={styles.billCard}>
-              <View style={styles.billIconBox}>
-                <Ionicons name="cart-outline" size={20} color="#1E293B" />
-              </View>
-
-              <View style={styles.billInfoCol}>
-                <Text style={styles.billTitle}>{bill.title}</Text>
-                <Text style={styles.billSub}>ผู้จ่าย: {bill.payer} • {bill.splitText}</Text>
-              </View>
-
-              <Text style={styles.billAmount}>{bill.amount}</Text>
+          {bills.length === 0 ? (
+            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+              <Text style={{ color: '#94A3B8', fontSize: 13 }}>ยังไม่มีรายการบิลในกลุ่มนี้ แตะปุ่ม + เพื่อเพิ่มบิล</Text>
             </View>
-          ))}
+          ) : (
+            bills.map((bill) => (
+              <View key={bill.id} style={styles.billCard}>
+                <View style={styles.billIconBox}>
+                  <Ionicons name="cart-outline" size={20} color="#1E293B" />
+                </View>
+
+                <View style={styles.billInfoCol}>
+                  <Text style={styles.billTitle}>{bill.title}</Text>
+                  <Text style={styles.billSub}>ผู้จ่าย: {bill.payer} • {bill.splitText || 'แชร์ทุกคน'}</Text>
+                </View>
+
+                <Text style={styles.billAmount}>{bill.amount}</Text>
+              </View>
+            ))
+          )}
 
           {/* Section 3: Note (Optional) */}
           <View style={styles.noteSection}>
@@ -160,7 +178,7 @@ export default function GroupDetailScreen() {
         {/* Floating Add Expense (+) Button */}
         <TouchableOpacity 
           style={styles.fabButton}
-          onPress={() => navigation.navigate('AddGroupExpense', { groupName })}
+          onPress={() => navigation.navigate('AddGroupExpense', { groupId: group?.id || groupId, groupName, members })}
           activeOpacity={0.85}
         >
           <Ionicons name="add" size={28} color="#FFFFFF" />

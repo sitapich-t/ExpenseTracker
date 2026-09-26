@@ -6,6 +6,7 @@ import { ActivityIndicator, View, LogBox } from "react-native";
 LogBox.ignoreAllLogs(true);
 
 import { AuthProvider, useAuth } from "./app/context/AuthContext";
+import { GroupProvider } from "./app/context/GroupContext";
 import LoginScreen from "./app/LoginScreen";
 import RegisterScreen from "./app/RegisterScreen";
 import OTPScreen from "./app/OTPScreen";
@@ -70,7 +71,9 @@ function RootNavigator() {
 export default function App() {
     return (
         <AuthProvider>
-            <RootNavigator />
+            <GroupProvider>
+                <RootNavigator />
+            </GroupProvider>
         </AuthProvider>
     );
 }
