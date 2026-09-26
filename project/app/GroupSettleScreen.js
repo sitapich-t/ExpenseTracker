@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
+import { useGroup } from './context/GroupContext';
 
 // Default group members if none passed via route params
 const DEFAULT_MEMBERS = [
@@ -147,6 +148,9 @@ export default function GroupSettleScreen() {
     );
   };
 
+  const { settleGroup } = useGroup();
+  const groupId = route.params?.groupId;
+
   const handleSaveSettle = () => {
     Alert.alert(
       'ยืนยันการเคลียร์บิล',
@@ -156,6 +160,9 @@ export default function GroupSettleScreen() {
         {
           text: 'บันทึกการเคลียร์บิล',
           onPress: () => {
+            if (groupId) {
+              settleGroup(groupId);
+            }
             Alert.alert('สำเร็จ! 🎉', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
               { text: 'ตกลง', onPress: () => navigation.goBack() },
             ]);

@@ -23,7 +23,7 @@ export default function HomeScreen() {
   const { currentUser } = useAuth();
   
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   
   const [summary, setSummary] = useState({
     totalBalance: 43580,
@@ -45,9 +45,9 @@ export default function HomeScreen() {
       const userId = currentUser?.id || 'demo_user';
       
       const [summaryRes, budgetRes, expensesRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/summary?userId=${userId}&month=${monthStr}`).catch(() => null),
-        axios.get(`${API_BASE_URL}/budget?userId=${userId}`).catch(() => null),
-        axios.get(`${API_BASE_URL}/expenses?userId=${userId}&month=${monthStr}`).catch(() => null),
+        axios.get(`${API_BASE_URL}/summary?userId=${userId}&month=${monthStr}`, { timeout: 3000 }).catch(() => null),
+        axios.get(`${API_BASE_URL}/budget?userId=${userId}`, { timeout: 3000 }).catch(() => null),
+        axios.get(`${API_BASE_URL}/expenses?userId=${userId}&month=${monthStr}`, { timeout: 3000 }).catch(() => null),
       ]);
       
       if (summaryRes?.data?.success && summaryRes.data.data) {

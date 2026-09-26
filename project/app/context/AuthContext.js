@@ -16,7 +16,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(DEFAULT_USER);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
 
     // ─── โหลด session จาก AsyncStorage เมื่อ app เริ่ม ───────────────────
     useEffect(() => {

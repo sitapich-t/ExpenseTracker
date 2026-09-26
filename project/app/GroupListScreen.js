@@ -12,42 +12,66 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
-
-const MOCK_GROUPS = [
-  {
-    id: '1',
-    name: 'ทริปหัวหิน 2026 🏖️',
-    memberColors: ['#10B981', '#F59E0B', '#EC4899', '#3B82F6'],
-    extraCount: 1,
-    totalBill: '12,400.00',
-    statusType: 'receive', // receive, debt, settled
-    statusLabel: 'ยอดรอรับทั้งหมด',
-    statusAmount: '3,100.00',
-  },
-  {
-    id: '2',
-    name: 'แชร์ค่าบ้านพัก พัทยา 🌴',
-    memberColors: ['#F97316', '#3B82F6', '#10B981'],
-    extraCount: 0,
-    totalBill: '4,500.00',
-    statusType: 'debt',
-    statusLabel: 'ยอดค้างจ่าย',
-    statusAmount: '1,500.00',
-  },
-  {
-    id: '3',
-    name: 'มื้อเที่ยงออฟฟิศ ☕',
-    memberColors: ['#8B5CF6', '#3B82F6', '#EF4444'],
-    extraCount: 0,
-    totalBill: '840.00',
-    statusType: 'settled',
-    statusLabel: 'เคลียร์แล้ว',
-    statusAmount: '✓ เคลียร์แล้ว',
-  },
-];
+import { useGroup } from './context/GroupContext';
 
 export default function GroupListScreen() {
   const navigation = useNavigation();
+  const { groups } = useGroup();
+
+  const processedGroups = groups.map((g) => {
+    const memberColors = (g.members || []).map((m) => m.color || '#7C3AED');
+    const extraCount = Math.max(0, (g.members?.length || 0) - 4);
+
+    const total = (g.bills || []).reduce((sum, b) => {
+      return sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0);
+    }, 0);
+
+    const n = g.members?.length || 1;
+    const perPerson = Math.round((total / n) * 100) / 100;
+
+    const userPaid = (g.bills || [])
+      .filter((b) => b.payer === 'นนท์ (ฉัน)' || b.payer === 'ฉัน' || b.payer === 'นนท์')
+      .reduce((sum, b) => sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0), 0);
+
+    const net = userPaid - perPerson;
+
+    let statusType = 'settled';
+    let statusLabel = 'เคลียร์แล้ว';
+    let statusAmount = '✓ เคลียร์แล้ว';
+
+    if (g.settled || total === 0) {
+      statusType = 'settled';
+      statusLabel = 'เคลียร์แล้ว';
+      statusAmount = '✓ เคลียร์แล้ว';
+    } else if (net > 0.01) {
+      statusType = 'receive';
+      statusLabel = 'ยอดรอรับ';
+      statusAmount = `+${net.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } else if (net < -0.01) {
+      statusType = 'debt';
+      statusLabel = 'ยอดค้างจ่าย';
+      statusAmount = `-${Math.abs(net).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    return {
+      ...g,
+      memberColors: memberColors.slice(0, 4),
+      extraCount,
+      totalBill: total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      statusType,
+      statusLabel,
+      statusAmount,
+      net,
+    };
+  });
+
+  const totalReceive = processedGroups
+    .filter((g) => !g.settled && g.net > 0.01)
+    .reduce((sum, g) => sum + g.net, 0);
+
+  const totalDebt = processedGroups
+    .filter((g) => !g.settled && g.net < -0.01)
+    .reduce((sum, g) => sum + Math.abs(g.net), 0);
 
   return (
     <ResponsiveWrapper>
@@ -78,12 +102,16 @@ export default function GroupListScreen() {
             <View style={styles.summaryRow}>
               <View style={styles.summaryCol}>
                 <Text style={styles.summaryColLabel}>ยอดรอรับทั้งหมด</Text>
-                <Text style={styles.summaryColAmount}>3,100.00</Text>
+                <Text style={styles.summaryColAmount}>
+                  {totalReceive.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
               </View>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryCol}>
                 <Text style={styles.summaryColLabel}>ยอดติดจ่ายทั้งหมด</Text>
-                <Text style={styles.summaryColAmount}>1,500.00</Text>
+                <Text style={styles.summaryColAmount}>
+                  {totalDebt.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
               </View>
             </View>
           </View>
@@ -111,11 +139,11 @@ export default function GroupListScreen() {
 
           {/* Section Title */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>กลุ่มทั้งหมด ({MOCK_GROUPS.length})</Text>
+            <Text style={styles.sectionTitle}>กลุ่มทั้งหมด ({processedGroups.length})</Text>
           </View>
 
           {/* Group Cards */}
-          {MOCK_GROUPS.map((item) => (
+          {processedGroups.map((item) => (
             <TouchableOpacity 
               key={item.id}
               style={styles.groupCard}

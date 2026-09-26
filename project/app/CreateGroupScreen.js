@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
+import { useGroup } from './context/GroupContext';
 
 const GROUP_COLORS_6 = [
   '#7C3AED', // Purple (default selected)
@@ -28,6 +29,7 @@ const CATEGORIES = ['ท่องเที่ยว', 'อาหารและ�
 
 export default function CreateGroupScreen() {
   const navigation = useNavigation();
+  const { addGroup } = useGroup();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('ท่องเที่ยว');
@@ -41,8 +43,25 @@ export default function CreateGroupScreen() {
       return;
     }
 
+    addGroup({
+      name: name.trim(),
+      description: description.trim(),
+      category,
+      color: selectedColor,
+      budget,
+    });
+
     Alert.alert('สร้างกลุ่มสำเร็จ! 🎉', `สร้างกลุ่ม "${name}" เรียบร้อยแล้ว`, [
-      { text: 'ตกลง', onPress: () => navigation.goBack() }
+      {
+        text: 'ตกลง',
+        onPress: () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('Home', { screen: 'Group' });
+          }
+        },
+      }
     ]);
   };
 

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { SHADOWS } from '../theme';
 import ResponsiveWrapper from '../components/ResponsiveWrapper';
+import { useGroup } from './context/GroupContext';
 
 const CATEGORIES = [
   { id: 'food', label: 'อาหาร', icon: 'restaurant-outline' },
@@ -26,20 +27,27 @@ const CATEGORIES = [
 export default function AddGroupExpenseScreen() {
   const navigation = useNavigation();
   const route = useRoute();
+  const { addGroupBill } = useGroup();
+
+  const groupId = route.params?.groupId || '1';
   const groupName = route.params?.groupName || 'ทริปหัวหิน 2026';
 
-  const [title, setTitle] = useState('ค่าซีฟู้ดชายหาดพัทยา มื้อเสริม');
-  const [amount, setAmount] = useState('2,800.00');
-  const [selectedCategory, setSelectedCategory] = useState('food');
-  const [payer, setPayer] = useState('คุณพลอย');
-  const [showPayerModal, setShowPayerModal] = useState(false);
+  const routeMembers = route.params?.members;
+  const initialMembers = (routeMembers && routeMembers.length > 0)
+    ? routeMembers.map((m) => ({ ...m, selected: true }))
+    : [
+        { id: '1', name: 'นนท์ (ฉัน)', color: '#EF4444', selected: true },
+        { id: '2', name: 'พลอย', color: '#10B981', selected: true },
+        { id: '3', name: 'เตีย', color: '#F59E0B', selected: true },
+        { id: '4', name: 'มาร์ช', color: '#8B5CF6', selected: true },
+      ];
 
-  const [members, setMembers] = useState([
-    { id: '1', name: 'นนท์ (ผู้ใช้)', color: '#EF4444', selected: true },
-    { id: '2', name: 'พลอย', color: '#10B981', selected: true },
-    { id: '3', name: 'เตีย', color: '#F59E0B', selected: true },
-    { id: '4', name: 'มาร์ช', color: '#8B5CF6', selected: true },
-  ]);
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('food');
+  const [payer, setPayer] = useState(initialMembers[0]?.name || 'นนท์ (ฉัน)');
+  const [showPayerModal, setShowPayerModal] = useState(false);
+  const [members, setMembers] = useState(initialMembers);
 
   // Compute equal split per selected person
   const numAmount = parseFloat(amount.replace(/,/g, '')) || 0;
@@ -62,8 +70,24 @@ export default function AddGroupExpenseScreen() {
       return;
     }
 
+    addGroupBill(groupId, {
+      title: title.trim(),
+      amount: numAmount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+      category: selectedCategory,
+      payer: payer,
+    });
+
     Alert.alert('บันทึกสำเร็จ! 🎉', `บันทึกรายการ "${title}" ฿${amount} เข้ากลุ่มเรียบร้อยแล้ว`, [
-      { text: 'ตกลง', onPress: () => navigation.goBack() }
+      {
+        text: 'ตกลง',
+        onPress: () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('GroupDetail', { groupId, groupName });
+          }
+        },
+      }
     ]);
   };
 
@@ -245,7 +269,7 @@ export default function AddGroupExpenseScreen() {
                   key={m.id}
                   style={styles.modalOption}
                   onPress={() => {
-                    setPayer(`คุณ${m.name.replace(' (ผู้ใช้)', '')}`);
+                    setPayer(m.name);
                     setShowPayerModal(false);
                   }}
                 >
