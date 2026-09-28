@@ -15,11 +15,12 @@ import QRCode from 'react-native-qrcode-svg';
 
 export default function GroupQrCodeScreen() {
   const router = useRouter();
-  const { id, name } = useLocalSearchParams();
+  const { id, name, code } = useLocalSearchParams();
   const [sharing, setSharing] = useState(false);
 
   const groupId = Array.isArray(id) ? id[0] : id;
   const groupName = (Array.isArray(name) ? name[0] : name) || 'กลุ่ม';
+  const inviteCode = (Array.isArray(code) ? code[0] : code) || '';
 
   if (!groupId) {
     return (
@@ -33,7 +34,7 @@ export default function GroupQrCodeScreen() {
     );
   }
 
-  const qrValue = JSON.stringify({ action: 'join_group', groupId });
+  const qrValue = JSON.stringify({ action: 'join_group', groupId, groupName });
 
   const handleShare = async () => {
     try {
@@ -77,7 +78,7 @@ export default function GroupQrCodeScreen() {
           <View style={styles.codeBox}>
             <Text style={styles.codeLabel}>หรือให้เพื่อนกรอกรหัสกลุ่ม</Text>
             <Text style={styles.codeValue} selectable>
-              {groupId}
+              {inviteCode || groupId}
             </Text>
           </View>
         </View>

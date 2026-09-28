@@ -171,42 +171,17 @@ export default function ConfirmReceiptScreen() {
   const [amount, setAmount] = useState(params.amount || '');
   const [vat, setVat] = useState(params.vat || '0');
   const [serviceCharge, setServiceCharge] = useState(params.serviceCharge || '0');
+
   const [date, setDate] = useState(isoToDisplayDate(params.date));
   const [categoryId, setCategoryId] = useState(initialCategoryId);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card');
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // ✨ State สำหรับรายการสินค้า
+    // ✨ State สำหรับรายการสินค้า
   const [lineItems, setLineItems] = useState(initialLineItems);
 
-  // ป้องกัน state ค้างจากรอบก่อนหน้า เมื่อ navigate มาหน้านี้ซ้ำด้วย params ใหม่
-  // (useState initializer รันแค่ครั้งแรกที่ mount เท่านั้น ไม่รู้ว่า params เปลี่ยน)
-  // ใช้ pattern ของ React: ปรับ state ระหว่าง render เมื่อ "คีย์" ของ params เปลี่ยน
-  const paramsKey = JSON.stringify([
-    params.merchant,
-    params.amount,
-    params.vat,
-    params.serviceCharge,
-    params.date,
-    params.lineItems,
-    params.documentType,
-  ]);
-  const [lastParamsKey, setLastParamsKey] = useState(paramsKey);
-  if (paramsKey !== lastParamsKey) {
-    setLastParamsKey(paramsKey);
-    setMerchant(detectedMerchant);
-    setAmount(params.amount || '');
-    setVat(params.vat || '0');
-    setServiceCharge(params.serviceCharge || '0');
-    setDate(isoToDisplayDate(params.date));
-    setCategoryId(initialCategoryId);
-    setLineItems(initialLineItems);
-    setPaymentMethod(isTransferSlip ? 'Transfer' : 'Card');
-  }
-
   const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
-
   // ----------------------------------------------------
   // Helper Logic สำหรับจัดการ Line Items
   // ----------------------------------------------------
@@ -264,7 +239,7 @@ export default function ConfirmReceiptScreen() {
           merchant: merchant,
           transaction_date: displayDateToIso(date) || new Date().toISOString(),
           paymentMethod: paymentMethod,
-          items: lineItems, // ✨ ส่งรายการย่อยไปด้วย
+          items: lineItems,
         }),
       });
 
