@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,32 +6,41 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { SHADOWS } from '../theme';
-import ResponsiveWrapper from '../components/ResponsiveWrapper';
+import { SHADOWS } from '@/lib/theme';
 import { useGroup } from './context/GroupContext';
 
-export default function GroupDetailScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { getGroup } = useGroup();
+// ดึงข้อมูลใหม่ทุกครั้งที่หน้านี้ถูกโฟกัส
+const useFocusRefresh = (fn) => {
+  useFocusEffect(
+    useCallback(() => {
+      fn();
+    }, [fn])
+  );
+};
 
-  const groupId = route.params?.groupId || '1';
+export default function GroupDetailScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const { getGroup, me, refresh } = useGroup();
+
+  const groupId = params.groupId;
   const group = getGroup(groupId);
 
-  const groupName = group?.name || route.params?.groupName || 'ทริปหัวหิน 2026 🏖️';
-  const members = (group?.members && group.members.length > 0)
-    ? group.members
-    : [
-        { id: '1', name: 'นนท์ (ฉัน)', color: '#EF4444' },
-        { id: '2', name: 'พลอย', color: '#10B981' },
-        { id: '3', name: 'เตีย', color: '#F59E0B' },
-        { id: '4', name: 'มาร์ช', color: '#8B5CF6' },
-      ];
+  // เพิ่งเข้ามาจาก join/QR อาจยังไม่มีใน state -> รอ refresh ก่อนบอกว่าไม่พบกลุ่ม
+  const [refreshed, setRefreshed] = useState(false);
+  useFocusRefresh(async () => {
+    await refresh();
+    setRefreshed(true);
+  });
+
+  const groupName = group?.name || params.groupName || 'กลุ่มของฉัน';
+  const members = group?.members || [];
   const bills = group?.bills || [];
   const [note, setNote] = useState('');
 
@@ -43,27 +52,65 @@ export default function GroupDetailScreen() {
   const n = members.length || 1;
   const perPerson = Math.round((totalAmount / n) * 100) / 100;
 
+  // เทียบด้วย id ของฉันจริง ไม่ใช่ชื่อ (ชื่อซ้ำกันได้)
   const userPaid = bills
-    .filter((b) => b.payer === 'นนท์ (ฉัน)' || b.payer === 'ฉัน' || b.payer === 'นนท์')
+    .filter((b) => me?.id && String(b.payer) === String(me.id))
     .reduce((sum, b) => sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0), 0);
 
   const netBalance = userPaid - perPerson;
 
+  if (!group && !refreshed) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#6D28D9" />
+          <Text style={{ marginTop: 12, color: '#64748B' }}>กำลังโหลดกลุ่ม...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!group) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Ionicons name="alert-circle-outline" size={48} color="#94A3B8" />
+          <Text style={{ marginTop: 12, color: '#475569', textAlign: 'center' }}>
+            ไม่พบกลุ่มนี้ หรือคุณไม่ได้เป็นสมาชิก
+          </Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Text style={{ color: '#6D28D9' }}>ย้อนกลับ</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ResponsiveWrapper>
+    <>
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#1E293B" />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{groupName}</Text>
-          <TouchableOpacity 
-            style={styles.bellButton}
-            onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
-          >
-            <Ionicons name="notifications-outline" size={20} color="#1E293B" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.bellButton}
+              onPress={() =>
+                router.push({ pathname: '/group-qrcode', params: { id: groupId, name: groupName } })
+              }
+            >
+              <Ionicons name="qr-code-outline" size={20} color="#1E293B" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.bellButton}
+              onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
+            >
+              <Ionicons name="notifications-outline" size={20} color="#1E293B" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView 
@@ -101,7 +148,7 @@ export default function GroupDetailScreen() {
           {/* Settle Bill Banner CTA */}
           <TouchableOpacity 
             style={styles.settleCtaBtn}
-            onPress={() => navigation.navigate('GroupSettle', { groupId: group?.id || groupId, groupName, members, bills })}
+            onPress={() => router.push({ pathname: '/settle-group', params: { groupId, groupName } })}
             activeOpacity={0.85}
           >
             <View style={styles.settleCtaLeft}>
@@ -178,13 +225,13 @@ export default function GroupDetailScreen() {
         {/* Floating Add Expense (+) Button */}
         <TouchableOpacity 
           style={styles.fabButton}
-          onPress={() => navigation.navigate('AddGroupExpense', { groupId: group?.id || groupId, groupName, members })}
+            onPress={() => router.push({ pathname: '/add-group-expense', params: { groupId, groupName } })}
           activeOpacity={0.85}
         >
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </TouchableOpacity>
       </SafeAreaView>
-    </ResponsiveWrapper>
+    </>
   );
 }
 
@@ -213,6 +260,11 @@ const styles = StyleSheet.create({
     color: '#1E293B',
     textAlign: 'center',
     marginHorizontal: 10,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   bellButton: {
     width: 36,

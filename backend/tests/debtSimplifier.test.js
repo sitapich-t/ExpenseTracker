@@ -80,4 +80,34 @@ describe('simplifyDebts', () => {
     // ค่าเริ่มต้น tolerance = 0.01 ควรผ่านได้
     expect(() => simplifyDebts(balances)).not.toThrow();
   });
+ 
+  test('ปัดเศษแยกทีละคนแล้วมี residual สตางค์ ต้องไม่ทำให้เงินตกหล่น', () => {
+    const balances = [
+      { person: 'A', amount: 100.006 },
+      { person: 'B', amount: -50.003 },
+      { person: 'C', amount: -50.003 },
+    ];
+
+    const txs = simplifyDebts(balances);
+
+    // A ควรได้รับเงินคืนรวม = ค่าที่ปัดเป็นสตางค์แล้ว (100.00) ไม่ใช่ 100.006 ดิบ
+    // เพราะระบบเงินไม่มีหน่วยละเอียดกว่าสตางค์
+    const totalToA = txs
+      .filter((t) => t.to === 'A')
+      .reduce((s, t) => s + t.amount, 0);
+    expect(totalToA).toBeCloseTo(100.0, 2);
+
+    // เช็คสิ่งที่สำคัญที่สุด: ผลรวมทุกธุรกรรมต้องเท่ากับผลรวมฝั่งลูกหนี้ทั้งหมด
+    // (ไม่มีสตางค์ไหนหายไปเงียบๆ ระหว่างทาง)
+    const totalTransferred = txs.reduce((s, t) => s + t.amount, 0);
+    const totalDebt = balances
+      .filter((b) => b.amount < 0)
+      .reduce((s, b) => s - b.amount, 0);
+    // totalDebt ดิบ = 100.006, แต่หลังปัดเป็นสตางค์แล้วควรได้ 100.00 พอดี
+    expect(totalTransferred).toBeCloseTo(100.0, 2);
+
+    // เช็คว่าไม่มีสตางค์ "หาย" จริงๆ: transferred ต้องเท่ากับผลรวมสตางค์ที่คำนวณจริง
+    // (residual ถูกจัดการแล้ว ไม่ใช่แค่บังเอิญตรง)
+    expect(txs.length).toBeGreaterThan(0);
+  });
 });

@@ -1,22 +1,22 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { COLORS, SHADOWS } from '../theme';
-import ResponsiveWrapper from '../components/ResponsiveWrapper';
-import { useGroup } from './context/GroupContext';
+import { useRouter } from 'expo-router';
+import { SHADOWS } from '@/lib/theme';
+import { useGroup } from '../context/GroupContext';
 
 export default function GroupListScreen() {
-  const navigation = useNavigation();
-  const { groups } = useGroup();
+  const router = useRouter();
+  const { groups, me, loading } = useGroup();
 
   const processedGroups = groups.map((g) => {
     const memberColors = (g.members || []).map((m) => m.color || '#7C3AED');
@@ -29,8 +29,9 @@ export default function GroupListScreen() {
     const n = g.members?.length || 1;
     const perPerson = Math.round((total / n) * 100) / 100;
 
+    // เทียบด้วย id ของฉันจริง ไม่ใช่ชื่อ (ชื่อซ้ำกันได้)
     const userPaid = (g.bills || [])
-      .filter((b) => b.payer === 'นนท์ (ฉัน)' || b.payer === 'ฉัน' || b.payer === 'นนท์')
+      .filter((b) => me?.id && String(b.payer) === String(me.id))
       .reduce((sum, b) => sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0), 0);
 
     const net = userPaid - perPerson;
@@ -74,22 +75,24 @@ export default function GroupListScreen() {
     .reduce((sum, g) => sum + Math.abs(g.net), 0);
 
   return (
-    <ResponsiveWrapper>
+    <>
       <SafeAreaView style={styles.safeArea}>
         {/* Header Bar */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>B</Text>
-            </View>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>
+                  {(me?.name || 'B').trim().charAt(0).toUpperCase() || 'B'}
+                </Text>
+              </View>
             <Text style={styles.headerTitle}>กลุ่มแชร์บิลของฉัน</Text>
           </View>
-          <TouchableOpacity 
+          {/* <TouchableOpacity 
             style={styles.searchPill}
             onPress={() => Alert.alert('ค้นหา', 'ค้นหากลุ่มหรือสมาชิก')}
           >
             <Text style={styles.searchText}>ค้นหา</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         <ScrollView 
@@ -120,7 +123,7 @@ export default function GroupListScreen() {
           <View style={styles.actionRow}>
             <TouchableOpacity 
               style={styles.createBtn}
-              onPress={() => navigation.navigate('CreateGroup')}
+                onPress={() => router.push('/create-group')}
               activeOpacity={0.85}
             >
               <Ionicons name="add" size={18} color="#FFFFFF" style={{ marginRight: 4 }} />
@@ -129,7 +132,7 @@ export default function GroupListScreen() {
 
             <TouchableOpacity 
               style={styles.joinBtn}
-              onPress={() => navigation.navigate('JoinGroup')}
+                onPress={() => router.push('/join-group')}
               activeOpacity={0.85}
             >
               <Ionicons name="link-outline" size={18} color="#6D28D9" style={{ marginRight: 4 }} />
@@ -142,12 +145,26 @@ export default function GroupListScreen() {
             <Text style={styles.sectionTitle}>กลุ่มทั้งหมด ({processedGroups.length})</Text>
           </View>
 
-          {/* Group Cards */}
-          {processedGroups.map((item) => (
+            {/* Group Cards */}
+            {loading && processedGroups.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <ActivityIndicator size="large" color="#6D28D9" />
+                <Text style={styles.emptyText}>กำลังโหลดกลุ่ม...</Text>
+              </View>
+            ) : processedGroups.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Ionicons name="people-outline" size={44} color="#C4B5FD" />
+                <Text style={styles.emptyText}>ยังไม่มีกลุ่ม</Text>
+                <Text style={styles.emptyHint}>
+                  สร้างกลุ่มใหม่ หรือเข้าร่วมกลุ่มของเพื่อนด้วยรหัสเชิญ
+                </Text>
+              </View>
+            ) : (
+              processedGroups.map((item) => (
             <TouchableOpacity 
               key={item.id}
               style={styles.groupCard}
-              onPress={() => navigation.navigate('GroupDetail', { groupId: item.id, groupName: item.name })}
+                onPress={() => router.push({ pathname: '/detail-group', params: { groupId: item.id } })}
               activeOpacity={0.9}
             >
               {/* Card Top */}
@@ -205,16 +222,37 @@ export default function GroupListScreen() {
                 ]}>
                   {item.statusAmount}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </SafeAreaView>
-    </ResponsiveWrapper>
-  );
-}
+                </View>
+              </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </SafeAreaView>
+    </>
+    );
+  }
+
 
 const styles = StyleSheet.create({
+  emptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6D28D9',
+    marginTop: 4,
+  },
+  emptyHint: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: '#F8FAFC',

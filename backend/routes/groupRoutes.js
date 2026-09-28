@@ -7,8 +7,11 @@ const groupController = require('../controllers/groupController');
 // Groups Routes (mounted at /api/v1/groups)
 // ==========================================
 router.get('/my', authenticate, groupController.getMyGroups);
+router.get('/invite/:code', authenticate, groupController.getGroupByInviteCode);
 router.post('/create', authenticate, groupController.createGroup);
+router.post('/join', authenticate, groupController.joinGroup);
 router.delete('/:id', authenticate, groupController.deleteGroup);
+router.patch('/:id/status', authenticate, groupController.updateGroupStatus);
 
 // ==========================================
 // Group Transactions Routes

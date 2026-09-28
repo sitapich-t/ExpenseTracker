@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator
+import {
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { getToken, http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 
 const THAI_MONTHS = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
 
 const CATEGORY_ICONS = {
@@ -20,23 +21,33 @@ const CATEGORY_ICONS = {
   Entertainment: { icon: 'game-controller', color: '#10b981', name: 'บันเทิง' },
   Health: { icon: 'medkit', color: '#ef4444', name: 'สุขภาพ' },
   Bills: { icon: 'receipt', color: '#64748b', name: 'บิลต่างๆ' },
-  Other: { icon: 'ellipsis-horizontal-circle', color: '#94a3b8', name: 'อื่นๆ' }
+  Other: { icon: 'ellipsis-horizontal-circle', color: '#94a3b8', name: 'อื่นๆ' },
 };
 
-// category name -> id ให้ตรงกับตาราง categories ใน backend
 // 1=Food, 2=Shopping, 3=Travel, 4=Transport, 5=Study, 6=Entertainment, 7=Health, 8=Bills, 9=Other
 const CATEGORY_ID = {
   Food: 1, Shopping: 2, Travel: 3, Transport: 4,
   Study: 5, Entertainment: 6, Health: 7, Bills: 8, Other: 9,
 };
 
-// id -> ข้อมูลหมวด (สำหรับดูชื่อหมวดจาก category_id)
 const CATEGORY_BY_ID = Object.fromEntries(
   Object.entries(CATEGORY_ICONS).map(([catName, info]) => [CATEGORY_ID[catName], info])
 );
 
+const EDITOR_CATEGORIES = Object.entries(CATEGORY_ICONS).map(([catName, info]) => ({
+  id: CATEGORY_ID[catName],
+  name: info.name,
+  icon: info.icon,
+}));
+
 export default function BudgetScreen() {
-  // ไม่มีงบ = null (ต่างจาก 0) เพื่อแยกกรณี "ยังไม่เคยตั้งงบ" ออกจาก "ตั้งงบเป็น 0"
+  const router = useRouter();
+
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const currentMonth = currentDate.getMonth();
+  const currentYear = currentDate.getFullYear();
+
+  // งบรวม / งบหมวด
   const [budgetId, setBudgetId] = useState(null);
   const [budget, setBudgetAmount] = useState(0);
   const [hasBudget, setHasBudget] = useState(false);
@@ -45,19 +56,28 @@ export default function BudgetScreen() {
   const [saving, setSaving] = useState(false);
   const [isModalVisible, setModalVisible] = useState(false);
   const [tempBudget, setTempBudget] = useState('');
-  // categoryBudgets: { [category_id]: { budgetId, monthly_limit } } — งบเฉพาะหมวด
   const [categoryBudgets, setCategoryBudgets] = useState({});
-  // categorySpent: { [category_id]: ยอดใช้จ่ายเดือนนี้ }
   const [categorySpent, setCategorySpent] = useState({});
-  // modalCategoryId: null = ตั้งงบรวม, มีค่า = ตั้งงบหมวดนั้น
   const [modalCategoryId, setModalCategoryId] = useState(null);
 
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth(); // 0-indexed สำหรับ THAI_MONTHS
-  const currentYear = currentDate.getFullYear();
+  // ตัวแก้ไขงบแบบกรอก (งบรวม + งบหมวด)
+  const [totalBudget, setTotalBudget] = useState('');
+  const [categories, setCategories] = useState(
+    EDITOR_CATEGORIES.map((c) => ({ ...c, amount: '' }))
+  );
 
-    const router = useRouter();
-  
+  const changeMonth = (delta) => {
+    const newDate = new Date(currentDate);
+    newDate.setMonth(newDate.getMonth() + delta);
+    setCurrentDate(newDate);
+  };
+
+  const updateCategoryAmount = (id, newAmount) => {
+    setCategories((prev) =>
+      prev.map((cat) => (cat.id === id ? { ...cat, amount: newAmount } : cat))
+    );
+  };
+
   const fetchBudgetData = async () => {
     try {
       setLoading(true);
@@ -70,28 +90,27 @@ export default function BudgetScreen() {
 
       const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
-      // ดึงงบประมาณของเดือนนี้จาก backend จริง — ทั้งงบรวมและงบเฉพาะหมวด
       const budgetRes = await http.get(
         `/personal/budgets?month=${currentMonth + 1}&year=${currentYear}`,
         authHeader
       );
       const budgets = budgetRes.data.budgets || [];
-      // งบรวมคือแถวที่ category_id เป็น null (แยกจากงบเฉพาะหมวด)
-      const overallBudget = budgets.find(b => b.category_id === null);
+      const overallBudget = budgets.find((b) => b.category_id === null);
 
       if (overallBudget) {
         setBudgetId(overallBudget.id);
         setBudgetAmount(parseFloat(overallBudget.monthly_limit));
         setHasBudget(true);
+        setTotalBudget(String(overallBudget.monthly_limit));
       } else {
         setBudgetId(null);
         setBudgetAmount(0);
         setHasBudget(false);
+        setTotalBudget('');
       }
 
-      // งบเฉพาะหมวด: category_id -> { budgetId, monthly_limit }
       const catBudgetMap = {};
-      budgets.forEach(b => {
+      budgets.forEach((b) => {
         if (b.category_id !== null && b.category_id !== undefined) {
           catBudgetMap[b.category_id] = {
             budgetId: b.id,
@@ -101,13 +120,20 @@ export default function BudgetScreen() {
       });
       setCategoryBudgets(catBudgetMap);
 
+      setCategories(
+        EDITOR_CATEGORIES.map((c) => ({
+          ...c,
+          amount: catBudgetMap[c.id] != null ? String(catBudgetMap[c.id].monthly_limit) : '',
+        }))
+      );
+
       const response = await http.get('/personal/transactions', authHeader);
-      const transactions = response.data.transactions;
+      const transactions = response.data.transactions || [];
 
       let totalSpent = 0;
       const spentByCat = {};
 
-      transactions.forEach(tx => {
+      transactions.forEach((tx) => {
         const txDate = new Date(tx.transaction_date || tx.created_at);
         if (
           tx.type === 'expense' &&
@@ -138,6 +164,7 @@ export default function BudgetScreen() {
     }, [currentMonth, currentYear])
   );
 
+  // บันทึกจาก Modal (งบรวมหรืองบหมวด)
   const handleSaveBudget = async () => {
     if (!tempBudget || isNaN(tempBudget) || parseFloat(tempBudget) <= 0) {
       Alert.alert('ข้อผิดพลาด', 'กรุณาระบุจำนวนเงินที่ถูกต้อง');
@@ -154,7 +181,6 @@ export default function BudgetScreen() {
 
       const authHeader = { headers: { Authorization: `Bearer ${token}` } };
       const isCategory = modalCategoryId !== null && modalCategoryId !== undefined;
-      // หา budget ที่มีอยู่: งบหมวดใช้ categoryBudgets[catId], งบรวมใช้ budgetId
       const existingBudget = isCategory
         ? (categoryBudgets[modalCategoryId] || null)
         : (budgetId ? { budgetId } : null);
@@ -163,7 +189,6 @@ export default function BudgetScreen() {
         monthly_limit: parseFloat(tempBudget),
         month: currentMonth + 1,
         year: currentYear,
-        // ไม่ส่ง category_id = งบรวมทั้งเดือน, ส่งเฉพาะตอนตั้งงบหมวด
       };
       if (isCategory) {
         payload.category_id = modalCategoryId;
@@ -171,38 +196,43 @@ export default function BudgetScreen() {
 
       let res;
       if (existingBudget) {
-        // มีงบอยู่แล้ว → แก้ไขด้วย PUT
         res = await http.put(`/personal/budgets/${existingBudget.budgetId}`, payload, authHeader);
       } else {
-        // ยังไม่มีงบ → ตั้งใหม่ด้วย POST (backend upsert ให้อยู่แล้วถ้าซ้ำเดือน/ปี + หมวด)
         res = await http.post('/personal/budgets', payload, authHeader);
       }
 
       const savedBudget = res.data.budget;
 
       if (isCategory) {
-        setCategoryBudgets(prev => ({
+        setCategoryBudgets((prev) => ({
           ...prev,
           [modalCategoryId]: {
             budgetId: savedBudget.id,
             monthly_limit: parseFloat(savedBudget.monthly_limit),
           },
         }));
+        setCategories((prev) =>
+          prev.map((cat) =>
+            cat.id === modalCategoryId
+              ? { ...cat, amount: String(savedBudget.monthly_limit) }
+              : cat
+          )
+        );
       } else {
         setBudgetId(savedBudget.id);
         setBudgetAmount(parseFloat(savedBudget.monthly_limit));
         setHasBudget(true);
+        setTotalBudget(String(savedBudget.monthly_limit));
       }
 
       setModalVisible(false);
       setTempBudget('');
 
-      // backend คืน budgetAlert มาถ้าข้าม threshold ทันทีหลังตั้งงบใหม่ (เช่น ลดวงเงินจนเกิน)
       const alert = res.data.budgetAlert;
       if (alert?.level === 'OVER') {
-        Alert.alert('⚠️ เกินงบประมาณ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
+        Alert.alert('เกินงบประมาณ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
       } else if (alert?.level === 'WARNING') {
-        Alert.alert('⚠️ ใกล้เต็มงบ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
+        Alert.alert('ใกล้เต็มงบ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
       }
     } catch (error) {
       console.error('Error saving budget:', error);
@@ -212,137 +242,210 @@ export default function BudgetScreen() {
     }
   };
 
+  // บันทึกงบจากฟอร์มกรอก (งบรวม + งบหมวดพร้อมกัน)
+  const saveBudgetForm = async () => {
+    setSaving(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('ไม่พบข้อมูลการเข้าสู่ระบบ');
+
+      const month = currentMonth + 1;
+      const year = currentYear;
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const numericTotal = parseFloat(String(totalBudget).replace(/,/g, '')) || 0;
+
+      const parsed = categories.map((c) => ({
+        cat: c,
+        value: parseFloat(String(c.amount).replace(/,/g, '')) || 0,
+      }));
+      const sumCats = parsed.reduce((s, x) => s + x.value, 0);
+
+      if (sumCats > numericTotal && numericTotal > 0) {
+        Alert.alert('ข้อผิดพลาด', 'ยอดรวมหมวดหมู่ต้องไม่เกินงบรวม');
+        return;
+      }
+
+      if (numericTotal > 0) {
+        await http.post(
+          '/personal/budgets',
+          { category_id: null, monthly_limit: numericTotal, month, year },
+          { headers }
+        );
+      }
+
+      for (const { cat, value } of parsed) {
+        if (value <= 0) continue;
+        await http.post(
+          '/personal/budgets',
+          { category_id: cat.id, monthly_limit: value, month, year },
+          { headers }
+        );
+      }
+
+      Alert.alert('สำเร็จ', 'บันทึกงบประมาณเรียบร้อยแล้ว');
+      fetchBudgetData();
+    } catch (err) {
+      console.error('Error saving budget:', err);
+      Alert.alert('ข้อผิดพลาด', err.message || 'ไม่สามารถบันทึกงบประมาณได้');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const percentage = budget > 0 ? (spent / budget) * 100 : 0;
   const clampedPercentage = Math.min(percentage, 100);
-  
-  let statusColor = '#10b981'; // Green
-  if (percentage >= 100) statusColor = '#ef4444'; // Red
-  else if (percentage >= 80) statusColor = '#f59e0b'; // Orange (ให้ตรงกับ threshold 80% ที่ backend ใช้)
+
+  let statusColor = '#10b981';
+  if (percentage >= 100) statusColor = '#ef4444';
+  else if (percentage >= 80) statusColor = '#f59e0b';
 
   const formatMoney = (amount) => {
     return '฿' + amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#5f3dc4" />
-      </View>
-    );
-  }
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                  <Ionicons name="arrow-back" size={24} color="#333" />
-                </TouchableOpacity>
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>งบประมาณรายเดือน</Text>
-        <Text style={styles.headerDate}>{THAI_MONTHS[currentMonth]} {currentYear}</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      {!hasBudget ? (
-        <View style={styles.emptyBudgetCard}>
-          <Ionicons name="wallet-outline" size={40} color="#9ca3af" />
-          <Text style={styles.emptyBudgetText}>ยังไม่ได้ตั้งงบประมาณเดือนนี้</Text>
+      <View style={styles.monthSelector}>
+        <TouchableOpacity onPress={() => changeMonth(-1)}>
+          <Ionicons name="chevron-back" size={24} color="#5f3dc4" />
+        </TouchableOpacity>
+        <Text style={styles.monthSelectorText}>{`${THAI_MONTHS[currentMonth]} ${currentYear}`}</Text>
+        <TouchableOpacity onPress={() => changeMonth(1)}>
+          <Ionicons name="chevron-forward" size={24} color="#5f3dc4" />
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5f3dc4" />
         </View>
       ) : (
-        <View style={styles.budgetCard}>
-          <View style={[styles.mainCircle, { borderColor: statusColor, shadowColor: statusColor }]}>
-            <Text style={[styles.percentageText, { color: statusColor }]}>
-              {percentage.toFixed(0)}%
-            </Text>
-            <Text style={styles.spentText}>ใช้ไปแล้ว {formatMoney(spent)}</Text>
-            <Text style={styles.budgetText}>จากงบ {formatMoney(budget)}</Text>
-          </View>
-
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBarFill, { width: `${clampedPercentage}%`, backgroundColor: statusColor }]} />
-          </View>
-        </View>
-      )}
-
-      {hasBudget && percentage >= 100 ? (
-        <View style={[styles.alertCard, styles.alertCritical]}>
-          <Ionicons name="warning" size={24} color="#fff" />
-          <Text style={styles.alertTextCritical}>คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้!</Text>
-        </View>
-      ) : hasBudget && percentage >= 80 ? (
-        <View style={[styles.alertCard, styles.alertWarning]}>
-          <Ionicons name="warning" size={24} color="#92400e" />
-          <Text style={styles.alertTextWarning}>คุณใช้จ่ายเกิน 80% ของงบประมาณแล้ว!</Text>
-        </View>
-      ) : null}
-
-      <TouchableOpacity 
-        style={styles.editButton}
-        onPress={() => {
-          setModalCategoryId(null);
-          setTempBudget(hasBudget ? budget.toString() : '');
-          setModalVisible(true);
-        }}
-      >
-        <Ionicons name="create-outline" size={20} color="#fff" />
-        <Text style={styles.editButtonText}>ตั้งค่างบประมาณรวม</Text>
-      </TouchableOpacity>
-
-      <View style={styles.categoriesSection}>
-        <Text style={styles.sectionTitle}>งบประมาณตามหมวดหมู่</Text>
-        <Text style={styles.sectionSubtitle}>แตะ "ตั้งงบ" เพื่อกำหนดงบในแต่ละหมวด</Text>
-        
-        {Object.entries(CATEGORY_ICONS).map(([catName, catInfo]) => {
-          const catId = CATEGORY_ID[catName];
-          const catBudgetInfo = categoryBudgets[catId];
-          const catBudget = catBudgetInfo ? catBudgetInfo.monthly_limit : 0;
-          const hasCatBudget = !!catBudgetInfo;
-          const amount = categorySpent[catId] || 0;
-
-          const catRatio = catBudget > 0 ? amount / catBudget : 0;
-          const catPercentage = Math.min(catRatio * 100, 100);
-          let catStatusColor = '#10b981';
-          if (catBudget > 0 && catRatio >= 1) catStatusColor = '#ef4444';
-          else if (catBudget > 0 && catRatio >= 0.8) catStatusColor = '#f59e0b';
-
-          return (
-            <View key={catName} style={styles.categoryRow}>
-              <View style={[styles.iconContainer, { backgroundColor: catInfo.color + '20' }]}>
-                <Ionicons name={catInfo.icon} size={20} color={catInfo.color} />
+        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+          {!hasBudget ? (
+            <View style={styles.emptyBudgetCard}>
+              <Ionicons name="wallet-outline" size={40} color="#9ca3af" />
+              <Text style={styles.emptyBudgetText}>ยังไม่ได้ตั้งงบประมาณเดือนนี้</Text>
+            </View>
+          ) : (
+            <View style={styles.budgetCard}>
+              <View style={[styles.mainCircle, { borderColor: statusColor, shadowColor: statusColor }]}>
+                <Text style={[styles.percentageText, { color: statusColor }]}>
+                  {percentage.toFixed(0)}%
+                </Text>
+                <Text style={styles.spentText}>ใช้ไปแล้ว {formatMoney(spent)}</Text>
+                <Text style={styles.budgetText}>จากงบ {formatMoney(budget)}</Text>
               </View>
-              <View style={styles.categoryInfo}>
-                <View style={styles.categoryHeader}>
-                  <Text style={styles.categoryName}>{catInfo.name}</Text>
-                  <Text style={styles.categoryAmount}>
-                    {hasCatBudget ? `${formatMoney(amount)} / ${formatMoney(catBudget)}` : formatMoney(amount)}
-                  </Text>
-                </View>
-                <View style={styles.miniProgressBar}>
-                  <View style={[styles.miniProgressFill, { width: `${catPercentage}%`, backgroundColor: catStatusColor }]} />
-                </View>
-                <View style={styles.categoryBudgetActions}>
-                  {hasCatBudget ? (
-                    <Text style={[styles.catPercentText, { color: catStatusColor }]}>
-                      {hasCatBudget ? `${catRatio >= 1 ? 'เกินงบ' : `ใช้ไป ${(catRatio * 100).toFixed(0)}%`}` : ''}
-                    </Text>
-                  ) : (
-                    <Text style={styles.noBudgetText}>ยังไม่ได้ตั้งงบหมวดนี้</Text>
-                  )}
-                  <TouchableOpacity
-                    style={styles.setCatBudgetBtn}
-                    onPress={() => {
-                      setModalCategoryId(catId);
-                      setTempBudget(hasCatBudget ? catBudget.toString() : '');
-                      setModalVisible(true);
-                    }}
-                  >
-                    <Ionicons name={hasCatBudget ? 'create-outline' : 'add'} size={16} color="#5f3dc4" />
-                    <Text style={styles.setCatBudgetText}>{hasCatBudget ? 'แก้ไขงบ' : 'ตั้งงบ'}</Text>
-                  </TouchableOpacity>
-                </View>
+
+              <View style={styles.progressBarContainer}>
+                <View style={[styles.progressBarFill, { width: `${clampedPercentage}%`, backgroundColor: statusColor }]} />
               </View>
             </View>
-          );
-        })}
-      </View>
+          )}
+
+          {hasBudget && percentage >= 100 ? (
+            <View style={[styles.alertCard, styles.alertCritical]}>
+              <Ionicons name="warning" size={24} color="#fff" />
+              <Text style={styles.alertTextCritical}>คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้!</Text>
+            </View>
+          ) : hasBudget && percentage >= 80 ? (
+            <View style={[styles.alertCard, styles.alertWarning]}>
+              <Ionicons name="warning" size={24} color="#92400e" />
+              <Text style={styles.alertTextWarning}>คุณใช้จ่ายเกิน 80% ของงบประมาณแล้ว!</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => {
+              setModalCategoryId(null);
+              setTempBudget(hasBudget ? budget.toString() : '');
+              setModalVisible(true);
+            }}
+          >
+            <Ionicons name="create-outline" size={20} color="#fff" />
+            <Text style={styles.editButtonText}>ตั้งค่างบประมาณรวม</Text>
+          </TouchableOpacity>
+
+          <View style={styles.categoriesSection}>
+            <Text style={styles.sectionTitle}>งบประมาณตามหมวดหมู่</Text>
+            <Text style={styles.sectionSubtitle}>แตะ &quot;ตั้งงบ&quot; เพื่อกำหนดงบในแต่ละหมวด</Text>
+
+            {Object.entries(CATEGORY_ICONS).map(([catName, catInfo]) => {
+              const catId = CATEGORY_ID[catName];
+              const catBudgetInfo = categoryBudgets[catId];
+              const catBudget = catBudgetInfo ? catBudgetInfo.monthly_limit : 0;
+              const hasCatBudget = !!catBudgetInfo;
+              const amount = categorySpent[catId] || 0;
+
+              const catRatio = catBudget > 0 ? amount / catBudget : 0;
+              const catPercentage = Math.min(catRatio * 100, 100);
+              let catStatusColor = '#10b981';
+              if (catBudget > 0 && catRatio >= 1) catStatusColor = '#ef4444';
+              else if (catBudget > 0 && catRatio >= 0.8) catStatusColor = '#f59e0b';
+
+              return (
+                <View key={catName} style={styles.categoryRow}>
+                  <View style={[styles.iconContainer, { backgroundColor: catInfo.color + '20' }]}>
+                    <Ionicons name={catInfo.icon} size={20} color={catInfo.color} />
+                  </View>
+                  <View style={styles.categoryInfo}>
+                    <View style={styles.categoryHeader}>
+                      <Text style={styles.categoryName}>{catInfo.name}</Text>
+                      <Text style={styles.categoryAmount}>
+                        {hasCatBudget ? `${formatMoney(amount)} / ${formatMoney(catBudget)}` : formatMoney(amount)}
+                      </Text>
+                    </View>
+                    <View style={styles.miniProgressBar}>
+                      <View style={[styles.miniProgressFill, { width: `${catPercentage}%`, backgroundColor: catStatusColor }]} />
+                    </View>
+                    <View style={styles.categoryBudgetActions}>
+                      {hasCatBudget ? (
+                        <Text style={[styles.catPercentText, { color: catStatusColor }]}>
+                          {`${catRatio >= 1 ? 'เกินงบ' : `ใช้ไป ${(catRatio * 100).toFixed(0)}%`}`}
+                        </Text>
+                      ) : (
+                        <Text style={styles.noBudgetText}>ยังไม่ได้ตั้งงบหมวดนี้</Text>
+                      )}
+                      <TouchableOpacity
+                        style={styles.setCatBudgetBtn}
+                        onPress={() => {
+                          setModalCategoryId(catId);
+                          setTempBudget(hasCatBudget ? catBudget.toString() : '');
+                          setModalVisible(true);
+                        }}
+                      >
+                        <Ionicons name={hasCatBudget ? 'create-outline' : 'add'} size={16} color="#5f3dc4" />
+                        <Text style={styles.setCatBudgetText}>{hasCatBudget ? 'แก้ไขงบ' : 'ตั้งงบ'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={styles.saveFormBtn}
+            onPress={saveBudgetForm}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveFormText}>บันทึกงบประมาณ</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      )}
 
       <Modal
         animationType="slide"
@@ -362,7 +465,7 @@ export default function BudgetScreen() {
                 ? `หมวด ${CATEGORY_BY_ID[modalCategoryId]?.name || ''}`
                 : `เดือน ${THAI_MONTHS[currentMonth]}`}{' '}{currentYear}
             </Text>
-            
+
             <TextInput
               style={styles.input}
               value={tempBudget}
@@ -373,14 +476,14 @@ export default function BudgetScreen() {
             />
 
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setModalVisible(false)}
                 disabled={saving}
               >
                 <Text style={styles.cancelButtonText}>ยกเลิก</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, styles.saveButton]}
                 onPress={handleSaveBudget}
                 disabled={saving}
@@ -395,11 +498,15 @@ export default function BudgetScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fcfbfe',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fcfbfe',
@@ -416,18 +523,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#fcfbfe',
   },
   header: {
-    marginBottom: 24,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    marginBottom: 4,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#1f2937',
-    marginBottom: 4,
   },
   headerDate: {
     fontSize: 16,
     color: '#6b7280',
+  },
+  monthSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  monthSelectorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
   },
   emptyBudgetCard: {
     backgroundColor: '#fff',
@@ -542,6 +665,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 18,
@@ -625,11 +749,76 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
-  emptyText: {
+  mainBudgetCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 20,
+  },
+  budgetLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 12,
+  },
+  budgetInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 18,
     textAlign: 'center',
-    color: '#6b7280',
+    marginBottom: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoText: {
+    fontSize: 12,
+    color: '#92400e',
+    marginLeft: 6,
+    flex: 1,
+  },
+  catName: {
+    flex: 1,
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  catInput: {
+    width: 110,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    textAlign: 'right',
+  },
+  catWarningText: {
+    fontSize: 12,
+    color: '#9ca3af',
     fontStyle: 'italic',
-    paddingVertical: 20,
+    textAlign: 'center',
+  },
+  saveFormBtn: {
+    backgroundColor: '#5f3dc4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  saveFormText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   modalOverlay: {
     flex: 1,
@@ -693,5 +882,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
-  }
+  },
 });

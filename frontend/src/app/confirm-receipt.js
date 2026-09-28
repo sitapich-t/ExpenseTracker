@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   TextInput, ScrollView, Alert, Modal, FlatList
@@ -169,17 +169,43 @@ export default function ConfirmReceiptScreen() {
   // States
   const [merchant, setMerchant] = useState(detectedMerchant);
   const [amount, setAmount] = useState(params.amount || '');
+  const [vat, setVat] = useState(params.vat || '0');
+  const [serviceCharge, setServiceCharge] = useState(params.serviceCharge || '0');
   const [date, setDate] = useState(isoToDisplayDate(params.date));
   const [categoryId, setCategoryId] = useState(initialCategoryId);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card');
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // ✨ State สำหรับรายการสินค้า
+    // ✨ State สำหรับรายการสินค้า
   const [lineItems, setLineItems] = useState(initialLineItems);
 
-  const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
+  // ป้องกัน state ค้างจากรอบก่อนหน้า เมื่อ navigate มาหน้านี้ซ้ำด้วย params ใหม่
+  // (useState initializer รันแค่ครั้งแรกที่ mount เท่านั้น ไม่รู้ว่า params เปลี่ยน)
+  // ใช้ pattern ของ React: ปรับ state ระหว่าง render เมื่อ "คีย์" ของ params เปลี่ยน
+  const paramsKey = JSON.stringify([
+    params.merchant,
+    params.amount,
+    params.vat,
+    params.serviceCharge,
+    params.date,
+    params.lineItems,
+    params.documentType,
+  ]);
+  const [lastParamsKey, setLastParamsKey] = useState(paramsKey);
+  if (paramsKey !== lastParamsKey) {
+    setLastParamsKey(paramsKey);
+    setMerchant(detectedMerchant);
+    setAmount(params.amount || '');
+    setVat(params.vat || '0');
+    setServiceCharge(params.serviceCharge || '0');
+    setDate(isoToDisplayDate(params.date));
+    setCategoryId(initialCategoryId);
+    setLineItems(initialLineItems);
+    setPaymentMethod(isTransferSlip ? 'Transfer' : 'Card');
+  }
 
+  const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
   // ----------------------------------------------------
   // Helper Logic สำหรับจัดการ Line Items
   // ----------------------------------------------------
@@ -229,12 +255,15 @@ export default function ConfirmReceiptScreen() {
         body: JSON.stringify({
           title: merchant,
           amount: parseFloat(amount) || 0,
+          netAmount: (parseFloat(amount) || 0) - (parseFloat(vat) || 0) - (parseFloat(serviceCharge) || 0),
+          vat: parseFloat(vat) || 0,
+          serviceCharge: parseFloat(serviceCharge) || 0,
           type: 'expense',
           category_id: categoryId,
           merchant: merchant,
           transaction_date: displayDateToIso(date) || new Date().toISOString(),
           paymentMethod: paymentMethod,
-          items: lineItems, // ✨ ส่งรายการย่อยไปด้วย
+          items: lineItems,
         }),
       });
 
@@ -386,6 +415,37 @@ export default function ConfirmReceiptScreen() {
             keyboardType="numeric"
           />
         </View>
+
+        {/* VAT & Service Charge (เฉพาะใบเสร็จ ไม่ใช่สลิปโอนเงิน) */}
+        {!isTransferSlip && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.labelTitle}>VAT</Text>
+              <View style={styles.inputBox}>
+                <Text style={styles.currencySymbol}>฿</Text>
+                <TextInput
+                  style={styles.inputText}
+                  value={String(vat)}
+                  onChangeText={setVat}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={styles.labelTitle}>Service Charge</Text>
+              <View style={styles.inputBox}>
+                <Text style={styles.currencySymbol}>฿</Text>
+                <TextInput
+                  style={styles.inputText}
+                  value={String(serviceCharge)}
+                  onChangeText={setServiceCharge}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Date & Category Row */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

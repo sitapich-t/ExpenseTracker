@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,20 +13,33 @@ import {
   FlatList,
   Alert,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { useAuth } from './context/AuthContext';
-import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, CATEGORIES_LIST, getCategoryInfo, THAI_MONTHS } from '../theme';
+import { http, getToken } from '@/lib/api';
+import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, CATEGORIES_LIST, getCategoryInfo, THAI_MONTHS } from '@/lib/theme';
 
-const API_BASE_URL = 'http://10.0.2.2:3000/api';
+// API (Supabase) ใช้ category_id เป็นตัวเลข 1-9 ต้อง map จาก id ของ theme ให้ตรงกัน
+const CATEGORY_ID_MAP = {
+  food: 1,
+  shopping: 2,
+  transport: 4,
+  education: 5,
+  entertainment: 6,
+  health: 7,
+  housing: 8,
+  utilities: 8,
+  salary: 9,
+  freelance: 9,
+  investment: 9,
+  gift: 9,
+  other: 9,
+};
 
 export default function AddExpenseScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
-  const { currentUser } = useAuth();
-  
-  const defaultType = route.params?.type || 'expense';
+  const router = useRouter();
+  const params = useLocalSearchParams();
+
+  const defaultType = params.type === 'income' ? 'income' : 'expense';
   
   const [type, setType] = useState(defaultType); // 'income' or 'expense'
   const [amount, setAmount] = useState('');
@@ -38,12 +51,14 @@ export default function AddExpenseScreen() {
   const now = new Date();
   const dateFormattedStr = `วันนี้, ${now.getDate()} ${THAI_MONTHS[now.getMonth()]} ${now.getFullYear() + 543} (${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} น.)`;
 
-  useEffect(() => {
-    if (route.params?.type) {
-      setType(route.params.type);
-      setCategory(route.params.type === 'income' ? 'salary' : 'food');
-    }
-  }, [route.params?.type]);
+  // sync params.type -> state (ปรับ state ระหว่าง render แทน useEffect ที่ react-hooks/set-state-in-effect ไม่ผ่าน)
+  const paramsType = params.type === 'income' ? 'income' : 'expense';
+  const [lastParamsType, setLastParamsType] = useState(paramsType);
+  if (paramsType !== lastParamsType) {
+    setLastParamsType(paramsType);
+    setType(paramsType);
+    setCategory(paramsType === 'income' ? 'salary' : 'food');
+  }
 
   const handleSave = async () => {
     const numAmount = parseFloat(amount.replace(/,/g, ''));
@@ -56,22 +71,25 @@ export default function AddExpenseScreen() {
     try {
       const catInfo = getCategoryInfo(category);
       const payload = {
-        userId: currentUser?.id || 'demo_user',
         title: note.trim() || catInfo.name,
         amount: numAmount,
         type,
-        category: catInfo.name,
-        note: note.trim(),
-        date: now.toISOString().split('T')[0],
+        merchant: note.trim() || catInfo.name,
+        category_id: CATEGORY_ID_MAP[category] ?? 9,
+        transaction_date: now.toISOString().split('T')[0],
       };
-      
-      const res = await axios.post(`${API_BASE_URL}/expenses`, payload);
+
+      const token = await getToken();
+      const res = await http.post('/personal/transactions', payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
       if (res.data && res.data.success) {
         Alert.alert('สำเร็จ', 'บันทึกรายการเรียบร้อยแล้ว', [
-          { text: 'ตกลง', onPress: () => navigation.goBack() }
+          { text: 'ตกลง', onPress: () => router.back() }
         ]);
       } else {
-        Alert.alert('ข้อผิดพลาด', res.data?.message || 'ไม่สามารถบันทึกรายการได้');
+        Alert.alert('ข้อผิดพลาด', res.data?.error || 'ไม่สามารถบันทึกรายการได้');
       }
     } catch (error) {
       console.log('Save expense error:', error);
@@ -90,7 +108,7 @@ export default function AddExpenseScreen() {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton} 
-          onPress={() => navigation.goBack()}
+          onPress={() => router.back()}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color="#1F2937" />

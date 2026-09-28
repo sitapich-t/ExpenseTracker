@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { getToken, http } from "@/lib/api";
+import { useGroup } from "./context/GroupContext";
 
 export default function ScanQRCodeScreen() {
-    const navigation = useNavigation();
+    const router = useRouter();
+    const { refresh } = useGroup();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
+    const [joining, setJoining] = useState(false);
 
     useEffect(() => {
         if (!permission) {
@@ -27,7 +32,7 @@ export default function ScanQRCodeScreen() {
                     <TouchableOpacity style={s.btn} onPress={requestPermission}>
                         <Text style={s.btnText}>อนุญาตการใช้งานกล้อง</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[s.btn, { backgroundColor: "#1E293B", marginTop: 12 }]} onPress={() => navigation.goBack()}>
+                    <TouchableOpacity style={[s.btn, { backgroundColor: "#1E293B", marginTop: 12 }]} onPress={() => router.back()}>
                         <Text style={s.btnText}>ยกเลิก</Text>
                     </TouchableOpacity>
                 </View>
@@ -35,34 +40,49 @@ export default function ScanQRCodeScreen() {
         );
     }
 
+    const handleJoin = async (groupId) => {
+        try {
+            setJoining(true);
+            const token = await getToken();
+            const res = await http.post('/groups/join', { group_id: groupId }, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.data?.success) throw new Error(res.data?.error || 'เข้าร่วมกลุ่มไม่สำเร็จ');
+            // ดึงรายชื่อกลุ่มใหม่ก่อน ไม่งั้นหน้า detail จะหาไม่เจอ
+            await refresh();
+            router.replace({ pathname: '/detail-group', params: { groupId } });
+        } catch (err) {
+            Alert.alert("เข้าร่วมไม่สำเร็จ", err.message || 'ไม่สามารถเข้าร่วมกลุ่มนี้ได้', [
+                { text: "ตกลง", onPress: () => setScanned(false) },
+            ]);
+        } finally {
+            setJoining(false);
+        }
+    };
+
     const handleBarcodeScanned = ({ type, data }) => {
         setScanned(true);
         try {
             const payload = JSON.parse(data);
             if (payload.action === "join_group" && payload.groupId) {
                 Alert.alert(
-                    "เข้าร่วมกลุ่ม",
-                    `ต้องการเข้าร่วมกลุ่ม "${payload.groupName}" ใช่หรือไม่?`,
+                    "พบ QR Code กลุ่ม",
+                    `ต้องการเข้าร่วมกลุ่ม "${payload.groupName || 'ไม่ระบุชื่อ'}" ใช่หรือไม่?`,
                     [
                         { text: "ยกเลิก", onPress: () => setScanned(false), style: "cancel" },
-                        { 
-                            text: "เข้าร่วม", 
-                            onPress: () => {
-                                // Mock join logic
-                                Alert.alert("สำเร็จ", "คุณได้เข้าร่วมกลุ่มแล้ว", [
-                                    { text: "ตกลง", onPress: () => navigation.navigate("GroupDetail", { groupId: payload.groupId, groupName: payload.groupName }) }
-                                ]);
-                            } 
+                        {
+                            text: joining ? "กำลังเข้าร่วม..." : "เข้าร่วม",
+                            onPress: () => handleJoin(payload.groupId),
                         }
                     ]
                 );
             } else {
-                Alert.alert("เกิดข้อผิดพลาด", "QR Code ไม่ถูกต้องหรือไม่รองรับ", [
+                Alert.alert("QR Code ไม่ถูกต้อง", "QR Code นี้ไม่ใช่ QR Code สำหรับเข้าร่วมกลุ่ม", [
                     { text: "ตกลง", onPress: () => setScanned(false) }
                 ]);
             }
         } catch (error) {
-            Alert.alert("เกิดข้อผิดพลาด", "QR Code ไม่ถูกต้อง", [
+            Alert.alert("อ่าน QR Code ไม่สำเร็จ", "QR Code นี้ไม่ใช่รูปแบบที่ระบบรองรับ", [
                 { text: "ตกลง", onPress: () => setScanned(false) }
             ]);
         }
@@ -71,7 +91,7 @@ export default function ScanQRCodeScreen() {
     return (
         <SafeAreaView style={s.safe}>
             <View style={s.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+                <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
                     <Ionicons name="arrow-back" size={24} color="#fff" />
                 </TouchableOpacity>
                 <Text style={s.headerTitle}>สแกน QR Code</Text>

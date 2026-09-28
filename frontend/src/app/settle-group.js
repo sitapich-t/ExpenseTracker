@@ -1,144 +1,170 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { SHADOWS } from '../theme';
-import ResponsiveWrapper from '../components/ResponsiveWrapper';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { SHADOWS } from '@/lib/theme';
 import { useGroup } from './context/GroupContext';
+import { getToken, http } from '@/lib/api';
 
-// Default group members if none passed via route params
-const DEFAULT_MEMBERS = [
-  { id: '1', name: 'นนท์ (ฉัน)', color: '#EF4444' },
-  { id: '2', name: 'พลอย', color: '#10B981' },
-  { id: '3', name: 'เตีย', color: '#F59E0B' },
-  { id: '4', name: 'มาร์ช', color: '#8B5CF6' },
-];
+const baht = (n) =>
+  Number(n || 0).toLocaleString('th-TH', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 
-// Default bills matching GroupDetailScreen
-const DEFAULT_BILLS = [
-  {
-    id: 'b1',
-    title: 'ค่าอาหารค่ำซีฟู้ด 🦐',
-    payer: 'พลอย',
-    splitText: 'แชร์ทุกคน',
-    amount: '5,400',
-  },
-  {
-    id: 'b2',
-    title: 'ค่าที่พักพูลวิลล่า 🌴',
-    payer: 'เตีย',
-    splitText: 'แชร์ทุกคน',
-    amount: '4,000',
-  },
-  {
-    id: 'b3',
-    title: 'ค่าน้ำมันรถเดินทาง 🚗',
-    payer: 'มาร์ช',
-    splitText: 'แชร์ทุกคน',
-    amount: '3,000',
-  },
-];
+// array ว่างที่ reference เดิมทุกครั้ง (ไม่ให้ useCallback/useMemo คำนวณใหม่ทุก render)
+const EMPTY = [];
 
 export default function GroupSettleScreen() {
-  const navigation = useNavigation();
-  const route = useRoute();
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const { settleGroup, getGroup, refresh } = useGroup();
 
-  const location = route.params?.groupName || 'ทริปหัวหิน 2026 🏖️';
-  const members = (route.params?.members && route.params.members.length > 0)
-    ? route.params.members
-    : DEFAULT_MEMBERS;
-  const bills = (route.params?.bills && route.params.bills.length > 0)
-    ? route.params.bills
-    : DEFAULT_BILLS;
+  const groupId = params.groupId;
+  const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
+  // expo-router ส่ง param เป็น string เสมอ -> array ที่ส่งมาจะกลายเป็น "a,b"
+  // อ่านจาก context เป็นหลัก (แหล่งจริง) และกัน non-array ทุกกรณี
+  const ctx = getGroup(groupId);
+  const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
+  const bills = useMemo(() => (Array.isArray(ctx?.bills) ? ctx.bills : EMPTY), [ctx]);
 
-  // 2 modes matching Figma mockup: "ทั้งหมด" (raw transactions) vs "จ่าย" (debt simplification)
-  const [activeTab, setActiveTab] = useState('summary'); // 'all', 'summary'
+  const nameOf = useCallback(
+    (id) => {
+      const m = members.find((mm) => String(mm.id) === String(id));
+      return m?.name || 'สมาชิก';
+    },
+    [members]
+  );
+
+  // 2 modes: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
+  const [activeTab, setActiveTab] = useState('summary');
   const [remindedList, setRemindedList] = useState([]);
+  const [simplifiedDebts, setSimplifiedDebts] = useState([]);
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
-  // Calculate raw transactions and simplified debts dynamically
-  const { rawTransactions, simplifiedDebts } = useMemo(() => {
-    const memberNames = members.map((m) => m.name);
-    const n = memberNames.length;
-    if (n === 0) return { rawTransactions: [], simplifiedDebts: [] };
+  // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่กลับมาหน้านี้ (เผื่อเพิ่งเพิ่มบิล/สมาชิก)
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      refresh().finally(() => {
+        if (active) setLoadedOnce(true);
+      });
+      return () => {
+        active = false;
+      };
+    }, [refresh])
+  );
 
-    const raw = [];
-    const netBalances = {};
-    memberNames.forEach((name) => {
-      netBalances[name] = 0;
-    });
+  // รายการ "ต้องจ่ายให้ใคร" ต่อบิล (คำนวณตรงนี้ เพราะเป็นการรวมข้อมูลของฉันเอง)
+  const rawTransactions = [];
+  bills.forEach((b, bIdx) => {
+    const total = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
+    if (total <= 0) return;
 
-    bills.forEach((b, bIdx) => {
-      const totalAmount = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
-      const perPerson = Math.round((totalAmount / n) * 100) / 100;
-      const payer = b.payer;
+    // ใครแชร์บิลนี้ (ถ้าไม่มีข้อมูล = ทุกคน)
+    const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
+      ? b.splitData.memberIds.map(String)
+      : members.map((m) => String(m.id));
 
-      if (netBalances[payer] !== undefined) {
-        netBalances[payer] += totalAmount;
-      }
+    const n = sharedIds.length || 1;
+    const per = Math.round((total / n) * 100) / 100;
+    const payer = String(b.payer ?? b.paidBy ?? '');
 
-      memberNames.forEach((name, mIdx) => {
-        netBalances[name] -= perPerson;
-        if (name !== payer) {
-          raw.push({
-            id: `r_${b.id || bIdx}_${mIdx}`,
-            from: name,
-            to: payer,
-            note: b.title,
-            amount: perPerson.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
-          });
-        }
+    sharedIds.forEach((sid, mIdx) => {
+      if (sid === payer) return;
+      rawTransactions.push({
+        id: `r_${b.id || bIdx}_${mIdx}`,
+        from: nameOf(sid),
+        to: nameOf(payer),
+        note: b.title || 'บิล',
+        amount: baht(per),
       });
     });
+  });
 
-    // Debt Simplification (greedy matching of debtors and creditors)
-    const debtors = [];
-    const creditors = [];
+  // การตัดหนี้ (debt simplification) ให้ backend คำนวณ เพราะเป็น business logic
+  useEffect(() => {
+    let cancelled = false;
 
-    Object.entries(netBalances).forEach(([name, balance]) => {
-      const rounded = Math.round(balance * 100) / 100;
-      if (rounded < -0.01) {
-        debtors.push({ name, amount: -rounded });
-      } else if (rounded > 0.01) {
-        creditors.push({ name, amount: rounded });
+    const run = async () => {
+      if (members.length === 0 || bills.length === 0) {
+        setSimplifiedDebts([]);
+        return;
       }
-    });
 
-    const simplified = [];
-    let dIdx = 0;
-    let cIdx = 0;
-    let sId = 1;
+      // ยอดคงเหลือต่อคน: จ่ายบิลได้ = บวก, ต้องจ่าย = ลบ
+      const balance = {};
+      members.forEach((m) => {
+        balance[String(m.id)] = 0;
+      });
 
-    while (dIdx < debtors.length && cIdx < creditors.length) {
-      const debtor = debtors[dIdx];
-      const creditor = creditors[cIdx];
-      const amount = Math.min(debtor.amount, creditor.amount);
+      bills.forEach((b) => {
+        const total = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
+        if (total <= 0) return;
 
-      if (amount > 0.01) {
-        simplified.push({
-          id: `s_${sId++}`,
-          from: debtor.name,
-          to: creditor.name,
-          amount: amount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+        const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
+          ? b.splitData.memberIds.map(String)
+          : members.map((m) => String(m.id));
+
+        const n = sharedIds.length || 1;
+        const per = Math.round((total / n) * 100) / 100;
+        const payer = String(b.payer ?? b.paidBy ?? '');
+
+        if (payer in balance) balance[payer] += total;
+        sharedIds.forEach((sid) => {
+          if (sid in balance) balance[sid] -= per;
         });
+      });
+
+      const payload = Object.entries(balance).map(([person, amount]) => ({
+        person,
+        amount: Math.round(amount * 100) / 100,
+      }));
+
+      try {
+        setCalcLoading(true);
+        const token = await getToken();
+        const res = await http.post(
+          '/bill-split/simplify-debts',
+          { balances: payload },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (cancelled) return;
+
+        const txs = res.data?.transactions || [];
+        setSimplifiedDebts(
+          txs.map((t, i) => ({
+            id: `s_${i + 1}`,
+            from: nameOf(t.from),
+            to: nameOf(t.to),
+            amount: baht(t.amount),
+          }))
+        );
+      } catch (err) {
+        if (cancelled) return;
+        // คำนวณไม่ได้ก็ยังดูรายบิลดิบได้
+        setSimplifiedDebts([]);
+      } finally {
+        if (!cancelled) setCalcLoading(false);
       }
+    };
 
-      debtor.amount -= amount;
-      creditor.amount -= amount;
-
-      if (debtor.amount <= 0.01) dIdx++;
-      if (creditor.amount <= 0.01) cIdx++;
-    }
-
-    return { rawTransactions: raw, simplifiedDebts: simplified };
-  }, [members, bills]);
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [members, bills, nameOf]);
 
   const handleSendReminder = (debt) => {
     setRemindedList((prev) => [...prev, debt.id]);
@@ -148,9 +174,6 @@ export default function GroupSettleScreen() {
     );
   };
 
-  const { settleGroup } = useGroup();
-  const groupId = route.params?.groupId;
-
   const handleSaveSettle = () => {
     Alert.alert(
       'ยืนยันการเคลียร์บิล',
@@ -159,25 +182,45 @@ export default function GroupSettleScreen() {
         { text: 'ยกเลิก', style: 'cancel' },
         {
           text: 'บันทึกการเคลียร์บิล',
-          onPress: () => {
-            if (groupId) {
-              settleGroup(groupId);
+          onPress: async () => {
+            if (!groupId) return;
+            try {
+              setSaving(true);
+              await settleGroup(groupId);
+              Alert.alert('สำเร็จ! 🎉', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
+                { text: 'ตกลง', onPress: () => router.back() },
+              ]);
+            } catch (err) {
+              Alert.alert('บันทึกไม่สำเร็จ', err.message || 'ไม่สามารถเปลี่ยนสถานะกลุ่มได้', [
+                { text: 'ตกลง' },
+              ]);
+            } finally {
+              setSaving(false);
             }
-            Alert.alert('สำเร็จ! 🎉', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
-              { text: 'ตกลง', onPress: () => navigation.goBack() },
-            ]);
           },
         },
       ]
     );
   };
 
+  // ถ้ายังไม่มีกลุ่มใน context (เพิ่งเข้ามา/เพิ่ง refresh) -> รอก่อน ไม่งั้นจะโชว์ "ไม่มีรายการ" ผิด ๆ
+  if (!ctx && !loadedOnce) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#6D28D9" />
+          <Text style={{ marginTop: 12, color: '#64748B' }}>กำลังโหลดข้อมูลกลุ่ม...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ResponsiveWrapper>
+    <>
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={24} color="#1E293B" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>เคลียร์บิล</Text>
@@ -274,11 +317,16 @@ export default function GroupSettleScreen() {
                 สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
               </Text>
 
-              {simplifiedDebts.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>ไม่มีหนี้ค้างชำระในกลุ่มนี้ หรือเคลียร์บิลเรียบร้อยแล้ว ✨</Text>
-                </View>
-              ) : (
+                {calcLoading ? (
+                  <View style={styles.emptyContainer}>
+                    <ActivityIndicator size="large" color="#6D28D9" />
+                    <Text style={styles.emptyText}>กำลังคำนวณการตัดหนี้...</Text>
+                  </View>
+                ) : simplifiedDebts.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>ทุกคนชำระเรียบร้อยแล้ว ไม่มีรายการที่ต้องจ่าย</Text>
+                  </View>
+                ) : (
                 simplifiedDebts.map((item) => {
                   const isReminded = remindedList.includes(item.id);
                   return (
@@ -320,16 +368,19 @@ export default function GroupSettleScreen() {
 
         {/* Bottom Button: บันทึกการเคลียร์บิล */}
         <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={styles.saveSettleBtn}
-            onPress={handleSaveSettle}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.saveSettleBtnText}>บันทึกการเคลียร์บิล</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveSettleBtn, (saving || simplifiedDebts.length === 0) && { opacity: 0.6 }]}
+              onPress={handleSaveSettle}
+              activeOpacity={0.85}
+              disabled={saving || simplifiedDebts.length === 0}
+            >
+              <Text style={styles.saveSettleBtnText}>
+                {saving ? 'กำลังบันทึก...' : 'ยืนยันการเคลียร์บิล'}
+              </Text>
+            </TouchableOpacity>
         </View>
       </SafeAreaView>
-    </ResponsiveWrapper>
+    </>
   );
 }
 

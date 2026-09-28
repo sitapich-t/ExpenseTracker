@@ -11,6 +11,9 @@ const { applyMerchantCorrections } = require('./merchantCorrections');
 const MOCK_RESULT = {
   merchant: 'สปาร์ค อีวี (MOCK)',
   total: 100.0,
+  netAmount: 100.0,
+  vat: 0,
+  serviceCharge: 0,
   date: new Date().toISOString(),
   parsedText: 'สปาร์ค อีวี\n1683533\nTransaction ID: 016242082205CPM12337',
   bankName: 'ธนาคารกสิกรไทย',
@@ -263,44 +266,227 @@ function extractTotal(text) {
   return 0;
 }
 
-// 🧺 10. สกัดรายการสินค้า (Line Items) จากใบเสร็จ
+// 💵 9.5 สกัดตาราง VAT breakdown แบบใบกำกับภาษี (VAT% Net.Amt VAT Amount)
+// รองรับ 2 รูปแบบ: มี % ครบ (4 ตัวเลข: percent netAmt vatAmt amount)
+// หรือไม่มี % เพราะ OCR อ่านตกหล่น (3 ตัวเลข: netAmt vatAmt amount)
+function extractVatTable(rawText, total) {
+  if (!/VAT/i.test(rawText)) return null;
+
+  const flat = rawText.replace(/\n/g, ' ');
+
+  const regexWithPercent = /\b[Vv]?\s*(\d{1,2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\b/g;
+  const regexNoPercent = /Net\.?\s*Amt[^\d]*Amount\s*([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/i;
+
+  const results = [];
+
+  let match;
+  while ((match = regexWithPercent.exec(flat)) !== null) {
+    results.push({
+      percent: parseFloat(match[1]),
+      netAmt: parseFloat(match[2].replace(/,/g, '')),
+      vatAmt: parseFloat(match[3].replace(/,/g, '')),
+      amount: parseFloat(match[4].replace(/,/g, '')),
+    });
+  }
+
+  const noPercentMatch = flat.match(regexNoPercent);
+  if (noPercentMatch) {
+    results.push({
+      percent: null,
+      netAmt: parseFloat(noPercentMatch[1].replace(/,/g, '')),
+      vatAmt: parseFloat(noPercentMatch[2].replace(/,/g, '')),
+      amount: parseFloat(noPercentMatch[3].replace(/,/g, '')),
+    });
+  }
+
+  if (results.length === 0) return null;
+
+  const valid = results.find((r) => {
+    const internallyConsistent = Math.abs((r.netAmt + r.vatAmt) - r.amount) < 0.5;
+    const matchesReceiptTotal = !total || total <= 0 || Math.abs(r.amount - total) < 0.5;
+    const plausiblePercent = r.percent === null || (r.percent >= 0 && r.percent <= 15);
+    return internallyConsistent && matchesReceiptTotal && plausiblePercent;
+  });
+  return valid || null;
+}
+
+// 💵 9.6 สกัดยอด VAT หรือ Service Charge แบบบรรทัดเดี่ยว (fallback เมื่อไม่มีตาราง)
+// เช่น "VAT 15.00", "Service Charge 50.00", "ค่าบริการ 10%  50.00"
+function extractLabeledAmount(rawText, keywordRegex) {
+  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (!keywordRegex.test(line)) continue;
+    const cleaned = line.replace(/[฿Bb]/g, '');
+    const match = cleaned.match(/([\d,]+\.\d{2})/);
+    if (match) {
+      return parseFloat(match[1].replace(/,/g, ''));
+    }
+  }
+  return null;
+}
+
+const VAT_KEYWORDS = /(VAT|ภาษีมูลค่าเพิ่ม|ภาษี)/i;
+const SC_KEYWORDS = /(Service\s*Charge|S\.?C\.?\b|ค่าบริการ)/i;
+
+// 💵 9.7 ฟังก์ชันหลัก: ดึง net / vat / serviceCharge ออกจากใบเสร็จ
+// ถ้าบิลไม่ได้แยก VAT/SC (หรือรวมในราคาสินค้าแล้ว) -> คืนค่า 0 ทั้งคู่ ตามที่ต้องการ
+function extractVatAndServiceCharge(rawText, total) {
+  let vat = 0;
+  let serviceCharge = 0;
+  let netAmount = null;
+
+  const table = extractVatTable(rawText, total);
+  if (table) {
+    vat = table.vatAmt;
+    netAmount = table.netAmt;
+  } else {
+    const labeledVat = extractLabeledAmount(rawText, VAT_KEYWORDS);
+    if (labeledVat !== null) vat = labeledVat;
+  }
+
+  const labeledSc = extractLabeledAmount(rawText, SC_KEYWORDS);
+  if (labeledSc !== null) serviceCharge = labeledSc;
+
+  // ถ้ายังไม่รู้ net amount ให้คำนวณจาก total - vat - sc
+  if (netAmount === null) {
+    netAmount = parseFloat((total - vat - serviceCharge).toFixed(2));
+    if (netAmount < 0) netAmount = total; // กันเคสข้อมูลผิดเพี้ยนจน net ติดลบ
+  }
+
+  return { netAmount, vat, serviceCharge };
+}
+// ช่วยแก้ปัญหา OCR อ่านสัญลักษณ์ ฿ ผิดเป็นตัวเลข "8" นำหน้า (พบบ่อยกับฟอนต์ใบเสร็จเทอร์มอล)
+// ใช้ heuristic เดียวกับที่ extractReceiptTotalAmount ใช้อยู่แล้ว: ตัวเลขยาวผิดปกติ + ขึ้นต้นด้วย 8
+function stripMisreadBahtSymbol(numStr) {
+  if (numStr.length > 6 && numStr.startsWith('8')) {
+    return numStr.substring(1);
+  }
+  return numStr;
+}
+
+// 🧺 10. สกัดรายการสินค้า (Line Items) จากใบเสร็จ — รองรับหลายรูปแบบ
 function extractLineItems(parsedText) {
   if (!parsedText) return [];
-  const lines = parsedText.split('\n');
+  const lines = parsedText.split('\n').map((l) => l.trim()).filter(Boolean);
   const items = [];
-  let isItemSection = false;
+  const usedLineIdx = new Set();
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
+  // บรรทัดที่ไม่ใช่รายการสินค้าแน่ๆ (header/footer/ยอดรวม/ส่วนลด/metadata)
+  const noiseRegex = /(ใบเสร็จ|พนักงาน|ระบบขายหน้าร้าน|เสริฟในร้าน|รวมทั้งหมด|ยอดรวม|ยอดสุทธิ|ยอดชำระ|ส่วนลด|รวมส่วนลด|ภาษี|VAT|Tax\b|Subtotal|Total\b|Net\s*Amount|เงินทอน|เงินสด|Cash|Change|ไทยช่วยไทย|THANK YOU|Tax Invoice|โต๊ะ|Table|เวลา|วันที่|Tran{1,2}\s*ID|โทร|Tel\b|^[A-Z]{2,}#|^\d+[-=|]\d|บริการ|Service\s*Charge|ขอบคุณ)/i;
+  const pureNumberLine = /^[\$8฿]?[\d,]+\.\d{2}$/;
+  // หัวข้อหมวดหมู่ในใบเสร็จ (เช่น "เครื่องดื่ม 10%", "อาหาร") ไม่ใช่ตัวสินค้า
+  const sectionHeaderRegex = /^(เครื่องดื่ม|อาหาร|ของหวาน|อื่นๆ|ทั่วไป|Beverages?|Foods?|Drinks?)\s*(\(?\d+\s*%\)?)?$/i;
 
-    // 1. เริ่มอ่านเมื่อเจอคำว่า "รายการสินค้า"
-    if (/รายการสินค้า/i.test(line)) {
-      isItemSection = true;
-      continue;
-    }
+  const pureNumbersRowRegex = /^[\d,\s]+\.\d{2}(?:\s+[\d,]+\.\d{2}){1,3}$/;
+  const isNoiseLine = (line) => noiseRegex.test(line) || sectionHeaderRegex.test(line) || pureNumberLine.test(line) || pureNumbersRowRegex.test(line);
+  // ---------- Pattern A: ชื่ออยู่บรรทัดก่อนหน้า, "qty x unitPrice" อยู่คนละบรรทัด ----------
+  // เช่น "A ซุปกระดูกหมูหม่าล่าเผ็ดกลาง" แล้วบรรทัดถัดมา "0.725 x ฿290.00"
+  const qtyPriceRegex = /^(\d+(?:\.\d+)?)\s*[xX×]\s*[฿Bb]?\s*([\d,]+\.\d{2})/;
 
-    // 2. หยุดอ่านเมื่อถึงบรรทัดสรุปยอด
-    if (isItemSection && /(ยอด|สุทธิ|เงินสด|เงินทอน|total|net)/i.test(line)) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const qtyMatch = line.match(qtyPriceRegex);
+    if (!qtyMatch) continue;
+
+    const qty = parseFloat(qtyMatch[1]);
+    const unitPriceStr = stripMisreadBahtSymbol(qtyMatch[2].replace(/,/g, ''));
+    const unitPrice = parseFloat(unitPriceStr);
+    if (isNaN(qty) || isNaN(unitPrice)) continue;
+
+    let name = '';
+    let nameIdx = -1;
+    for (let j = i - 1; j >= 0 && j >= i - 3; j--) {
+      if (usedLineIdx.has(j)) continue;
+      const candidate = lines[j];
+      if (isNoiseLine(candidate) || candidate.length < 3) continue;
+      name = candidate;
+      nameIdx = j;
       break;
     }
 
-    if (isItemSection) {
-      // Regex จับ: [จำนวนชิ้น (ถ้ามี)] + [ชื่อสินค้า] + [ราคาที่มีทศนิยม]
-      // รองรับทั้ง "1 ขนมรีบกั้ง (ผสมเนื้อ 42.00" และ "1 M-Stamp(uan) 0.00N"
-      const match = line.match(/^(\d+\s+)?(.+?)\s+([\d,]+\.\d{2})/);
+    if (name) {
+      items.push({ name, quantity: qty, price: parseFloat((qty * unitPrice).toFixed(2)) });
+      usedLineIdx.add(i);
+      if (nameIdx !== -1) usedLineIdx.add(nameIdx);
+    }
+  }
 
-      if (match) {
-        const qty = match[1] ? parseInt(match[1].trim(), 10) : 1;
-        const name = match[2].trim();
-        const price = parseFloat(match[3].replace(/,/g, ''));
+  // ---------- Pattern B: ตารางอยู่บรรทัดเดียว "ชื่อสินค้า  จำนวน  ราคาต่อหน่วย  ราคารวม" ----------
+  // เช่น "LEO 3 ขวด   1   179.00   179.00" หรือ "น้ำ   2   15.00   30.00"
+  const tableRowRegex = /^(.+?)\s+(\d+(?:\.\d+)?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$/;
 
-        if (name && !isNaN(price)) {
-          items.push({ name, quantity: qty, price });
+  for (let i = 0; i < lines.length; i++) {
+    if (usedLineIdx.has(i)) continue;
+    const line = lines[i];
+    if (isNoiseLine(line)) continue;
+
+    const rowMatch = line.match(tableRowRegex);
+    if (!rowMatch) continue;
+
+    const [, rawName, qtyStr, , totalStr] = rowMatch;
+    const name = rawName.trim();
+    if (name.length < 2 || isNoiseLine(name)) continue;
+
+    const qty = parseFloat(qtyStr);
+    const total = parseFloat(stripMisreadBahtSymbol(totalStr.replace(/,/g, '')));
+    if (isNaN(qty) || isNaN(total)) continue;
+
+    items.push({ name, quantity: qty, price: total });
+    usedLineIdx.add(i);
+  }
+
+  // ---------- Pattern C: บรรทัดเดียว "ชื่อสินค้า  ราคา" แบบง่าย (จำนวน = 1) ----------
+  // รองรับตัวอักษรต่อท้ายราคา เช่น "V" (VAT-applicable marker) ที่ใบเสร็จบางร้านใส่ไว้
+  const simpleRowRegex = /^(.+?)\s+([\d,]+\.\d{2})\s*[A-Za-z]?\s*$/;
+  if (items.length === 0) {
+    for (let i = 0; i < lines.length; i++) {
+      if (usedLineIdx.has(i)) continue;
+      const line = lines[i];
+      if (isNoiseLine(line)) continue;
+
+      const rowMatch = line.match(simpleRowRegex);
+      if (!rowMatch) continue;
+
+      const [, rawName, priceStr] = rowMatch;
+      const name = rawName.trim().replace(/^\d+[-.]\s*/, '');
+      if (name.length < 3 || isNoiseLine(name) || /^\d+$/.test(name)) continue;
+
+      const price = parseFloat(stripMisreadBahtSymbol(priceStr.replace(/,/g, '')));
+      if (isNaN(price)) continue;
+
+      items.push({ name, quantity: 1, price });
+      usedLineIdx.add(i);
+    }
+  }
+
+  // ---------- Fallback เดิม: ใบเสร็จรูปแบบเก่าที่มี header "รายการสินค้า" ชัดเจน ----------
+  if (items.length === 0) {
+    let isItemSection = false;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      if (/รายการสินค้า/i.test(line)) {
+        isItemSection = true;
+        continue;
+      }
+      if (isItemSection && /(ยอด|สุทธิ|เงินสด|เงินทอน|total|net)/i.test(line)) {
+        break;
+      }
+      if (isItemSection) {
+        const match = line.match(/^(\d+\s+)?(.+?)\s+([\d,]+\.\d{2})/);
+        if (match) {
+          const qty = match[1] ? parseInt(match[1].trim(), 10) : 1;
+          const name = match[2].trim();
+          const price = parseFloat(match[3].replace(/,/g, ''));
+          if (name && !isNaN(price)) {
+            items.push({ name, quantity: qty, price });
+          }
         }
       }
     }
   }
+
   return items;
 }
 
@@ -456,17 +642,26 @@ exports.scanReceipt = async ({ file, image } = {}) => {
   let total = 0;
   let merchant = '';
   let items = [];
+  let netAmount = 0;
+    let vat = 0;
+    let serviceCharge = 0;
 
-  if (documentType === 'slip' || documentType === 'transfer_slip') {
-    // 📄 Logic สำหรับสลิปโอนเงิน (K+, SCB, Kept, Krungthai ฯลฯ)
-    total = extractAmountFromSlip(rawText) || extractTotal(rawText) || 0;
-    merchant = extractRecipientFromSlip(rawText) || extractMerchant(rawText);
-  } else {
-    // 🧾 Logic สำหรับใบเสร็จซื้อสินค้าปกติ (เช่น ร้าน Yo-i, POS หน้าร้าน)
-    total = extractReceiptTotalAmount(rawText) || extractTotal(rawText) || 0;
-    merchant = extractReceiptMerchant(rawText) || extractMerchant(rawText);
-    items = extractLineItems(parsedText);
-  }
+    if (documentType === 'slip' || documentType === 'transfer_slip') {
+      total = extractAmountFromSlip(rawText) || extractTotal(rawText) || 0;
+      merchant = extractRecipientFromSlip(rawText) || extractMerchant(rawText);
+      netAmount = total;
+    } else {
+      total = extractReceiptTotalAmount(rawText) || extractTotal(rawText) || 0;
+      merchant = extractReceiptMerchant(rawText) || extractMerchant(rawText);
+      items = extractLineItems(parsedText);
+      console.log('🧺 Extracted items:', JSON.stringify(items, null, 2));
+
+      const vatScResult = extractVatAndServiceCharge(rawText, total);
+      netAmount = vatScResult.netAmount;
+      vat = vatScResult.vat;
+      serviceCharge = vatScResult.serviceCharge;
+      console.log('💰 VAT/SC breakdown:', vatScResult);
+    }
 
   // 4. ดึงข้อมูล Metadata อื่นๆ
   const date = extractDate(rawText);
@@ -483,6 +678,9 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     success: true,
     merchant: merchant,
     total: total,
+    netAmount: netAmount,
+    vat: vat,
+    serviceCharge: serviceCharge,
     date: date,
     parsedText: parsedText,
     items: items,

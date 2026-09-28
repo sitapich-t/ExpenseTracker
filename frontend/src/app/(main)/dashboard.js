@@ -144,12 +144,6 @@ export default function DashboardScreen() {
           <TouchableOpacity style={styles.iconBtn}>
             <Ionicons name="notifications-outline" size={24} color="#333" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => router.replace('/logout')}
-          >
-            <Ionicons name="log-out-outline" size={24} color="#c62828" />
-          </TouchableOpacity>
         </View>
 
         {/* Balance Card */}
@@ -185,7 +179,7 @@ export default function DashboardScreen() {
 
         {/* Quick Action Grid */}
         <View style={styles.actionGrid}>
-          <TouchableOpacity style={styles.actionItem} onPress={() => router.push('/add-transaction')}>
+          <TouchableOpacity style={styles.actionItem} onPress={() => router.push('/add-expense-screen')}>
             <View style={styles.actionIconBg}><Ionicons name="add-circle" size={26} color="#5f3dc4" /></View>
             <Text style={styles.actionLabel}>เพิ่มรายการ</Text>
           </TouchableOpacity>

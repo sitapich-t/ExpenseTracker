@@ -1,283 +1,375 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
-  TextInput,
+  Text,
+  StyleSheet,
   TouchableOpacity,
   ScrollView,
+  TextInput,
   Alert,
-  ActivityIndicator,
+  Modal,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { http } from '@/lib/api';
+import { SHADOWS } from '@/lib/theme';
+import { useGroup } from './context/GroupContext';
 
-const CATEGORIES = [
-  { id: 'Trip', label: 'Trip', icon: 'airplane-outline' },
-  { id: 'House', label: 'House', icon: 'home-outline' },
-  { id: 'Food', label: 'Food', icon: 'restaurant-outline' },
-  { id: 'Event', label: 'Event', icon: 'party-popper' }, // Icon จาก MaterialCommunityIcons
+const GROUP_COLORS_6 = [
+  '#7C3AED', // Purple (default selected)
+  '#3B82F6', // Blue
+  '#10B981', // Green
+  '#EC4899', // Pink
+  '#F59E0B', // Orange
+  '#EF4444', // Red
 ];
+
+const CATEGORIES = ['ท่องเที่ยว', 'อาหารและเครื่องดื่ม', 'ที่พัก / หอพัก', 'ปาร์ตี้ สังสรรค์', 'ทั่วไป'];
+
+// backend createGroup จดจำไอคอนจากค่า category ชุดนี้เท่านั้น
+const CATEGORY_MAP = {
+  'ท่องเที่ยว': 'Trip',
+  'อาหารและเครื่องดื่ม': 'Food',
+  'ที่พัก / หอพัก': 'Lodging',
+  'ปาร์ตี้ สังสรรค์': 'Event',
+  'ทั่วไป': 'General',
+};
 
 export default function CreateGroupScreen() {
   const router = useRouter();
-  const [groupName, setGroupName] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Trip');
-  const [loading, setLoading] = useState(false);
+  const { addGroup } = useGroup();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('ท่องเที่ยว');
+  const [selectedColor, setSelectedColor] = useState(GROUP_COLORS_6[0]);
+  const [budget, setBudget] = useState('5,000.00');
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      Alert.alert('แจ้งเตือน', 'กรุณากรอกชื่อกลุ่ม');
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณาระบุชื่อกลุ่ม');
       return;
     }
 
-    setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('userToken');
-
-      // ยิง API สร้างกลุ่มใหม่
-      const res = await http.post(
-        '/groups/create',
-        {
-          name: groupName,
-          category: selectedCategory,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+setSaving(true);
+      const created = await addGroup({
+        name: name.trim(),
+        description: description.trim(),
+        category: CATEGORY_MAP[category] || 'General',
+        color: selectedColor,
+      });
 
       Alert.alert(
-        'สร้างกลุ่มสำเร็จ!',
-        'ระบบสร้าง QR Code สำหรับเชิญเพื่อนเข้ากลุ่มเรียบร้อยแล้ว',
+        'สร้างกลุ่มสำเร็จ! 🎉',
+        `สร้างกลุ่ม "${created?.name || name}" เรียบร้อยแล้ว\nรหัสเชิญ: ${created?.invite_code || '-'}`,
         [
           {
             text: 'ตกลง',
-            onPress: () => {
-              // ส่งไปยังหน้าแสดงรายละเอียดกลุ่มพร้อมส่ง QR Code / Invite ID ไปด้วย
-              router.replace({
-                pathname: '/group-detail',
-                params: {
-                  id: res.data?.group?.id || '1',
-                  name: groupName,
-                  showQRModal: 'true',
-                },
-              });
-            },
+            onPress: () => router.replace('/(main)/list-group'),
           },
         ]
       );
     } catch (err) {
-      Alert.alert('ข้อผิดพลาด', err.response?.data?.error || 'ไม่สามารถสร้างกลุ่มได้');
+      Alert.alert('สร้างกลุ่มไม่สำเร็จ', err.message || 'ไม่สามารถสร้างกลุ่มได้', [
+        { text: 'ตกลง' },
+      ]);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#6d28d9" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Group</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Section 1: Group Details */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Group Details</Text>
-
-          <Text style={styles.inputLabel}>Group Name</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="e.g. Ski Trip 2024"
-            placeholderTextColor="#a1a1aa"
-            value={groupName}
-            onChangeText={setGroupName}
-          />
-
-          <Text style={styles.inputLabel}>Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow}>
-            {CATEGORIES.map((item) => {
-              const isSelected = selectedCategory === item.id;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.categoryBtn, isSelected && styles.categoryBtnActive]}
-                  onPress={() => setSelectedCategory(item.id)}
-                  activeOpacity={0.7}
-                >
-                  {item.id === 'Event' ? (
-                    <MaterialCommunityIcons
-                      name={item.icon}
-                      size={24}
-                      color={isSelected ? '#6d28d9' : '#4b5563'}
-                    />
-                  ) : (
-                    <Ionicons
-                      name={item.icon}
-                      size={24}
-                      color={isSelected ? '#6d28d9' : '#4b5563'}
-                    />
-                  )}
-                  <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+    <>
+      <SafeAreaView style={styles.safeArea}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#1E293B" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>สร้างกลุ่ม</Text>
+          <View style={{ width: 36 }} />
         </View>
 
-        {/* Section 2: Invite Option (แทนที่ส่วน Search/Add Members) */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Add Members</Text>
-          <View style={styles.qrInfoBox}>
-            <View style={styles.qrIconCircle}>
-              <Ionicons name="qr-code-outline" size={28} color="#6d28d9" />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.qrInfoTitle}>Invite via QR Code / Link</Text>
-              <Text style={styles.qrInfoSub}>
-                เมื่อสร้างกลุ่มเสร็จแล้ว ระบบจะสร้าง QR Code และลิงก์เชิญให้เพื่อนของคุณสแกนเข้าร่วมกลุ่มได้ด้วยตัวเอง
-              </Text>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Field: ชื่อกลุ่ม */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>ชื่อกลุ่ม</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="เช่น ทริปพัทยา 2024, ค่าไฟหอพัก"
+              placeholderTextColor="#94A3B8"
+              value={name}
+              onChangeText={setName}
+            />
+          </View>
+
+          {/* Field: คำอธิบายกลุ่ม */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>คำอธิบายกลุ่ม</Text>
+            <TextInput
+              style={[styles.textInput, styles.textArea]}
+              placeholder="คำอธิบายอื่นๆ (ไม่บังคับ)"
+              placeholderTextColor="#94A3B8"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          {/* Field: หมวดหมู่กลุ่ม */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>หมวดหมู่กลุ่ม</Text>
+            <TouchableOpacity 
+              style={styles.dropdownBtn}
+              onPress={() => setShowCategoryModal(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dropdownBtnText}>{category}</Text>
+              <Ionicons name="chevron-down" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Field: ไอคอนและสีประจำกลุ่ม */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>ไอคอนและสีประจำกลุ่ม</Text>
+            <View style={styles.colorsRow}>
+              {GROUP_COLORS_6.map((color) => {
+                const isSelected = selectedColor === color;
+                return (
+                  <TouchableOpacity
+                    key={color}
+                    style={[styles.colorCircle, { backgroundColor: color }]}
+                    onPress={() => setSelectedColor(color)}
+                    activeOpacity={0.8}
+                  >
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-        </View>
-      </ScrollView>
 
-      {/* Footer Submit Button */}
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.submitBtn}
-          onPress={handleCreateGroup}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitBtnText}>Create Group</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
+          {/* Field: งบประมาณกลุ่ม (บาท) */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>งบประมาณกลุ่ม (บาท)</Text>
+            <View style={styles.budgetInputContainer}>
+              <TextInput
+                style={styles.budgetInput}
+                placeholder="5,000.00"
+                placeholderTextColor="#94A3B8"
+                value={budget}
+                onChangeText={setBudget}
+                keyboardType="numeric"
+              />
+              <Text style={styles.budgetSuffix}>บาท</Text>
+            </View>
+          </View>
+
+          {/* Bottom Purple Button */}
+          <TouchableOpacity
+            style={[styles.submitBtn, saving && { opacity: 0.6 }]}
+            onPress={handleCreate}
+            activeOpacity={0.85}
+            disabled={saving}
+          >
+            <Text style={styles.submitBtnText}>
+              {saving ? 'กำลังสร้าง...' : 'สร้างกลุ่มใหม่'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* Category Modal */}
+        <Modal visible={showCategoryModal} transparent animationType="fade">
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowCategoryModal(false)}
+          >
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>เลือกหมวดหมู่กลุ่ม</Text>
+              {CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.catOption, category === cat && styles.catOptionActive]}
+                  onPress={() => {
+                    setCategory(cat);
+                    setShowCategoryModal(false);
+                  }}
+                >
+                  <Text style={[styles.catOptionText, category === cat && styles.catOptionTextActive]}>
+                    {cat}
+                  </Text>
+                  {category === cat && <Ionicons name="checkmark" size={18} color="#6D28D9" />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', paddingTop: 50 },
-  
-  // Header
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
   header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justify: 'space-between',
     paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  backButton: {
+    padding: 6,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  fieldGroup: {
     marginBottom: 20,
   },
-  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1e1b4b' },
-
-  // Card Container
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 8,
   },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: '#1e1b4b', marginBottom: 16 },
-
-  // Inputs & Categories
-  inputLabel: { fontSize: 13, fontWeight: '600', color: '#64748b', marginBottom: 8 },
   textInput: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#ddd6fe',
-    borderRadius: 12,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#1E293B',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  dropdownBtn: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  dropdownBtnText: {
     fontSize: 15,
-    color: '#0f172a',
-    marginBottom: 20,
+    color: '#1E293B',
+    fontWeight: '500',
   },
-  categoryRow: { flexDirection: 'row', paddingVertical: 4 },
-  categoryBtn: {
-    width: 76,
-    height: 80,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 16,
-    justify: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  categoryBtnActive: {
-    backgroundColor: '#f3e8ff',
-    borderColor: '#6d28d9',
-    borderWidth: 1.5,
-  },
-  categoryText: { fontSize: 12, fontWeight: '600', color: '#4b5563', marginTop: 6 },
-  categoryTextActive: { color: '#6d28d9', fontWeight: '700' },
-
-  // Invite Section
-  qrInfoBox: {
+  colorsRow: {
     flexDirection: 'row',
-    backgroundColor: '#f5f3ff',
-    borderRadius: 16,
-    padding: 16,
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 4,
+  },
+  colorCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  budgetInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#ddd6fe',
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 16,
   },
-  qrIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#fff',
-    justify: 'center',
-    alignItems: 'center',
+  budgetInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#1E293B',
   },
-  qrInfoTitle: { fontSize: 14, fontWeight: '700', color: '#5b21b6', marginBottom: 4 },
-  qrInfoSub: { fontSize: 12, color: '#6b21a8', lineHeight: 17 },
-
-  // Footer Button
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+  budgetSuffix: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontWeight: '500',
   },
   submitBtn: {
-    backgroundColor: '#6d28d9',
-    borderRadius: 25,
+    backgroundColor: '#5B21B6',
+    borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#6d28d9',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    marginTop: 16,
+    ...SHADOWS.medium,
   },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  submitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    ...SHADOWS.medium,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  catOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  catOptionActive: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+  },
+  catOptionText: {
+    fontSize: 15,
+    color: '#334155',
+  },
+  catOptionTextActive: {
+    color: '#6D28D9',
+    fontWeight: '700',
+  },
 });

@@ -50,8 +50,22 @@ function simplifyDebts(balances, options = {}) {
   let people = balances
     .map((b) => ({ person: b.person, amount: toSatang(b.amount) }))
     .filter((p) => Math.abs(p.amount) >= 1);
+  // 2.1) แก้ residual จากการปัดเศษแยกทีละคน (Math.round ต่อคน อาจทำให้
+  //      ผลรวมสตางค์คลาดเคลื่อน ±1..n satang แม้ระดับบาทจะสมดุลตาม tolerance แล้ว)
+  //      เติม/หักส่วนต่างนี้กับคนที่มียอดสูงสุด เพื่อให้ผลรวมสตางค์ = 0 เป๊ะ
+  //      ก่อนเข้า greedy matching — ป้องกันสตางค์ตกหล่นเงียบๆ ท้ายลูป
+  const residual = people.reduce((s, p) => s + p.amount, 0);
+  if (residual !== 0 && people.length > 0) {
+    const target = people.reduce((max, p) =>
+      Math.abs(p.amount) > Math.abs(max.amount) ? p : max
+    );
+    target.amount -= residual;
+  }
+
+  people = people.filter((p) => Math.abs(p.amount) >= 1);
 
   const transactions = [];
+
 
   // 3) วนจับคู่ "เจ้าหนี้มากสุด" กับ "ลูกหนี้มากสุด" ทีละรอบ จนกว่าจะหมด
   //    (O(n) ต่อรอบในการหาค่ามากสุด, O(n) รอบ รวม O(n^2) ซึ่งเพียงพอสำหรับ Phase 1

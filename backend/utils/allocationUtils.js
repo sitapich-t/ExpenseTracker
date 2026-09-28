@@ -116,9 +116,78 @@ function distributeSCVAT(items, scRate = 0, vatRate = 0, options = {}) {
   };
 }
 
+/**
+ * กระจาย SC/VAT (ที่คำนวณระดับ item แล้ว) ต่อไปยังสมาชิกแต่ละคน
+ * รองรับกรณี item หนึ่งมีหลายคนแชร์ร่วมกัน (เช่น กับข้าวจานกลาง)
+ *
+ * @param {Array<{id, price}>} items
+ * @param {Object<string, string[]>} itemAssignments
+ * @param {number} scRate
+ * @param {number} vatRate
+ * @param {Object} [options]
+ * @returns {{members: Object, summary: Object, itemBreakdown: Array}}
+ */
+function allocateToMembers(items, itemAssignments, scRate = 0, vatRate = 0, options = {}) {
+  const { items: itemResults, summary } = distributeSCVAT(items, scRate, vatRate, options);
+
+  const memberIds = [...new Set(Object.values(itemAssignments).flat())];
+  const memberTotalsSatang = Object.fromEntries(
+    memberIds.map((id) => [id, { price: 0, sc: 0, vat: 0 }])
+  );
+
+  const itemBreakdown = [];
+
+  for (const itemResult of itemResults) {
+    const assignedMembers = itemAssignments[itemResult.id];
+
+    if (!assignedMembers || assignedMembers.length === 0) {
+      throw new Error(
+        `item id="${itemResult.id}" ไม่มีสมาชิกถูก assign ไว้ (itemAssignments ขาดรายการนี้)`
+      );
+    }
+
+    const equalWeights = assignedMembers.map(() => 1);
+
+    const priceSplit = distributeAmount(toSatang(itemResult.price), equalWeights);
+    const scSplit = distributeAmount(toSatang(itemResult.sc), equalWeights);
+    const vatSplit = distributeAmount(toSatang(itemResult.vat), equalWeights);
+
+    const perMember = {};
+    assignedMembers.forEach((memberId, i) => {
+      memberTotalsSatang[memberId].price += priceSplit[i];
+      memberTotalsSatang[memberId].sc += scSplit[i];
+      memberTotalsSatang[memberId].vat += vatSplit[i];
+      perMember[memberId] = {
+        price: toBaht(priceSplit[i]),
+        sc: toBaht(scSplit[i]),
+        vat: toBaht(vatSplit[i]),
+      };
+    });
+
+    itemBreakdown.push({ itemId: itemResult.id, sharedBy: assignedMembers, perMember });
+  }
+
+  const members = Object.fromEntries(
+    Object.entries(memberTotalsSatang).map(([id, t]) => [
+      id,
+      {
+        price: toBaht(t.price),
+        sc: toBaht(t.sc),
+        vat: toBaht(t.vat),
+        total: toBaht(t.price + t.sc + t.vat),
+      },
+    ])
+  );
+
+  return { members, summary, itemBreakdown };
+}
+
+
+
 module.exports = {
   toSatang,
   toBaht,
   distributeAmount,
   distributeSCVAT,
+  allocateToMembers,
 };

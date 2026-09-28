@@ -96,6 +96,8 @@ export default function ScanReceiptScreen() {
 
           // 1. ปรับการเช็กยอดสุทธิ: ลองหา netTotal / totalAmount ก่อน ถ้าไม่มีค่อยใช้ data.total
           amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
+          vat: String(data.vat ?? '0'),
+          serviceCharge: String(data.serviceCharge ?? '0'),
 
           date: data.date || '',
           parsedText: data.parsedText || '',
