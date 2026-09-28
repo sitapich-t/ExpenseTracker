@@ -25,13 +25,11 @@ const {
   simplifyDebtsHandler,
 } = require('../controllers/billSplitController');
 
-// ถ้าโปรเจกต์มี authMiddleware อยู่แล้ว (เห็นใน middlewares/authMiddleware.js)
-// แนะนำให้ใส่ป้องกัน route เหล่านี้ด้วย เช่น:
-// const { verifyToken } = require('../middlewares/authMiddleware');
-// router.use(verifyToken);
+// ป้องกันด้วย JWT เหมือน groupRoutes.js (endpoint นี้รับข้อมูลสมาชิก/ยอดเงินของกลุ่ม)
+const authenticate = require('../middlewares/authMiddleware');
 
-router.post('/split-bill', splitBill);
-router.post('/split-bill/preview', previewBillSplit);
-router.post('/simplify-debts', simplifyDebtsHandler);
+router.post('/split-bill', authenticate, splitBill);
+router.post('/split-bill/preview', authenticate, previewBillSplit);
+router.post('/simplify-debts', authenticate, simplifyDebtsHandler);
 
 module.exports = router;

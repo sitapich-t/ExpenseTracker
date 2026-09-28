@@ -288,7 +288,7 @@ export default function BudgetScreen() {
 
       <View style={styles.categoriesSection}>
         <Text style={styles.sectionTitle}>งบประมาณตามหมวดหมู่</Text>
-        <Text style={styles.sectionSubtitle}>แตะ "ตั้งงบ" เพื่อกำหนดงบในแต่ละหมวด</Text>
+        <Text style={styles.sectionSubtitle}>แตะ &quot;ตั้งงบ&quot; เพื่อกำหนดงบในแต่ละหมวด</Text>
         
         {Object.entries(CATEGORY_ICONS).map(([catName, catInfo]) => {
           const catId = CATEGORY_ID[catName];

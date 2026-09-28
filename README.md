@@ -1,6 +1,6 @@
 # Expense Tracker (Mobile Application for Personal and Group Expenses)
 
-แอปพลิเคชันบันทึกและจัดการรายรับรายจ่ายส่วนบุคคลและกลุ่ม พัฒนาด้วย **React Native (Expo SDK 56)** และ **Node.js Express + MySQL**
+แอปพลิเคชันบันทึกและจัดการรายรับรายจ่ายส่วนบุคคลและกลุ่ม พัฒนาด้วย **React Native (Expo SDK 57 + expo-router)** และ **Node.js Express + Supabase**
 
 ---
 
@@ -29,25 +29,30 @@
 
 ### 1. รัน Backend API (Terminal 1)
 ```bash
-cd backend-mysql
+cd backend
 npm install
-node server.js
+npm run dev
 ```
-> เซิร์ฟเวอร์จะเริ่มทำงานที่ `http://localhost:3000` เชื่อมต่อกับ MySQL (Database: `expense_tracker`) โดยไม่ต้องใช้ API Key ภายนอก
+> เซิร์ฟเวอร์จะเริ่มทำงานที่ `http://localhost:3000` เชื่อมต่อกับ Supabase
+> ต้องมีไฟล์ `backend/.env` ก่อน (gitignored) ที่มี `SUPABASE_URL`, `SUPABASE_KEY`, `MAILTRAP_*`
+> Health check: `http://localhost:3000/api/health`
 
 ### 2. รัน Frontend App (Terminal 2)
 ```bash
+cd frontend
 npm install
-npm run android
+npm start
 ```
-> ระบบจะเปิด Expo Go บน Android Studio Emulator ให้อัตโนมัติ (หรือกดแป้นพิมพ์ `a` ใน Terminal)
+> กด `a` เพื่อเปิดบน Android Emulator, `i` สำหรับ iOS, `w` สำหรับเว็บ
+> ค่า Base URL ของ API ตั้งค่าใน `frontend/src/lib/api.js` (ค่าเริ่มต้น Android Emulator คือ `http://10.0.2.2:3000`)
 
 ---
 
 ## 📂 โครงสร้างโฟลเดอร์
 
-- `project/` — ซอร์สโค้ดหน้าจอ UI ทั้งหมด (Screens, Components, Theme, Context)
-- `backend-mysql/` — Backend API (Express + MySQL) พร้อมไฟล์ schema.sql
-- `assets/` — ไอคอนและรูปภาพประกอบของแอป
-- `backend/` — Backend เดิม (Supabase + OCR Service)
-- `frontend/` — โฟลเดอร์ Frontend เดิม (expo-router)
+- `frontend/` — แอป Expo SDK 47+ ใช้ expo-router (หน้าจออยู่ใน `frontend/src/app/`)
+- `frontend/src/lib/api.js` — Axios client + token helpers (AsyncStorage key `userToken`)
+- `frontend/src/lib/groups.js` — API สำหรับกลุ่ม (สร้าง/เข้าร่วม/สมาชิก/ธุรกรรม)
+- `backend/` — Backend API ที่ใช้งานจริง (Express 5 + Supabase, entrypoint `server.js`)
+- `backend/utils/` — `allocationUtils`, `balanceCalculator`, `debtSimplifier` (ตรรกะคำนวณส่วนแบ่ง/ดัลย์)
+- `backend/tests/` — Jest tests ของ utils (ต้องติดตั้ง `jest` เพิ่มก่อน)

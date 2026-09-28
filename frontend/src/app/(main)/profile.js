@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { getToken, http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -23,6 +23,7 @@ const CATEGORY_ICONS = {
 };
 
 export default function ProfileScreen() {
+  const router = useRouter();
   // ไม่มีงบ = null (ต่างจาก 0) เพื่อแยกกรณี "ยังไม่เคยตั้งงบ" ออกจาก "ตั้งงบเป็น 0"
   const [budgetId, setBudgetId] = useState(null);
   const [budget, setBudgetAmount] = useState(0);
@@ -183,8 +184,18 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>งบประมาณรายเดือน</Text>
-        <Text style={styles.headerDate}>{THAI_MONTHS[currentMonth]} {currentYear}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>งบประมาณรายเดือน</Text>
+          <Text style={styles.headerDate}>{THAI_MONTHS[currentMonth]} {currentYear}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.profileEditButton}
+          onPress={() => router.push('/edit-profile')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="person-circle-outline" size={18} color="#4f46e5" />
+          <Text style={styles.profileEditButtonText}>แก้ไขโปรไฟล์</Text>
+        </TouchableOpacity>
       </View>
 
       {!hasBudget ? (
@@ -329,6 +340,22 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 24,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  profileEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  profileEditButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4f46e5',
   },
   headerTitle: {
     fontSize: 24,

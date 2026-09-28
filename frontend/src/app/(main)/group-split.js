@@ -17,47 +17,13 @@ export default function GroupSplitScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  // สมมติตัวอย่างข้อมูลกลุ่มเริ่มต้น
-  const [groups, setGroups] = useState([
-    {
-      id: '1',
-      name: 'Dorm Mates',
-      members_count: 4,
-      total_spend: 4200,
-      status_type: 'owe', // owe | receive | settled
-      amount: 150,
-      icon: 'home-outline',
-      icon_bg: '#ede9fe',
-      icon_color: '#6d28d9',
-    },
-    {
-      id: '2',
-      name: 'Phuket Trip',
-      members_count: 6,
-      total_spend: 12500,
-      status_type: 'receive',
-      amount: 45,
-      icon: 'airplane-outline',
-      icon_bg: '#dbeafe',
-      icon_color: '#2563eb',
-    },
-    {
-      id: '3',
-      name: 'CS Project',
-      members_count: 3,
-      total_spend: 850,
-      status_type: 'settled',
-      amount: 0,
-      icon: 'laptop-outline',
-      icon_bg: '#f3e8ff',
-      icon_color: '#9333ea',
-    },
-  ]);
+  const [error, setError] = useState(null);
+  const [groups, setGroups] = useState([]);
 
   const fetchMyGroups = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const token = await getToken();
       if (!token) return;
 
@@ -65,11 +31,9 @@ export default function GroupSplitScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (res.data?.groups && Array.isArray(res.data.groups)) {
-        setGroups(res.data.groups);
-      }
+      setGroups(Array.isArray(res.data?.groups) ? res.data.groups : []);
     } catch (err) {
-      console.log('Error fetching groups:', err.message);
+      setError(err.response?.data?.error || err.message || 'โหลดรายการกลุ่มไม่สำเร็จ');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -155,7 +119,10 @@ export default function GroupSplitScreen() {
           <Text style={styles.createBtnText}>Create New{'\n'}Group</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.qrBtn}>
+        <TouchableOpacity
+          style={styles.qrBtn}
+          onPress={() => router.push('/join-group')}
+        >
           <Ionicons name="qr-code-outline" size={20} color="#1e1b4b" />
           <Text style={styles.qrBtnText}>Join via QR</Text>
         </TouchableOpacity>
@@ -164,6 +131,22 @@ export default function GroupSplitScreen() {
       {/* Groups List */}
       {loading && !refreshing ? (
         <ActivityIndicator size="large" color="#6d28d9" style={{ marginTop: 40 }} />
+      ) : error ? (
+        <View style={styles.stateBox}>
+          <Ionicons name="alert-circle-outline" size={36} color="#dc2626" />
+          <Text style={styles.stateText}>{error}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchMyGroups}>
+            <Text style={styles.retryBtnText}>ลองใหม่</Text>
+          </TouchableOpacity>
+        </View>
+      ) : groups.length === 0 ? (
+        <View style={styles.stateBox}>
+          <Ionicons name="people-outline" size={36} color="#cbd5e1" />
+          <Text style={styles.stateText}>ยังไม่มีกลุ่มของคุณ</Text>
+          <Text style={styles.stateSubText}>
+            กด &quot;Create New Group&quot; เพื่อสร้างกลุ่มแรก
+          </Text>
+        </View>
       ) : (
         groups.map((item) => {
           // ดึงค่าอย่างปลอดภัย รองรับทั้ง camelCase และ snake_case
@@ -244,6 +227,13 @@ const styles = StyleSheet.create({
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#ddd' },
 
   sectionTitle: { fontSize: 20, fontWeight: '700', color: '#1e293b', marginBottom: 16 },
+
+  // States
+  stateBox: { alignItems: 'center', gap: 8, paddingVertical: 36, paddingHorizontal: 20 },
+  stateText: { fontSize: 14, color: '#64748b', textAlign: 'center' },
+  stateSubText: { fontSize: 13, color: '#94a3b8', textAlign: 'center' },
+  retryBtn: { marginTop: 4, backgroundColor: '#5b21b6', paddingHorizontal: 26, paddingVertical: 10, borderRadius: 12 },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   // Action Buttons
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },

@@ -141,7 +141,7 @@ export default function TransactionsScreen() {
       <TouchableOpacity
         style={styles.transactionCard}
         activeOpacity={0.7}
-        onPress={() => router.push({ pathname: '/add-transaction', params: { edit: String(item.id) } })}
+        onPress={() => router.push({ pathname: '/add-expense-screen', params: { edit: String(item.id) } })}
       >
         <View style={[styles.iconContainer, { backgroundColor: catDetails.bg }]}>
           <Text style={styles.iconText}>{catDetails.icon}</Text>
@@ -258,7 +258,7 @@ export default function TransactionsScreen() {
       {/* Floating Action Button */}
       <TouchableOpacity 
         style={styles.fab}
-        onPress={() => router.push('/add-transaction')}
+        onPress={() => router.push('/add-expense-screen')}
       >
         <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>

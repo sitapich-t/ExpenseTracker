@@ -11,8 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { http } from '@/lib/api';
+import { getToken, http } from '@/lib/api';
 
 const CATEGORIES = [
   { id: 'Trip', label: 'Trip', icon: 'airplane-outline' },
@@ -35,7 +34,7 @@ export default function CreateGroupScreen() {
 
     setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('userToken');
+      const token = await getToken();
 
       // ยิง API สร้างกลุ่มใหม่
       const res = await http.post(

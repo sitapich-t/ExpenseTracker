@@ -185,7 +185,7 @@ export default function DashboardScreen() {
 
         {/* Quick Action Grid */}
         <View style={styles.actionGrid}>
-          <TouchableOpacity style={styles.actionItem} onPress={() => router.push('/add-transaction')}>
+          <TouchableOpacity style={styles.actionItem} onPress={() => router.push('/add-expense-screen')}>
             <View style={styles.actionIconBg}><Ionicons name="add-circle" size={26} color="#5f3dc4" /></View>
             <Text style={styles.actionLabel}>เพิ่มรายการ</Text>
           </TouchableOpacity>

@@ -161,7 +161,7 @@ exports.createGroupTransaction = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id || req.user.user_id;
-    const { title, type, amount, merchant, sc_rate = 0, vat_rate = 0, category, date, paid_by } = req.body || {};
+    const { title, type, amount, merchant, sc_rate = 0, vat_rate = 0, category, date, paid_by, slip_url = null } = req.body || {};
 
     if (!title || !amount) {
       return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
