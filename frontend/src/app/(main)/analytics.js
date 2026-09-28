@@ -1,573 +1,772 @@
 import React, { useState, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { G, Circle, Text as SvgText } from 'react-native-svg';
 import { useFocusEffect } from 'expo-router';
 import { getToken, http } from '@/lib/api';
-import { Ionicons } from '@expo/vector-icons';
+import { SHADOWS, THAI_MONTHS } from '@/lib/theme';
 
-const THAI_MONTHS = [
-  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 
-  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+// Color palette for mapping categories to colors
+const CATEGORY_COLORS = [
+  '#7C3AED', '#3B82F6', '#10B981', '#EC4899', '#F59E0B',
+  '#EF4444', '#8B5CF6', '#14B8A6', '#F97316', '#6366F1',
 ];
 
-const CATEGORY_ICONS = {
-  Food: { icon: 'fast-food', color: '#f59e0b', name: 'อาหาร' },
-  Transport: { icon: 'car', color: '#3b82f6', name: 'เดินทาง' },
-  Shopping: { icon: 'cart', color: '#ec4899', name: 'ช้อปปิ้ง' },
-  Study: { icon: 'book', color: '#8b5cf6', name: 'การศึกษา' },
-  Entertainment: { icon: 'game-controller', color: '#10b981', name: 'บันเทิง' },
-  Health: { icon: 'medkit', color: '#ef4444', name: 'สุขภาพ' },
-  Bills: { icon: 'receipt', color: '#64748b', name: 'บิลต่างๆ' },
-  Other: { icon: 'ellipsis-horizontal-circle', color: '#94a3b8', name: 'อื่นๆ' }
+// Donut Chart Component using react-native-svg
+function DonutChart({ segments, centerText }) {
+  const size = 110;
+  const strokeWidth = 14;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  // คำนวณตำแหน่งเริ่มต้นของแต่ละชิ้นไว้ก่อน (ห้าม mutate ตัวแปรระหว่าง render)
+  const percents = segments.map((s) => s.percent);
+  const startPercents = percents.map((_, i) =>
+    percents.slice(0, i).reduce((a, b) => a + b, 0)
+  );
+
+  return (
+    <View style={styles.donutWrapper}>
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <G rotation="-90" origin={`${size / 2}, ${size / 2}`}>
+          {/* Base background circle */}
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="#F1F5F9"
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
+          {/* Slices */}
+          {segments.map((slice, index) => {
+            const strokeDashoffset = circumference - (circumference * slice.percent) / 100;
+            const rotationAngle = (startPercents[index] / 100) * 360;
+
+            return (
+              <G key={index} rotation={rotationAngle} origin={`${size / 2}, ${size / 2}`}>
+                <Circle
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={radius}
+                  stroke={slice.color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={`${circumference} ${circumference}`}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </G>
+            );
+          })}
+        </G>
+        {/* Center Text */}
+        <SvgText
+          x={size / 2}
+          y={size / 2 + 5}
+          textAnchor="middle"
+          fontSize="15"
+          fontWeight="bold"
+          fill="#1E293B"
+        >
+          {centerText}
+        </SvgText>
+      </Svg>
+    </View>
+  );
+}
+
+// Helper: format number to Thai baht string
+function formatBaht(num) {
+  return '฿' + Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Helper: format short baht for donut center
+function formatShortBaht(num) {
+  if (num >= 1000) {
+    return '฿' + (num / 1000).toFixed(1) + 'K';
+  }
+  return '฿' + Number(num).toFixed(0);
+}
+
+// Day-of-week labels (Thai, Mon-Sun)
+const DAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+
+// วันที่ของ transaction (ใช้ transaction_date ก่อน เพราะ created_at เป็น UTC)
+const txDate = (t) => new Date(t.transaction_date || t.created_at);
+
+// ต้นสัปดาห์ = วันจันทร์ 00:00
+const startOfWeek = (d) => {
+  const x = new Date(d);
+  const dow = (x.getDay() + 6) % 7; // Mon=0 ... Sun=6
+  x.setDate(x.getDate() - dow);
+  x.setHours(0, 0, 0, 0);
+  return x;
 };
 
-export default function AnalyticScreen() {
-  // ไม่มีงบ = null (ต่างจาก 0) เพื่อแยกกรณี "ยังไม่เคยตั้งงบ" ออกจาก "ตั้งงบเป็น 0"
-  const [budgetId, setBudgetId] = useState(null);
-  const [budget, setBudgetAmount] = useState(0);
-  const [hasBudget, setHasBudget] = useState(false);
-  const [spent, setSpent] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [isModalVisible, setModalVisible] = useState(false);
-  const [tempBudget, setTempBudget] = useState('');
-  const [categoryBreakdown, setCategoryBreakdown] = useState({});
+const isExpense = (t) => t.type !== 'income';
 
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth(); // 0-indexed สำหรับ THAI_MONTHS
-  const currentYear = currentDate.getFullYear();
+// ชื่อหมวดหมู่จาก relation ที่ backend join มาให้ (fallback ถ้าไม่มี)
+const categoryNameOf = (t) => t.categories?.name || 'อื่นๆ';
 
-  const fetchBudgetData = async () => {
+// ผลรวมรายจ่ายในช่วง [start, end)
+function totalExpenseBetween(transactions, start, end) {
+  return transactions
+    .filter((t) => {
+      const d = txDate(t);
+      return !isNaN(d) && d >= start && d < end;
+    })
+    .filter(isExpense)
+    .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+}
+
+// เปอร์เซ็นต์เปลี่ยนแปลงเทียบกับช่วงก่อนหน้า
+function comparisonText(current, previous) {
+  if (previous <= 0) return current > 0 ? 'ช่วงใหม่' : 'เท่ากับช่วงก่อน';
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return 'เท่ากับช่วงก่อน';
+  return `${pct > 0 ? '+' : ''}${pct}% จากช่วงก่อน`;
+}
+
+// สัดส่วนการใช้จ่ายรายหมวด (เรียงจากมากไปน้อย)
+function buildCategoryBreakdown(transactions, start, end) {
+  const byCat = {};
+  transactions
+    .filter((t) => {
+      const d = txDate(t);
+      return !isNaN(d) && d >= start && d < end;
+    })
+    .filter(isExpense)
+    .forEach((t) => {
+      const key = t.categories?.id ?? t.category_id ?? 9;
+      if (!byCat[key]) byCat[key] = { name: categoryNameOf(t), total: 0 };
+      byCat[key].total += parseFloat(t.amount) || 0;
+    });
+
+  const rows = Object.values(byCat).sort((a, b) => b.total - a.total);
+  const total = rows.reduce((s, r) => s + r.total, 0);
+
+  return rows.map((r, i) => ({
+    name: r.name,
+    amount: formatBaht(r.total),
+    percent: total > 0 ? Math.round((r.total / total) * 100) : 0,
+    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+  }));
+}
+
+// แนวโน้มรายวันของสัปดาห์ (จ น พ พฤ ศ ส อา)
+function buildDailyTrends(transactions, start, end) {
+  const dailyTotals = [0, 0, 0, 0, 0, 0, 0]; // Mon=0 ... Sun=6
+
+  transactions
+    .filter((t) => {
+      const d = txDate(t);
+      return !isNaN(d) && d >= start && d < end;
+    })
+    .filter(isExpense)
+    .forEach((t) => {
+      const dow = txDate(t).getDay();
+      dailyTotals[dow === 0 ? 6 : dow - 1] += parseFloat(t.amount) || 0;
+    });
+
+  const trends = dailyTotals.map((val, idx) => ({
+    label: DAY_LABELS[idx],
+    amount: '฿' + Math.round(val),
+    val: Math.round(val),
+  }));
+
+  return { trends, maxTrendVal: Math.max(...trends.map((t) => t.val), 1) };
+}
+
+// แนวโน้มรายสัปดาห์ของเดือน
+function buildWeeklyTrends(transactions, start, end) {
+  const weeklyTotals = [0, 0, 0, 0, 0]; // สูงสุด 5 สัปดาห์
+
+  transactions
+    .filter((t) => {
+      const d = txDate(t);
+      return !isNaN(d) && d >= start && d < end;
+    })
+    .filter(isExpense)
+    .forEach((t) => {
+      const weekIndex = Math.min(Math.floor((txDate(t).getDate() - 1) / 7), 4);
+      weeklyTotals[weekIndex] += parseFloat(t.amount) || 0;
+    });
+
+  let lastNonZero = weeklyTotals.length - 1;
+  while (lastNonZero > 0 && weeklyTotals[lastNonZero] === 0) lastNonZero--;
+  const activeWeeks = weeklyTotals.slice(0, Math.max(lastNonZero + 1, 4));
+
+  const trends = activeWeeks.map((val, idx) => ({
+    label: `สัปดาห์ ${idx + 1}`,
+    amount: '฿' + Math.round(val),
+    val: Math.round(val),
+  }));
+
+  return { trends, maxTrendVal: Math.max(...trends.map((t) => t.val), 1) };
+}
+
+// ประกอบข้อมูลทั้งหมดสำหรับ 1 ช่วงเวลา
+function buildPeriod({ transactions, start, end, previousStart, previousEnd, budgetLimit, trends }) {
+  const totalExpense = totalExpenseBetween(transactions, start, end);
+  const previousTotal = totalExpenseBetween(transactions, previousStart, previousEnd);
+  const budgetRemaining = budgetLimit > 0 ? budgetLimit - totalExpense : 0;
+
+  return {
+    totalExpense: formatBaht(totalExpense),
+    comparison: comparisonText(totalExpense, previousTotal),
+    budgetRemaining: formatBaht(Math.max(budgetRemaining, 0)),
+    budgetGoal: budgetLimit > 0 ? `เป้าหมาย ${formatBaht(budgetLimit)}` : 'ยังไม่ได้ตั้งงบ',
+    budgetProgress: budgetLimit > 0 ? Math.min(totalExpense / budgetLimit, 1) : 0,
+    donutCenter: formatShortBaht(totalExpense),
+    categories: buildCategoryBreakdown(transactions, start, end),
+    trends: trends.trends,
+    maxTrendVal: trends.maxTrendVal,
+  };
+}
+
+// ค่าเริ่มต้นตอนยังไม่มีข้อมูล — ไม่ใช้ตัวเลขปลอม
+const emptyPeriod = {
+  totalExpense: formatBaht(0),
+  comparison: '',
+  budgetRemaining: formatBaht(0),
+  budgetGoal: 'ยังไม่ได้ตั้งงบ',
+  budgetProgress: 0,
+  donutCenter: formatBaht(0),
+  categories: [],
+  trends: [],
+  maxTrendVal: 1,
+};
+
+export default function ReportScreen() {
+  // Tabs: 'week' or 'month'
+  const [activeTab, setActiveTab] = useState('week');
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [monthIndex, setMonthIndex] = useState(new Date().getMonth()); // current month
+
+  const [weekData, setWeekData] = useState(emptyPeriod);
+  const [monthData, setMonthData] = useState(emptyPeriod);
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-
       const token = await getToken();
       if (!token) {
-        setLoading(false);
+        setWeekData(emptyPeriod);
+        setMonthData(emptyPeriod);
         return;
       }
 
-      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+      const authHeaders = { Authorization: `Bearer ${token}` };
+      const now = new Date();
 
-      // ดึงงบประมาณ "รวม" ของเดือนนี้จาก backend จริง (ไม่ใช้ AsyncStorage อีกต่อไป)
-      const budgetRes = await http.get(
-        `/personal/budgets?month=${currentMonth + 1}&year=${currentYear}`,
-        authHeader
+      // ดึงรายการทั้งหมด แล้วคำนวณเองฝั่ง client
+      // (backend ไม่มี endpoint /summary หรือ /budget แบบ MySQL เดิม)
+      const [txRes, budgetRes] = await Promise.all([
+        http.get('/personal/transactions', { headers: authHeaders }),
+        http.get(
+          `/personal/budgets?month=${now.getMonth() + 1}&year=${now.getFullYear()}`,
+          { headers: authHeaders }
+        ),
+      ]);
+
+      const transactions = txRes.data?.transactions || [];
+      const budgets = budgetRes.data?.budgets || [];
+
+      // งบรวม = budget ที่ category_id เป็น null
+      const overall = budgets.find((b) => b.category_id === null || b.category_id === undefined);
+      const monthlyBudget = overall ? parseFloat(overall.monthly_limit) || 0 : 0;
+
+      // ---- สัปดาห์นี้ (จ น พ พฤ ศ ส อา) ----
+      const weekStart = startOfWeek(now);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const prevWeekStart = new Date(weekStart);
+      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+
+      // งบรายสัปดาห์ = งบรวมรายเดือน ÷ 4 (ประมาณ 4 สัปดาห์ต่อเดือน)
+      const weeklyBudget = monthlyBudget > 0 ? monthlyBudget / 4 : 0;
+
+      setWeekData(
+        buildPeriod({
+          transactions,
+          start: weekStart,
+          end: weekEnd,
+          previousStart: prevWeekStart,
+          previousEnd: weekStart,
+          budgetLimit: weeklyBudget,
+          trends: buildDailyTrends(transactions, weekStart, weekEnd),
+        })
       );
-      const budgets = budgetRes.data.budgets || [];
-      // งบรวมคือแถวที่ category_id เป็น null (แยกจากงบเฉพาะหมวด)
-      const overallBudget = budgets.find(b => b.category_id === null);
 
-      if (overallBudget) {
-        setBudgetId(overallBudget.id);
-        setBudgetAmount(parseFloat(overallBudget.monthly_limit));
-        setHasBudget(true);
-      } else {
-        setBudgetId(null);
-        setBudgetAmount(0);
-        setHasBudget(false);
-      }
+      // ---- เดือนที่เลือก ----
+      const monthStart = new Date(year, monthIndex, 1);
+      const monthEnd = new Date(year, monthIndex + 1, 1);
+      const prevMonthStart = new Date(year, monthIndex - 1, 1);
+      const prevMonthEnd = new Date(year, monthIndex, 1);
 
-      const response = await http.get('/personal/transactions', authHeader);
-      const transactions = response.data.transactions;
-
-      let totalSpent = 0;
-      const breakdown = {};
-
-      transactions.forEach(tx => {
-        const txDate = new Date(tx.transaction_date || tx.created_at);
-        if (
-          tx.type === 'expense' &&
-          txDate.getMonth() === currentMonth &&
-          txDate.getFullYear() === currentYear
-        ) {
-          const amount = parseFloat(tx.amount);
-          totalSpent += amount;
-
-          const cat = tx.categories?.name || tx.category || 'Other';
-          if (!breakdown[cat]) {
-            breakdown[cat] = 0;
-          }
-          breakdown[cat] += amount;
-        }
-      });
-
-      setSpent(totalSpent);
-      setCategoryBreakdown(breakdown);
+      setMonthData(
+        buildPeriod({
+          transactions,
+          start: monthStart,
+          end: monthEnd,
+          previousStart: prevMonthStart,
+          previousEnd: prevMonthEnd,
+          budgetLimit: monthlyBudget,
+          trends: buildWeeklyTrends(transactions, monthStart, monthEnd),
+        })
+      );
     } catch (error) {
-      console.error('Error fetching budget data:', error);
+      console.log('ReportScreen fetch error:', error);
+      setWeekData(emptyPeriod);
+      setMonthData(emptyPeriod);
     } finally {
       setLoading(false);
     }
-  };
+  }, [year, monthIndex]);
 
+  // Re-fetch on screen focus and when month changes
   useFocusEffect(
     useCallback(() => {
-      fetchBudgetData();
-    }, [currentMonth, currentYear])
+      fetchData();
+    }, [fetchData])
   );
 
-  const handleSaveBudget = async () => {
-    if (!tempBudget || isNaN(tempBudget) || parseFloat(tempBudget) <= 0) {
-      Alert.alert('ข้อผิดพลาด', 'กรุณาระบุจำนวนเงินที่ถูกต้อง');
-      return;
-    }
+  const currentData = activeTab === 'week' ? weekData : monthData;
 
-    try {
-      setSaving(true);
-      const token = await getToken();
-      if (!token) {
-        Alert.alert('ข้อผิดพลาด', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
-        return;
-      }
-
-      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-      const payload = {
-        monthly_limit: parseFloat(tempBudget),
-        month: currentMonth + 1,
-        year: currentYear,
-        // ไม่ส่ง category_id = งบรวมทั้งเดือน
-      };
-
-      let res;
-      if (budgetId) {
-        // มีงบอยู่แล้ว → แก้ไขด้วย PUT
-        res = await http.put(`/personal/budgets/${budgetId}`, payload, authHeader);
-      } else {
-        // ยังไม่มีงบ → ตั้งใหม่ด้วย POST (backend upsert ให้อยู่แล้วถ้าซ้ำเดือน/ปี)
-        res = await http.post('/personal/budgets', payload, authHeader);
-      }
-
-      const savedBudget = res.data.budget;
-      setBudgetId(savedBudget.id);
-      setBudgetAmount(parseFloat(savedBudget.monthly_limit));
-      setHasBudget(true);
-      setModalVisible(false);
-      setTempBudget('');
-
-      // backend คืน budgetAlert มาถ้าข้าม threshold ทันทีหลังตั้งงบใหม่ (เช่น ลดวงเงินจนเกิน)
-      const alert = res.data.budgetAlert;
-      if (alert?.level === 'OVER') {
-        Alert.alert('⚠️ เกินงบประมาณ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
-      } else if (alert?.level === 'WARNING') {
-        Alert.alert('⚠️ ใกล้เต็มงบ', `คุณใช้จ่ายไปแล้ว ${(alert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
-      }
-    } catch (error) {
-      console.error('Error saving budget:', error);
-      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถบันทึกงบประมาณได้');
-    } finally {
-      setSaving(false);
+  // เลื่อนเดือน — ปีเลื่อนด้วยเมื่อข้ามเดือนมกราคม/ธันวาคม
+  const nextMonth = () => {
+    if (monthIndex === 11) {
+      setMonthIndex(0);
+      setYear((y) => y + 1);
+    } else {
+      setMonthIndex((prev) => prev + 1);
     }
   };
-
-  const percentage = budget > 0 ? (spent / budget) * 100 : 0;
-  const clampedPercentage = Math.min(percentage, 100);
-  
-  let statusColor = '#10b981'; // Green
-  if (percentage >= 100) statusColor = '#ef4444'; // Red
-  else if (percentage >= 80) statusColor = '#f59e0b'; // Orange (ให้ตรงกับ threshold 80% ที่ backend ใช้)
-
-  const formatMoney = (amount) => {
-    return '฿' + amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const prevMonth = () => {
+    if (monthIndex === 0) {
+      setMonthIndex(11);
+      setYear((y) => y - 1);
+    } else {
+      setMonthIndex((prev) => prev - 1);
+    }
   };
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#5f3dc4" />
-      </View>
-    );
-  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>งบประมาณรายเดือน</Text>
-        <Text style={styles.headerDate}>{THAI_MONTHS[currentMonth]} {currentYear}</Text>
-      </View>
-
-      {!hasBudget ? (
-        <View style={styles.emptyBudgetCard}>
-          <Ionicons name="wallet-outline" size={40} color="#9ca3af" />
-          <Text style={styles.emptyBudgetText}>ยังไม่ได้ตั้งงบประมาณเดือนนี้</Text>
-        </View>
-      ) : (
-        <View style={styles.budgetCard}>
-          <View style={[styles.mainCircle, { borderColor: statusColor, shadowColor: statusColor }]}>
-            <Text style={[styles.percentageText, { color: statusColor }]}>
-              {percentage.toFixed(0)}%
-            </Text>
-            <Text style={styles.spentText}>ใช้ไปแล้ว {formatMoney(spent)}</Text>
-            <Text style={styles.budgetText}>จากงบ {formatMoney(budget)}</Text>
-          </View>
-
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBarFill, { width: `${clampedPercentage}%`, backgroundColor: statusColor }]} />
-          </View>
-        </View>
-      )}
-
-      {hasBudget && percentage >= 100 ? (
-        <View style={[styles.alertCard, styles.alertCritical]}>
-          <Ionicons name="warning" size={24} color="#fff" />
-          <Text style={styles.alertTextCritical}>คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้!</Text>
-        </View>
-      ) : hasBudget && percentage >= 80 ? (
-        <View style={[styles.alertCard, styles.alertWarning]}>
-          <Ionicons name="warning" size={24} color="#92400e" />
-          <Text style={styles.alertTextWarning}>คุณใช้จ่ายเกิน 80% ของงบประมาณแล้ว!</Text>
-        </View>
-      ) : null}
-
-      <TouchableOpacity 
-        style={styles.editButton}
-        onPress={() => {
-          setTempBudget(hasBudget ? budget.toString() : '');
-          setModalVisible(true);
-        }}
-      >
-        <Ionicons name="create-outline" size={20} color="#fff" />
-        <Text style={styles.editButtonText}>ตั้งค่างบประมาณ</Text>
-      </TouchableOpacity>
-
-      <View style={styles.categoriesSection}>
-        <Text style={styles.sectionTitle}>รายละเอียดตามหมวดหมู่</Text>
-        
-        {Object.keys(CATEGORY_ICONS).map(catKey => {
-          const amount = categoryBreakdown[catKey] || 0;
-          if (amount === 0) return null;
-          
-          const catInfo = CATEGORY_ICONS[catKey];
-          const catPercentage = budget > 0 ? Math.min((amount / budget) * 100, 100) : 0;
-
-          return (
-            <View key={catKey} style={styles.categoryRow}>
-              <View style={[styles.iconContainer, { backgroundColor: catInfo.color + '20' }]}>
-                <Ionicons name={catInfo.icon} size={20} color={catInfo.color} />
-              </View>
-              <View style={styles.categoryInfo}>
-                <View style={styles.categoryHeader}>
-                  <Text style={styles.categoryName}>{catInfo.name}</Text>
-                  <Text style={styles.categoryAmount}>{formatMoney(amount)}</Text>
-                </View>
-                <View style={styles.miniProgressBar}>
-                  <View style={[styles.miniProgressFill, { width: `${catPercentage}%`, backgroundColor: catInfo.color }]} />
-                </View>
-              </View>
+    <SafeAreaView style={styles.safeArea}>
+        {/* Header Bar */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.avatarCircle}>
+              <Ionicons name="person" size={18} color="#6D28D9" />
             </View>
-          );
-        })}
-
-        {Object.keys(categoryBreakdown).length === 0 && (
-          <Text style={styles.emptyText}>ยังไม่มีรายการใช้จ่ายในเดือนนี้</Text>
-        )}
-      </View>
-
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={isModalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>ตั้งค่างบประมาณ</Text>
-            <Text style={styles.modalSubtitle}>ระบุงบประมาณสำหรับเดือน {THAI_MONTHS[currentMonth]}</Text>
-            
-            <TextInput
-              style={styles.input}
-              value={tempBudget}
-              onChangeText={setTempBudget}
-              keyboardType="numeric"
-              placeholder="จำนวนเงิน"
-              editable={!saving}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setModalVisible(false)}
-                disabled={saving}
-              >
-                <Text style={styles.cancelButtonText}>ยกเลิก</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.saveButton]}
-                onPress={handleSaveBudget}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>บันทึก</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.appTitle}>Personal Analytics</Text>
           </View>
+          <TouchableOpacity 
+            style={styles.bellBtn}
+            onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่')}
+          >
+            <Ionicons name="notifications-outline" size={20} color="#1E293B" />
+          </TouchableOpacity>
         </View>
-      </Modal>
-    </ScrollView>
+
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Screen Title & Month Switcher Row */}
+          <View style={styles.titleRow}>
+            <Text style={styles.screenTitle}>วิเคราะห์</Text>
+
+            {activeTab === 'month' && (
+              <View style={styles.monthPill}>
+                <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="chevron-back" size={14} color="#6D28D9" />
+                </TouchableOpacity>
+                <Text style={styles.monthPillText}>
+                  {THAI_MONTHS[monthIndex]} {year + 543}
+                </Text>
+                <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="chevron-forward" size={14} color="#6D28D9" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Underline Tabs: สัปดาห์ | เดือน */}
+          <View style={styles.tabBar}>
+            <TouchableOpacity 
+              style={styles.tabItem}
+              onPress={() => setActiveTab('week')}
+            >
+              <Text style={[styles.tabText, activeTab === 'week' && styles.tabTextActive]}>
+                สัปดาห์
+              </Text>
+              {activeTab === 'week' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.tabItem}
+              onPress={() => setActiveTab('month')}
+            >
+              <Text style={[styles.tabText, activeTab === 'month' && styles.tabTextActive]}>
+                เดือน
+              </Text>
+              {activeTab === 'month' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#6D28D9" />
+            </View>
+          ) : (
+            <>
+              {/* Card 1: ยอดใช้จ่ายรวม & งบประมาณคงเหลือ */}
+              <View style={styles.card}>
+                <Text style={styles.metricLabel}>
+                  {activeTab === 'week' ? 'ยอดใช้จ่ายรวมสัปดาห์นี้' : 'ยอดใช้จ่ายรวมเดือนนี้'}
+                </Text>
+                
+                <View style={styles.amountBadgeRow}>
+                  <Text style={styles.mainAmount}>{currentData.totalExpense}</Text>
+                  <View style={styles.compareBadge}>
+                    <Text style={styles.compareText}>{currentData.comparison}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.budgetRow}>
+                  <Text style={styles.budgetLabel}>งบประมาณคงเหลือ</Text>
+                  <Text style={styles.budgetGoal}>{currentData.budgetGoal}</Text>
+                </View>
+
+                <Text style={styles.budgetAmount}>{currentData.budgetRemaining}</Text>
+
+                {/* Horizontal Progress Bar */}
+                <View style={styles.progressBarTrack}>
+                  <View style={[styles.progressBarFill, { width: `${currentData.budgetProgress * 100}%` }]} />
+                </View>
+              </View>
+
+              {/* Card 2: สัดส่วนการใช้จ่าย (Donut Chart) */}
+              <View style={styles.card}>
+                <Text style={styles.cardSectionTitle}>
+                  {activeTab === 'week' ? 'สัดส่วนการใช้จ่าย' : 'สัดส่วนการใช้จ่ายรายเดือน'}
+                </Text>
+
+                <View style={styles.breakdownRow}>
+                  {/* Donut Chart */}
+                  <DonutChart 
+                    segments={currentData.categories} 
+                    centerText={currentData.donutCenter} 
+                  />
+
+                  {/* Legend List */}
+                  <View style={styles.legendContainer}>
+                    {currentData.categories.map((cat, idx) => (
+                      <View key={idx} style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: cat.color }]} />
+                        <Text style={styles.legendName} numberOfLines={1}>{cat.name}</Text>
+                        <Text style={styles.legendValue}>{cat.amount} ({cat.percent}%)</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              {/* Card 3: แนวโน้มรายวัน / แนวโน้มรายสัปดาห์ (Bar Chart) */}
+              <View style={styles.card}>
+                <Text style={styles.cardSectionTitle}>
+                  {activeTab === 'week' ? 'แนวโน้มรายวัน' : 'แนวโน้มรายสัปดาห์'}
+                </Text>
+
+                <View style={styles.barChartContainer}>
+                  {currentData.trends.map((t, idx) => {
+                    const barHeightPercent = Math.max(15, (t.val / currentData.maxTrendVal) * 100);
+                    return (
+                      <View key={idx} style={styles.barCol}>
+                        <Text style={styles.barAmountText}>{t.amount}</Text>
+                        <View style={styles.barTrack}>
+                          <View style={[styles.barFill, { height: `${barHeightPercent}%` }]} />
+                        </View>
+                        <Text style={styles.barLabel}>{t.label}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#fcfbfe',
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fcfbfe',
+    backgroundColor: '#F8FAFC',
   },
   header: {
-    marginBottom: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  headerLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  headerDate: {
-    fontSize: 16,
-    color: '#6b7280',
-  },
-  emptyBudgetCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 32,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  emptyBudgetText: {
-    marginTop: 12,
-    fontSize: 15,
-    color: '#9ca3af',
-  },
-  budgetCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
-    marginBottom: 20,
-  },
-  mainCircle: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    borderWidth: 8,
-    alignItems: 'center',
+  avatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3E8FF',
     justifyContent: 'center',
-    backgroundColor: '#fff',
-    marginBottom: 24,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 5,
+    alignItems: 'center',
+    marginRight: 10,
   },
-  percentageText: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    marginBottom: 8,
+  appTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
   },
-  spentText: {
-    fontSize: 16,
-    color: '#4b5563',
+  bellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 90,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  screenTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  monthPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 8,
+  },
+  monthPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6D28D9',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  tabItem: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  tabText: {
+    fontSize: 15,
     fontWeight: '600',
+    color: '#94A3B8',
+  },
+  tabTextActive: {
+    color: '#6D28D9',
+    fontWeight: '700',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    left: 20,
+    right: 20,
+    height: 3,
+    backgroundColor: '#6D28D9',
+    borderRadius: 2,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    ...SHADOWS.small,
+  },
+  metricLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 6,
+  },
+  amountBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  mainAmount: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  compareBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  compareText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 14,
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  budgetText: {
-    fontSize: 14,
-    color: '#9ca3af',
+  budgetLabel: {
+    fontSize: 13,
+    color: '#64748B',
   },
-  progressBarContainer: {
-    width: '100%',
-    height: 12,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 6,
+  budgetGoal: {
+    fontSize: 12,
+    color: '#6D28D9',
+    fontWeight: '600',
+  },
+  budgetAmount: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginBottom: 12,
+  },
+  progressBarTrack: {
+    height: 8,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 4,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 6,
+    backgroundColor: '#6D28D9',
+    borderRadius: 4,
   },
-  alertCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  alertWarning: {
-    backgroundColor: '#fef3c7',
-  },
-  alertCritical: {
-    backgroundColor: '#ef4444',
-  },
-  alertTextWarning: {
-    color: '#92400e',
-    fontWeight: '600',
-    marginLeft: 12,
-    flex: 1,
-  },
-  alertTextCritical: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginLeft: 12,
-    flex: 1,
-  },
-  editButton: {
-    backgroundColor: '#5f3dc4',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginBottom: 24,
-  },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  categoriesSection: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
+  cardSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
     marginBottom: 16,
   },
-  categoryRow: {
+  breakdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+  donutWrapper: {
+    marginRight: 16,
   },
-  categoryInfo: {
+  legendContainer: {
     flex: 1,
   },
-  categoryHeader: {
+  legendItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  categoryName: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  categoryAmount: {
-    fontSize: 14,
-    color: '#111827',
-    fontWeight: 'bold',
-  },
-  miniProgressBar: {
-    height: 6,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  miniProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#6b7280',
-    fontStyle: 'italic',
-    paddingVertical: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
     alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 24,
-    width: '85%',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
     marginBottom: 8,
   },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 20,
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
-  input: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 18,
-    marginBottom: 24,
-    textAlign: 'center',
+  legendName: {
+    fontSize: 12,
+    color: '#475569',
+    flex: 1,
   },
-  modalActions: {
+  legendValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  barChartContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
+    alignItems: 'flex-end',
+    height: 160,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
-  modalButton: {
+  barCol: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
     alignItems: 'center',
+    height: '100%',
+    justifyContent: 'flex-end',
   },
-  cancelButton: {
-    backgroundColor: '#f3f4f6',
-    marginRight: 8,
+  barAmountText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 4,
   },
-  saveButton: {
-    backgroundColor: '#5f3dc4',
-    marginLeft: 8,
+  barTrack: {
+    width: 22,
+    height: 100,
+    justifyContent: 'flex-end',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginBottom: 6,
   },
-  cancelButtonText: {
-    color: '#4b5563',
-    fontSize: 16,
-    fontWeight: 'bold',
+  barFill: {
+    width: '100%',
+    backgroundColor: '#6D28D9',
+    borderRadius: 6,
   },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  }
+  barLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

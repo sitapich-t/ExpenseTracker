@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Image,
   TextInput, ScrollView, Alert, Modal, FlatList
@@ -177,7 +177,7 @@ export default function ConfirmReceiptScreen() {
   const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card');
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // ✨ State สำหรับรายการสินค้า
+    // ✨ State สำหรับรายการสินค้า
   const [lineItems, setLineItems] = useState(initialLineItems);
 
   // ป้องกัน state ค้างจากรอบก่อนหน้า เมื่อ navigate มาหน้านี้ซ้ำด้วย params ใหม่
@@ -206,7 +206,6 @@ export default function ConfirmReceiptScreen() {
   }
 
   const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
-
   // ----------------------------------------------------
   // Helper Logic สำหรับจัดการ Line Items
   // ----------------------------------------------------
@@ -264,7 +263,7 @@ export default function ConfirmReceiptScreen() {
           merchant: merchant,
           transaction_date: displayDateToIso(date) || new Date().toISOString(),
           paymentMethod: paymentMethod,
-          items: lineItems, // ✨ ส่งรายการย่อยไปด้วย
+          items: lineItems,
         }),
       });
 

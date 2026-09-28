@@ -45,15 +45,15 @@ export default function MainTabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="group-split"
-        options={{
-          title: 'กลุ่ม',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
-          ),
-        }}
-      />
+        <Tabs.Screen
+          name="list-group"
+          options={{
+            title: 'กลุ่ม',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="people-outline" size={size} color={color} />
+            ),
+          }}
+        />
       <Tabs.Screen
         name="analytics"
         options={{

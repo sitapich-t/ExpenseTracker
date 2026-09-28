@@ -8,11 +8,14 @@ import {
   RefreshControl, 
   TextInput, 
   ScrollView, 
-  SafeAreaView 
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getToken, http } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 const getCategoryDetails = (category) => {
   switch (category) {
@@ -55,6 +58,46 @@ export default function TransactionsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [activeTab, setActiveTab] = useState('month');
+  const [deletingId, setDeletingId] = useState(null);
+
+  // ลบรายการ: เตือนผู้ใช้ก่อนเสมอ และยืนยันอีกครั้งก่อนยิง API
+  const performDelete = async (item) => {
+    try {
+      setDeletingId(item.id);
+      const token = await getToken();
+      if (!token) {
+        Alert.alert('ข้อผิดพลาด', 'กรุณาเข้าสู่ระบบอีกครั้ง');
+        return;
+      }
+
+      const res = await http.delete(`/personal/transactions/${item.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.data?.success) {
+        setTransactions(prev => prev.filter((t) => t.id !== item.id));
+        Alert.alert('ลบสำเร็จ', 'ลบรายการเรียบร้อยแล้ว');
+      } else {
+        Alert.alert('ข้อผิดพลาด', res.data?.error || 'ไม่สามารถลบรายการได้');
+      }
+    } catch (err) {
+      console.error('Delete transaction error:', err);
+      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDelete = (item) => {
+    Alert.alert(
+      'ยืนยันการลบรายการ',
+      `ต้องการลบ "${item.title}" ใช่หรือไม่?\n\n${item.category} • ${formatMoney(item.amount)}\n\nการลบแล้วไม่สามารถย้อนกลับได้`,
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        { text: 'ลบรายการ', style: 'destructive', onPress: () => performDelete(item) },
+      ]
+    );
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -98,7 +141,10 @@ export default function TransactionsScreen() {
     // Time filter
     const now = new Date();
     filtered = filtered.filter(t => {
-      const tDate = new Date(t.created_at);
+      // ใช้ transaction_date ก่อน (field ที่ผู้ใช้เลือกวันที่เอง) ค่อย fallback ไป created_at
+      // ตามที่ dashboard.js / budget.js / analytics.js ใช้
+      const tDate = new Date(t.transaction_date || t.created_at);
+      if (isNaN(tDate)) return false;
       switch (activeTab) {
         case 'today':
           return tDate.toDateString() === now.toDateString();
@@ -114,7 +160,10 @@ export default function TransactionsScreen() {
     });
 
     // Sort by date descending
-    return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return filtered.sort(
+      (a, b) =>
+        new Date(b.transaction_date || b.created_at) - new Date(a.transaction_date || a.created_at)
+    );
   }, [transactions, searchQuery, activeTab]);
 
   const summary = useMemo(() => {
@@ -136,31 +185,62 @@ export default function TransactionsScreen() {
     const amountColor = isIncome ? '#2e7d32' : '#c62828';
     const amountPrefix = isIncome ? '+' : '-';
     const catDetails = getCategoryDetails(item.category);
+    const isDeleting = deletingId === item.id;
+
+    // ปัดซ้ายเพื่อเผยปุ่มลบ
+    const renderRightActions = (progress, translation, swipeableMethods) => (
+      <View style={styles.swipeActions}>
+        <TouchableOpacity
+          style={[styles.swipeActionButton, isDeleting && styles.swipeActionDisabled]}
+          activeOpacity={0.8}
+          disabled={isDeleting}
+          onPress={() => {
+            swipeableMethods.close();
+            handleDelete(item);
+          }}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Ionicons name="trash-outline" size={22} color="#ffffff" />
+          )}
+          <Text style={styles.swipeActionText}>{isDeleting ? 'กำลังลบ' : 'ลบ'}</Text>
+        </TouchableOpacity>
+      </View>
+    );
 
     return (
-      <TouchableOpacity
-        style={styles.transactionCard}
-        activeOpacity={0.7}
-        onPress={() => router.push({ pathname: '/add-expense-screen', params: { edit: String(item.id) } })}
+      <ReanimatedSwipeable
+        friction={2}
+        rightThreshold={40}
+        overshootRight={false}
+        renderRightActions={renderRightActions}
+        containerStyle={styles.swipeableContainer}
       >
-        <View style={[styles.iconContainer, { backgroundColor: catDetails.bg }]}>
-          <Text style={styles.iconText}>{catDetails.icon}</Text>
-        </View>
-        
-        <View style={styles.transactionInfo}>
-          <Text style={styles.transactionTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.transactionSubtitle}>
-            {item.category} {item.merchant ? `• ${item.merchant}` : ''}
-          </Text>
-        </View>
-        
-        <View style={styles.amountContainer}>
-          <Text style={[styles.transactionAmount, { color: amountColor }]}>
-            {amountPrefix}{formatMoney(item.amount)}
-          </Text>
-          <Text style={styles.transactionDate}>{formatDate(item.created_at)}</Text>
-        </View>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.transactionCard}
+          activeOpacity={0.7}
+          onPress={() => router.push({ pathname: '/add-transaction', params: { edit: String(item.id) } })}
+        >
+          <View style={[styles.iconContainer, { backgroundColor: catDetails.bg }]}>
+            <Text style={styles.iconText}>{catDetails.icon}</Text>
+          </View>
+
+          <View style={styles.transactionInfo}>
+            <Text style={styles.transactionTitle} numberOfLines={1}>{item.title}</Text>
+            <Text style={styles.transactionSubtitle}>
+              {item.category} {item.merchant ? `• ${item.merchant}` : ''}
+            </Text>
+          </View>
+
+          <View style={styles.amountContainer}>
+            <Text style={[styles.transactionAmount, { color: amountColor }]}>
+              {amountPrefix}{formatMoney(item.amount)}
+            </Text>
+            <Text style={styles.transactionDate}>{formatDate(item.transaction_date || item.created_at)}</Text>
+          </View>
+        </TouchableOpacity>
+      </ReanimatedSwipeable>
     );
   };
 
@@ -267,6 +347,31 @@ export default function TransactionsScreen() {
 }
 
 const styles = StyleSheet.create({
+  swipeableContainer: {
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  swipeActions: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  swipeActionButton: {
+    width: 92,
+    backgroundColor: '#e53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  swipeActionDisabled: {
+    backgroundColor: '#b71c1c',
+  },
+  swipeActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fcfbfe',
@@ -413,7 +518,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 16,
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,

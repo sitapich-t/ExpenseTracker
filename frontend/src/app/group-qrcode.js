@@ -33,7 +33,7 @@ export default function GroupQrCodeScreen() {
     );
   }
 
-  const qrValue = JSON.stringify({ action: 'join_group', groupId });
+  const qrValue = JSON.stringify({ action: 'join_group', groupId, groupName });
 
   const handleShare = async () => {
     try {

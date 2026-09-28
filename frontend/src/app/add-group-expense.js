@@ -23,6 +23,10 @@ import {
   parseAmount,
 } from '@/lib/groups';
 import { getToken, http } from '@/lib/api';
+import { useGroup } from './context/GroupContext';
+
+// expo-router ส่ง param เป็น string เสมอ (ถ้าเป็น array ให้เอาตัวแรก)
+const scalar = (v) => (Array.isArray(v) ? v[0] : v);
 
 const CATEGORIES = [
   { id: 'Food', label: 'อาหาร', icon: 'restaurant-outline' },
@@ -34,10 +38,12 @@ const CATEGORIES = [
 
 export default function AddGroupExpenseScreen() {
   const router = useRouter();
-  const { id, name } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const { addGroupBill } = useGroup();
 
-  const groupId = Array.isArray(id) ? id[0] : id;
-  const groupName = (Array.isArray(name) ? name[0] : name) || 'กลุ่ม';
+  // detail-group ส่ง groupId/groupName (รองรับ id/name ด้วยเผื่อลิงก์เก่า)
+  const groupId = scalar(params.groupId ?? params.id);
+  const groupName = scalar(params.groupName ?? params.name) || 'กลุ่ม';
 
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
@@ -99,22 +105,28 @@ export default function AddGroupExpenseScreen() {
 
     setSaving(true);
     try {
-      const token = await getToken();
-      const res = await http.post(
-        `/groups/${groupId}/transactions`,
-        {
-          title: title.trim(),
-          type: 'expense',
-          amount: numAmount,
-          category,
-          merchant: 'General',
-          paid_by: payerId || currentUserId(currentUser),
-        },
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
-      );
+      // สมาชิกจาก /groups/:id/members ใช้ user_id เป็น id จริง
+      const memberIds = members.map((m) => m.user_id ?? m.id).filter(Boolean).map(String);
 
-      if (!res.data?.success) {
-        throw new Error(res.data?.error || 'บันทึกไม่สำเร็จ');
+      const result = await addGroupBill(groupId, {
+        title: title.trim(),
+        type: 'expense',
+        amount: numAmount,
+        category,
+        payer: payerId || currentUserId(currentUser),
+        payerName: payerLabel,
+        // แบ่งเท่ากันทุกคนในกลุ่ม
+        splitData: { memberIds, method: 'equal' },
+      });
+
+      // บันทึกบิลสำเร็จ แต่ผู้จ่าย/สัดส่วนยังบันทึกไม่ได้ (ยังไม่รัน migration) -> ต้องเตือน
+      if (result && result.splitSaved === false) {
+        Alert.alert(
+          'บันทึกบิลแล้ว แต่ข้อมูลการแบ่งชั้นไม่ครบ',
+          `บันทึกรายการ "${title.trim()}" ฿${formatBaht(numAmount)} แล้ว\n\nยังบันทึก "ใครเป็นคนจ่าย" และ "แชร์กับใครบ้าง" ไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์นี้\nยอดรวมของกลุ่มจึงอาจไม่ตรงกับที่ควรเป็น`,
+          [{ text: 'ตกลง', onPress: () => router.back() }]
+        );
+        return;
       }
 
       Alert.alert(

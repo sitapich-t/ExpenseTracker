@@ -144,12 +144,6 @@ export default function DashboardScreen() {
           <TouchableOpacity style={styles.iconBtn}>
             <Ionicons name="notifications-outline" size={24} color="#333" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => router.replace('/logout')}
-          >
-            <Ionicons name="log-out-outline" size={24} color="#c62828" />
-          </TouchableOpacity>
         </View>
 
         {/* Balance Card */}
