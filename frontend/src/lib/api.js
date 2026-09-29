@@ -107,10 +107,10 @@ export default {
   get: (path) => authFetch(path, { method: "GET" }),
   post: (path, body) =>
     authFetch(path, { method: "POST", body: JSON.stringify(body) }),
-  postForm: async (path, formData) => {
+  postForm: async (path, formData, opts = {}) => {
     const token = await getToken();
-    const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
+    const headers = { ...(opts.headers || {}) };
+    if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
     let res;
     try {
       res = await fetch(`${API_URL}${path}`, {

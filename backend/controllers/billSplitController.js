@@ -6,11 +6,7 @@
  * ไม่ควรมี business logic (การคำนวณ) อยู่ในนี้ ให้อยู่ใน service ทั้งหมด
  */
 
-const {
-  splitBillForGroup,
-  settleGroupBalances,
-  splitBillAndSettle,
-} = require('../services/billSplitService');
+const { splitBillForGroup, settleGroupBalances, splitBillAndSettle } = require('../services/billSplitService');
 
 /**
  * POST /api/groups/:groupId/split-bill

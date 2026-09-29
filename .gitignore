@@ -11,5 +11,8 @@ build/
 
 *.log
 
+# ไฟล์ที่ผู้ใช้อัปโหลด (สลิป/รูปใบเสร็จ) — ห้าม commit
+backend/uploads/
+
 .DS_Store
 Thumbs.db

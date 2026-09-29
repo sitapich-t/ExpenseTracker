@@ -1,6 +1,8 @@
 const supabase = require('../config/supabase');
 const { v4: uuidv4 } = require('uuid');
 const transactionService = require('../services/transactionService');
+const { distributeSCVAT } = require('../utils/allocationUtils');
+const { slipPathOf, removeSlip } = require('../middlewares/uploadMiddleware');
 
 // ==========================================
 // Groups Controllers (feature/group-management)
@@ -71,6 +73,12 @@ exports.getMyGroups = async (req, res) => {
             payer,
             payerName: nameOf(g.id, payer),
             amount: String(t.amount),
+            subtotal: t.subtotal !== undefined && t.subtotal !== null ? String(t.subtotal) : null,
+            scRate: t.sc_rate ?? 0,
+            scAmount: t.sc_amount !== undefined && t.sc_amount !== null ? String(t.sc_amount) : null,
+            vatRate: t.vat_rate ?? 0,
+            vatAmount: t.vat_amount !== undefined && t.vat_amount !== null ? String(t.vat_amount) : null,
+            slipUrl: t.slip_url || null,
             splitData: t.split_data || null,
             type: t.type,
             date: t.transaction_date,
@@ -141,6 +149,30 @@ const isMissingColumn = (err) => {
 // true = ลองใส่รหัสเชิญ (ยังไม่รู้ หรือรู้ว่ามี หรือเพิ่งหมดอายุการ "ไม่มี")
 const inviteCodeUsable = () =>
   inviteCodeAvailable !== false || Date.now() - inviteCodeCheckedAt > INVITE_CODE_RETRY_MS;
+
+// ดึงชื่อคอลัมน์ที่หายไปจาก error ของ PostgREST เพื่อรู้ว่าต้องตัด field ไหนออก
+//   1) 42703        "column group_transactions.paid_by does not exist"
+//   2) PGRST204     "Could not find the 'paid_by' column of 'group_transactions' in the schema cache"
+const missingColumnOf = (err) => {
+  const message = (err && err.message) || '';
+  const match =
+    message.match(/column\s+[\w.]+\.(\w+)\s+does not exist/i) ||
+    message.match(/could not find the '(\w+)' column/i);
+  return match ? match[1] : null;
+};
+
+// เป็นสมาชิกของกลุ่มนี้หรือไม่ — ใช้กันคนนอกกลุ่มอ่าน/เขียนบิลของกลุ่ม
+const isGroupMember = async (groupId, userId) => {
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('id')
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+};
 
 const markInviteCodeUnavailable = () => {
   inviteCodeAvailable = false;
@@ -288,6 +320,11 @@ exports.deleteGroup = async (req, res) => {
 exports.getGroupTransactions = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id || req.user.user_id;
+
+    if (!(await isGroupMember(id, userId))) {
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
 
     const { data, error } = await supabase
       .from('group_transactions')
@@ -303,27 +340,98 @@ exports.getGroupTransactions = async (req, res) => {
   }
 };
 
+// อัปโหลดรูปสลิปล่วงหน้า แล้วเอา slip_url ที่ได้ไปใส่ตอน POST transaction
+// (POST /:id/transactions ก็อัดไฟล์มาพร้อมกันได้ ถ้าสะดวกกว่า)
+exports.uploadGroupSlip = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id || req.user.user_id;
+
+    if (!(await isGroupMember(id, userId))) {
+      if (req.file) removeSlip(slipPathOf(req.file));
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'กรุณาแนบไฟล์รูปสลิป (field: slip)' });
+    }
+
+    return res.json({
+      success: true,
+      slip_url: slipPathOf(req.file),
+      message: 'อัปโหลดสลิปสำเร็จ',
+    });
+  } catch (err) {
+    if (req.file) removeSlip(slipPathOf(req.file));
+    console.error('❌ Upload group slip error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
 // สร้างธุรกรรมใหม่ในกลุ่ม
+// รองรับทั้ง JSON และ multipart (แนบรูปสลิปใน field "slip" มาพร้อมกันได้)
 exports.createGroupTransaction = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id || req.user.user_id;
     const {
-      title, type, amount, merchant,
-      sc_rate = 0, vat_rate = 0, category, date,
+      title, type, amount, subtotal, merchant,
+      sc_rate = 0, vat_rate = 0, vat_base = 'itemPlusSC', category, date,
       paid_by, split_data, slip_url,
     } = req.body || {};
 
-    if (!title || !amount) {
+    if (!title || !title.trim() || amount === undefined || amount === null || amount === '') {
       return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
     }
 
-    const scRate = parseFloat(sc_rate) || 0;
-    const vatRate = parseFloat(vat_rate) || 0;
-    const baseAmount = transactionService.parseAmount(amount);
-    const scAmount = baseAmount * (scRate / 100);
-    const vatAmount = (baseAmount + scAmount) * (vatRate / 100);
-    const totalAmount = baseAmount + scAmount + vatAmount;
+    // บิลของกลุ่ม: เฉพาะสมาชิกเท่านั้นที่เพิ่มได้
+    if (!(await isGroupMember(id, userId))) {
+      if (req.file) removeSlip(slipPathOf(req.file));
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
+
+    // ถ้าอัปโหลดรูปมากับ request นี้ ให้ใช้รูปนั้น (ชนะ slip_url ที่ส่งมา)
+    const uploadedSlip = slipPathOf(req.file);
+    const finalSlipUrl = uploadedSlip || slip_url || null;
+
+    const scRate = Math.max(0, parseFloat(sc_rate) || 0);
+    const vatRate = Math.max(0, parseFloat(vat_rate) || 0);
+    const vatBase = vat_base === 'itemOnly' ? 'itemOnly' : 'itemPlusSC';
+
+    // ถ้าส่ง subtotal มาให้ถือว่านั้นคือราคาก่อน SC/VAT
+    // ไม่งั้น amount คือราคาก่อน SC/VAT (แล้วค่อยบวก SC/VAT ตอนท้าย)
+    const rawBase = subtotal !== undefined && subtotal !== null && subtotal !== '' ? subtotal : amount;
+    const baseAmount = transactionService.parseAmount(rawBase);
+
+    if (baseAmount <= 0) {
+      return res.status(400).json({ success: false, error: 'จำนวนเงินต้องมากกว่า 0' });
+    }
+    if (scRate > 100 || vatRate > 100) {
+      return res.status(400).json({ success: false, error: 'อัตรา SC/VAT ต้องไม่เกิน 100' });
+    }
+
+    // ใช้ core algorithm เดียวกับ bill-split (คิดเป็นสตางค์ กันเศษจาก float)
+    // vatBase = 'itemPlusSC' = คิด VAT จาก (ราคา + SC) แบบมาตรฐานไทย
+    const { summary } = distributeSCVAT(
+      [{ id: 'total', price: baseAmount }],
+      scRate / 100,
+      vatRate / 100,
+      { vatBase }
+    );
+
+    // multipart ส่ง field เป็น string มาทั้งหมด -> ต้อง parse ก่อน
+    // ไม่งั้น jsonb จะเก็บเป็น "ค่าคงที่แบบ string" แทน object ({ memberIds, method })
+    let parsedSplitData = split_data || null;
+    if (typeof parsedSplitData === 'string') {
+      try {
+        parsedSplitData = JSON.parse(parsedSplitData);
+      } catch {
+        return res.status(400).json({ success: false, error: 'รูปแบบ split_data ไม่ถูกต้อง (ต้องเป็น JSON)' });
+      }
+    }
+    if (parsedSplitData !== null && typeof parsedSplitData !== 'object') {
+      return res.status(400).json({ success: false, error: 'split_data ต้องเป็น object' });
+    }
 
     const newTransaction = {
       id: uuidv4(),
@@ -332,72 +440,91 @@ exports.createGroupTransaction = async (req, res) => {
       // ใครเป็นคนจ่าย (ไม่ใช่ใครสร้าง) — ใช้คำนวณสัดส่วนใน settle
       paid_by: paid_by || userId,
       title: transactionService.normalizeTitle(title),
-      type: type || 'expense',
+      type: type === 'income' ? 'income' : 'expense',
       subtotal: baseAmount,
       sc_rate: scRate,
-      sc_amount: scAmount,
+      sc_amount: summary.totalSC,
       vat_rate: vatRate,
-      vat_amount: vatAmount,
-      amount: totalAmount,
+      vat_amount: summary.totalVAT,
+      amount: summary.grandTotal,
       merchant: merchant || 'General',
       category: category || 'General',
       transaction_date: transactionService.resolveDate(date),
-      slip_url: slip_url || null,
+      slip_url: finalSlipUrl,
       // { memberIds: [...], method: 'equal' } — ใครเชิญอะไรบ้าง
-      split_data: split_data || null,
+      split_data: parsedSplitData,
     };
 
+    // ถ้าคอลัมน์ยังไม่มีจริง (ยังไม่รัน migration) -> ตัดคอลัมน์ที่หายทีละตัว
+    // แล้วรายงานกลับว่าตกหล่นอะไรบ้าง แทนที่จะทิ้งทั้งชุดแบบเงียบ ๆ
+    const payload = { ...newTransaction };
+    const droppedFields = [];
     let saved = null;
     let saveError = null;
-    let splitSaved = true;
 
-    ({ data: saved, error: saveError } = await supabase
-      .from('group_transactions')
-      .insert([newTransaction])
-      .select()
-      .single());
-
-    // ยังไม่ได้ apply migration -> บันทึกเฉพาะคอลัมน์เดิมที่มีอยู่จริง
-    // (ผู้จ่ายจะตกไป เพราะ paid_by ยังไม่มี — แจ้งกลับไปให้หน้าจอเตือน)
-    if (saveError && isMissingColumn(saveError)) {
-      const baseOnly = {
-        id: newTransaction.id,
-        group_id: newTransaction.group_id,
-        created_by: newTransaction.created_by,
-        title: newTransaction.title,
-        type: newTransaction.type,
-        amount: newTransaction.amount,
-        merchant: newTransaction.merchant,
-        category: newTransaction.category,
-        transaction_date: newTransaction.transaction_date,
-      };
-      ({ data: saved, error: saveError } = await supabase
+    for (let attempt = 0; attempt <= 12; attempt += 1) {
+      const result = await supabase
         .from('group_transactions')
-        .insert([baseOnly])
+        .insert([payload])
         .select()
-        .single());
-      splitSaved = false;
+        .single();
+
+      saved = result.data;
+      saveError = result.error;
+
+      if (!saveError) break;
+
+      const missing = isMissingColumn(saveError) ? missingColumnOf(saveError) : null;
+      if (!missing || !(missing in payload)) break;
+
+      delete payload[missing];
+      droppedFields.push(missing);
     }
 
-    if (saveError) throw saveError;
+    if (saveError) {
+      // บันทึกไม่ได้เลย -> อย่าทิ้งรูปไว้เปล่า ๆ
+      if (req.file) removeSlip(finalSlipUrl);
+      throw saveError;
+    }
 
+    if (droppedFields.length > 0) {
+      console.warn(
+        '⚠️  group_transactions ยังไม่มีคอลัมน์: ' +
+          `${droppedFields.join(', ')} — รัน backend/sql/add_group_bill_split_columns.sql เพื่อเปิดใช้งาน`
+      );
+    }
+
+    // อัปเดตยอดรวมของกลุ่ม (รายรับลบ รายจ่ายบวก)
     const { data: group } = await supabase
       .from('groups')
       .select('total_spend')
       .eq('id', id)
       .single();
-    
-    const newTotalSpend = (group?.total_spend || 0) + totalAmount;
-    await supabase.from('groups').update({ total_spend: newTotalSpend }).eq('id', id);
+
+    const delta = newTransaction.type === 'income' ? -summary.grandTotal : summary.grandTotal;
+    const newTotalSpend = Number(group?.total_spend || 0) + delta;
+
+    const { error: groupError } = await supabase
+      .from('groups')
+      .update({ total_spend: newTotalSpend, amount: newTotalSpend })
+      .eq('id', id);
+
+    if (groupError) console.error('❌ Update group total_spend error:', groupError);
+
+    const degraded = droppedFields.length > 0;
+
     return res.json({
       success: true,
-      message: splitSaved
-        ? 'บันทึกรายการสำเร็จ'
-        : 'บันทึกรายการสำเร็จ (ยังไม่ได้บันทึกผู้จ่าย/สัดส่วน — กรุณารัน migration)',
-      split_saved: splitSaved,
+      message: degraded
+        ? 'บันทึกรายการสำเร็จ (บางข้อมูลยังบันทึกไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์ — กรุณารัน migration)'
+        : 'บันทึกรายการสำเร็จ',
+      split_saved: !degraded,
+      dropped_fields: droppedFields,
+      slip_url: finalSlipUrl,
       transaction: saved,
     });
   } catch (err) {
+    if (req.file) removeSlip(slipPathOf(req.file));
     console.error('❌ Create group transaction error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }

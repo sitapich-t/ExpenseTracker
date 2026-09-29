@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -118,11 +118,15 @@ export default function AddGroupExpenseScreen() {
         splitData: { memberIds, method: 'equal' },
       });
 
-      // บันทึกบิลสำเร็จ แต่ผู้จ่าย/สัดส่วนยังบันทึกไม่ได้ (ยังไม่รัน migration) -> ต้องเตือน
+      // บันทึกบิลสำเร็จ แต่บางข้อมูลยังบันทึกไม่ได้ (ฐานข้อมูลยังไม่มีคอลัมน์) -> ต้องเตือน
       if (result && result.splitSaved === false) {
+        const dropped = (result.droppedFields || []).join(', ');
         Alert.alert(
-          'บันทึกบิลแล้ว แต่ข้อมูลการแบ่งชั้นไม่ครบ',
-          `บันทึกรายการ "${title.trim()}" ฿${formatBaht(numAmount)} แล้ว\n\nยังบันทึก "ใครเป็นคนจ่าย" และ "แชร์กับใครบ้าง" ไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์นี้\nยอดรวมของกลุ่มจึงอาจไม่ตรงกับที่ควรเป็น`,
+          'บันทึกบิลแล้ว แต่ข้อมูลบางส่วนไม่ครบ',
+          `บันทึกรายการ "${title.trim()}" ฿${formatBaht(numAmount)} แล้ว\n\n` +
+            `ยังบันทึกไม่ได้: ${dropped || 'ข้อมูลบางส่วน'}\n` +
+            'เพราะฐานข้อมูลยังไม่มีคอลัมน์เหล่านี้ (ต้องรัน migration)\n' +
+            'ยอดรวมของกลุ่มจึงอาจไม่ตรงกับที่ควรเป็น',
           [{ text: 'ตกลง', onPress: () => router.back() }]
         );
         return;
