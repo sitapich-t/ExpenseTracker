@@ -2,6 +2,7 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { ActivityIndicator, View, LogBox } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 LogBox.ignoreAllLogs(true);
 
@@ -72,10 +73,12 @@ function RootNavigator() {
 
 export default function App() {
     return (
-        <AuthProvider>
-            <GroupProvider>
-                <RootNavigator />
-            </GroupProvider>
-        </AuthProvider>
+        <SafeAreaProvider>
+            <AuthProvider>
+                <GroupProvider>
+                    <RootNavigator />
+                </GroupProvider>
+            </AuthProvider>
+        </SafeAreaProvider>
     );
 }
