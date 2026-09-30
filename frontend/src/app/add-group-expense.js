@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -112,6 +112,7 @@ export default function AddGroupExpenseScreen() {
           if (!active) return;
           setCurrentUser(user);
           setMembers(bundle.members);
+          initSplitDefaults(bundle.members);
           setPayerId((prev) => prev ?? currentUserId(user));
         } catch (err) {
           if (active) {
@@ -127,7 +128,7 @@ export default function AddGroupExpenseScreen() {
       return () => {
         active = false;
       };
-    }, [groupId])
+    }, [groupId, initSplitDefaults])
   );
 
   const numAmount = parseAmount(amount);

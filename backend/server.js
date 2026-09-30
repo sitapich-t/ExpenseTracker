@@ -12,7 +12,7 @@ const personalRoutes = require('./routes/personalRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const billSplitRoutes = require('./routes/billSplitRoutes');
 
-const { UPLOAD_ROOT, ensureDir } = require('./middlewares/uploadMiddleware');
+const { SLIP_DIR, ensureDir } = require('./middlewares/uploadMiddleware');
 
 const app = express();
 app.use(cors());
@@ -22,11 +22,11 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // เสิร์ฟรูปสลิปที่อัปโหลดไว้ (เช่น /uploads/slips/<uuid>.jpg)
-// mount แค่โฟลเดอร์ slips เท่านั้น ไฟล์ OCR เก่าใน uploads/ จะไม่ถูกเปิดให้เข้าถึง
-ensureDir(UPLOAD_ROOT);
+// mount แค่โฟลเดอร์ slips เท่านั้น ไฟล์อื่นใน uploads/ (เช่น OCR เก่า) จะไม่ถูกเปิดให้เข้าถึง
+ensureDir(SLIP_DIR);
 app.use(
-  '/uploads',
-  express.static(UPLOAD_ROOT, {
+  '/uploads/slips',
+  express.static(SLIP_DIR, {
     index: false,
     dotfiles: 'ignore',
     maxAge: '7d',

@@ -124,7 +124,7 @@ export default function GroupSettleScreen() {
             amount: baht(t.amount),
           }))
         );
-      } catch (err) {
+      } catch {
         if (cancelled) return;
         // คำนวณไม่ได้ก็ยังดูรายบิลดิบได้
         setSimplifiedDebts([]);

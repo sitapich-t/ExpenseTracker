@@ -119,6 +119,7 @@ e.g. `starbucks__total-5.50.png` → `{ "merchant": "starbucks", "total": 5.5 }`
 | GET    | `/:id/transactions`   | ✔    | Group transactions (members only) |
 | POST   | `/:id/transactions`   | ✔    | Create group transaction (members only) |
 | POST   | `/:id/slips`          | ✔    | Upload a slip image (members only) |
+| GET    | `/:id/settlement`     | ✔    | Net balances + transfer list from stored `split_data` (members only) |
 | GET    | `/:id/members`        | ✔    | List members                 |
 | POST   | `/:id/members`        | ✔    | Add a member                 |
 
@@ -139,11 +140,33 @@ e.g. `starbucks__total-5.50.png` → `{ "merchant": "starbucks", "total": 5.5 }`
 | `category`  | string | optional, default `General`                                     |
 | `date`      | string | optional, default now                                           |
 | `paid_by`   | uuid   | optional, default = ผู้สร้าง                                    |
-| `split_data`| object \| string | optional — `{ memberIds: [...], method: 'equal' }`      |
+| `split_data`| object \| string | optional — วิธีแจกบิล (equal/percent/item/amount) ดูด้านล่าง |
 | `slip_url`  | string | optional — URL จาก `POST /:id/slips`                            |
 | `slip`      | file   | multipart only — รูปสลิป (jpg/png/webp/heic, สูงสุด 8 MB)       |
 
 SC/VAT คิดเป็น **สตางค์จริง** (ไม่มีเศษจาก float) และยอดรวมจะตรงกับผลบวกเสมอ
+
+### `split_data` — วิธีแจกบิล (3 กรณีหลัก)
+
+```jsonc
+// 1) equal — หารเท่ากันสมาชิกที่ระบุ (fraction ตัดออกจากคนสุดท้ายใน list)
+{ "method": "equal", "memberIds": ["<uid-A>", "<uid-B>", "<uid-C>"] }
+// 2) percent — แจกตามเปอร์เซ็นต์ ต้องรวม = 100 พอดี
+{ "method": "percent", "shares": { "<uid-A>": 70, "<uid-B>": 30 } }
+// 3) sub-group แบบ item (ใครกินอะไร): แจกเฉพาะคนที่ sharedBy item นั้น ๆ
+//    รวมราคา items ต้องเท่ากับ subtotal พอดี
+{ "method": "item", "items": [
+    { "id": "กุ้ง",  "price": 300, "sharedBy": ["<uid-A>"] },
+    { "id": "หมู",  "price": 200, "sharedBy": ["<uid-B>", "<uid-C>"] }
+] }
+// 4) sub-group แบบ amount (ยอดตายตัวต่อคน): รวมกันต้องเท่ากับยอดรวม (รวม SC/VAT แล้ว)
+{ "method": "amount", "amounts": { "<uid-A>": 120, "<uid-B>": 80, "<uid-C>": 200 } }
+```
+
+- `split_data` เป็น JSON string ใน multipart ได้ (server แปลงให้เป็น object)
+- SC/VAT แจกตามน้ำหนักของแต่ละวิธี; ผลรวมต่อคน = `price + sc + vat` ตรงเสมอ
+- อ้าง `user_id` ที่ **ไม่ใช่สมาชิกกลุ่ม** → `400`
+- วิธีไม่ถูกต้อง / percent รวม ไม่ใช่ 100 / item รวม ≠ subtotal / amount รวม ≠ ยอดรวม → `400` พร้อมข้อความเหตุผล (**ไม่เกิด normalization แบบเงียบ ๆ**)
 
 ```jsonc
 // subtotal 1000, sc 10%, vat 7% (คิด VAT จาก ราคา+SC)
@@ -178,6 +201,56 @@ SC/VAT คิดเป็น **สตางค์จริง** (ไม่มี
 - เสิร์ฟกลับที่ `GET /uploads/slips/<uuid>.png` (static)
 - ไม่ใช่สมาชิกกลุ่ม → `403` (ไฟล์ที่อัปโหลดถูกลบทิ้งให้อัตโนมัติ)
 
+### GET `/api/v1/groups/:id/settlement`
+
+คำนวณยอดสุทธิรายคนจาก `split_data` ของบิลทั้งหมดในกลุ่ม (เฉพาะสมาชิก) — `income` ถูกข้าม, บิลที่ missing
+`paid_by` หรือ `split_data` เสียจะไปอยู่ใน `skipped`
+
+→ `200`
+```jsonc
+{
+  "success": true,
+  "balances": [ // net balance ต่อคน (บวก = ต้องได้รับ, ลบ = ต้องจ่าย)
+    { "user_id": "<uid-B>", "amount": -280, "name": "..." },
+    { "user_id": "<uid-A>", "amount": 480 }
+  ],
+  "transactions": [ // จำนวนโอนที่น้อยที่สุดที่ทำให้ยอดกลับเป็น 0 (debt simplifier)
+    { "from": "<uid>", "to": "<uid>", "amount": 200 }
+  ],
+  "per_bill": { "<billId>": { "<uid>": { "share": 1177, "sc": 77, "vat": 0, "total": 1254 } } },
+  "skipped": [ { "id": "...", "reason": "missing paid_by" } ]
+}
+```
+ผลรวม `balances` = 0 เสมอ และไม่มีเงื่อนไขทั้ง 3 กรณี (เท่ากัน/เปอร์เซ็นต์/กลุ่มย่อย) ก็คำนวณได้
+
+---
+
+## Bill Split — `/api/v1/bill-split` (JWT required)
+
+| Method | Path       | Auth | Description                                             |
+|--------|------------|------|---------------------------------------------------------|
+| POST   | `/split`   | ✔    | แจกบิลด้วยวิธีใดวิธีหนึ่งโดยไม่ต้องผูกกับ group (สมาชิกระบุอิสระ) |
+
+### POST `/api/v1/bill-split/split`
+
+| Field       | Type   | Notes                                                        |
+|-------------|--------|--------------------------------------------------------------|
+| `title`     | string | required                                                     |
+| `amount`    | number | required — ราคาก่อน SC/VAT                                   |
+| `subtotal`  | number | optional — ถ้าส่งมาใช้แทน `amount`                           |
+| `sc_rate`   | number | optional, เปอร์เซ็นต์ (0-100)                                  |
+| `vat_rate`  | number | optional, เปอร์เซ็นต์ (0-100)                                  |
+| `vat_base`  | string | optional — `itemPlusSC` (default) \| `itemOnly`               |
+| `paid_by`   | uuid   | required — ผู้จ่ายจริง (มีสิทธิ์จดจาก user อื่นได้)            |
+| `split_data`| object | same rules as `split_data` ด้านบน (`equal`/`percent`/`item`/`amount`) |
+
+```json
+{ "title": "Dinner", "amount": 1177, "paid_by": "<uid-A>",
+  "split_data": { "method": "percent", "shares": { "<uid-A>": 60, "<uid-B>": 40 } } }
+```
+→ `200` `{ "members": { "<uid-A>": { "total": 706.2, "sc": 70.62, "vat": 49.43 }, "<uid-B>": {...} }, "total": 1177 }`
+
+- วิธีไม่ถูกต้อง / percent รวม ≠ 100 / item รวม ≠ subtotal / amount รวม ≠ ยอดรวม → `400`
 
 ---
 
@@ -251,6 +324,14 @@ Preconditions: run `backend/sql/create_group_tables.sql` in Supabase first; serv
 | 44 | `DELETE /groups/:id` as **non-owner** | `404` "ไม่พบกลุ่มหรือคุณไม่มีสิทธิ์ลบกลุ่มนี้" |
 | 45 | `DELETE /groups/:id` as owner | `200`; members + transactions of that group removed |
 | 46 | All group routes with no/invalid token | `401` |
+| 47 | `POST /groups/:id/transactions` `{split_data:{method:"percent",shares:{A:70,B:30}}, paid_by:A}` | `200`; `GET /groups/:id/settlement` shows B = −amount×30% |
+| 48 | `POST /groups/:id/transactions` `{method:"item", items:[{price,sharedBy:[...]}]}` where Σ items ≠ `subtotal` | `400` "รวมราคา items ... ไม่เท่ากับยอด subtotal" |
+| 49 | `POST /groups/:id/transactions` `{method:"amount", amounts:{A:100,B:100}}` where Σ ≠ `amount` | `400` |
+| 50 | `POST /groups/:id/transactions` `{method:"equal", memberIds:[non-member uuid]}` | `400` (member outside group) |
+| 51 | `POST /groups/:id/transactions` `{method:"magic"}` | `400` "ไม่รู้จักวิธีแจกบิล" |
+| 52 | `GET /groups/:id/settlement` with bills from cases 34 + 47 | `balances` sum to `0`; `transactions` shortest transfer list; `skipped` lists broken bills |
+| 53 | `POST /bill-split/split` percent `{amount:1177, paid_by:A, shares:{A:60,B:40}}` | `200`; A total `706.2`, B `470.8`; NOT persisted |
+| 54 | `POST /bill-split/split` `{amount:500, shares:{A:30,B:50}}` (sum≠100) | `400`
 
 ### Known gaps (test accordingly / not yet implemented)
 - `GET /groups/my` includes groups the user **joined** (via `group_members`), not only ones they created.
@@ -263,7 +344,8 @@ Preconditions: run `backend/sql/create_group_tables.sql` in Supabase first; serv
 - Uploads are stored on the API server's local disk (`backend/uploads/slips/`) — they are lost on
   redeploy and are not shared across instances. Move to Supabase Storage for production.
 - The frontend has no UI yet for entering SC/VAT or attaching a slip to a group bill
-  (`add-group-expense.js`) — the API supports both, the screen does not send them.
+  (`add-group-expense.js`) — the API supports both, the screen does not send them
+  (it now does send the 4 split methods via `split_data`).
 
 ---
 
