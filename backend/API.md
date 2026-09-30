@@ -103,17 +103,154 @@ e.g. `starbucks__total-5.50.png` → `{ "merchant": "starbucks", "total": 5.5 }`
 
 ---
 
-## Groups — `/api/v1/groups` (JWT required, feature in progress)
+## Groups — `/api/v1/groups` (JWT required)
 
-| Method | Path                  | Description                  |
-|--------|-----------------------|------------------------------|
-| GET    | `/my`                 | List my groups               |
-| POST   | `/create`             | Create a group               |
-| DELETE | `/:id`                | Delete group (owner only; also removes members/transactions) |
-| GET    | `/:id/transactions`   | Group transactions           |
-| POST   | `/:id/transactions`   | Create group transaction     |
-| GET    | `/:id/members`        | List members                 |
-| POST   | `/:id/members`        | Add a member                 |
+> **ต้องรัน migration ก่อน** ไม่งั้น SC/VAT, ผู้จ่าย, สัดส่วน และสลิปจะบันทึกไม่ได้
+> รัน `backend/sql/add_group_bill_split_columns.sql` ใน Supabase SQL Editor (รันซ้ำได้)
+
+| Method | Path                  | Auth | Description                  |
+|--------|-----------------------|------|------------------------------|
+| GET    | `/my`                 | ✔    | List my groups               |
+| GET    | `/invite/:code`       | ✔    | Look up a group by invite code |
+| POST   | `/create`             | ✔    | Create a group               |
+| POST   | `/join`               | ✔    | Join with own token (QR)     |
+| DELETE | `/:id`                | ✔    | Delete group (owner only; also removes members/transactions) |
+| PATCH  | `/:id/status`         | ✔    | Set `status_type` = settled \| pending \| split |
+| GET    | `/:id/transactions`   | ✔    | Group transactions (members only) |
+| POST   | `/:id/transactions`   | ✔    | Create group transaction (members only) |
+| POST   | `/:id/slips`          | ✔    | Upload a slip image (members only) |
+| GET    | `/:id/settlement`     | ✔    | Net balances + transfer list from stored `split_data` (members only) |
+| GET    | `/:id/members`        | ✔    | List members                 |
+| POST   | `/:id/members`        | ✔    | Add a member                 |
+
+### POST `/api/v1/groups/:id/transactions`
+
+`application/json` **หรือ** `multipart/form-data` (แนบรูปสลิปใน field `slip` ได้เลย)
+
+| Field       | Type   | Notes                                                          |
+|-------------|--------|----------------------------------------------------------------|
+| `title`     | string | required                                                       |
+| `amount`    | number | required — **ราคาก่อน SC/VAT** (ยอดสุทธิจะถูกคำนวณให้)        |
+| `subtotal`  | number | optional — ถ้าส่งมาจะใช้แทน `amount`                            |
+| `sc_rate`   | number | optional, **เปอร์เซ็นต์** เช่น `10` = 10% (0-100)                |
+| `vat_rate`  | number | optional, **เปอร์เซ็นต์** เช่น `7` = 7% (0-100)                 |
+| `vat_base`  | string | optional — `itemPlusSC` (default, มาตรฐานไทย) \| `itemOnly`     |
+| `type`      | string | optional — `expense` (default) \| `income`                     |
+| `merchant`  | string | optional, default `General`                                     |
+| `category`  | string | optional, default `General`                                     |
+| `date`      | string | optional, default now                                           |
+| `paid_by`   | uuid   | optional, default = ผู้สร้าง                                    |
+| `split_data`| object \| string | optional — วิธีแจกบิล (equal/percent/item/amount) ดูด้านล่าง |
+| `slip_url`  | string | optional — URL จาก `POST /:id/slips`                            |
+| `slip`      | file   | multipart only — รูปสลิป (jpg/png/webp/heic, สูงสุด 8 MB)       |
+
+SC/VAT คิดเป็น **สตางค์จริง** (ไม่มีเศษจาก float) และยอดรวมจะตรงกับผลบวกเสมอ
+
+### `split_data` — วิธีแจกบิล (3 กรณีหลัก)
+
+```jsonc
+// 1) equal — หารเท่ากันสมาชิกที่ระบุ (fraction ตัดออกจากคนสุดท้ายใน list)
+{ "method": "equal", "memberIds": ["<uid-A>", "<uid-B>", "<uid-C>"] }
+// 2) percent — แจกตามเปอร์เซ็นต์ ต้องรวม = 100 พอดี
+{ "method": "percent", "shares": { "<uid-A>": 70, "<uid-B>": 30 } }
+// 3) sub-group แบบ item (ใครกินอะไร): แจกเฉพาะคนที่ sharedBy item นั้น ๆ
+//    รวมราคา items ต้องเท่ากับ subtotal พอดี
+{ "method": "item", "items": [
+    { "id": "กุ้ง",  "price": 300, "sharedBy": ["<uid-A>"] },
+    { "id": "หมู",  "price": 200, "sharedBy": ["<uid-B>", "<uid-C>"] }
+] }
+// 4) sub-group แบบ amount (ยอดตายตัวต่อคน): รวมกันต้องเท่ากับยอดรวม (รวม SC/VAT แล้ว)
+{ "method": "amount", "amounts": { "<uid-A>": 120, "<uid-B>": 80, "<uid-C>": 200 } }
+```
+
+- `split_data` เป็น JSON string ใน multipart ได้ (server แปลงให้เป็น object)
+- SC/VAT แจกตามน้ำหนักของแต่ละวิธี; ผลรวมต่อคน = `price + sc + vat` ตรงเสมอ
+- อ้าง `user_id` ที่ **ไม่ใช่สมาชิกกลุ่ม** → `400`
+- วิธีไม่ถูกต้อง / percent รวม ไม่ใช่ 100 / item รวม ≠ subtotal / amount รวม ≠ ยอดรวม → `400` พร้อมข้อความเหตุผล (**ไม่เกิด normalization แบบเงียบ ๆ**)
+
+```jsonc
+// subtotal 1000, sc 10%, vat 7% (คิด VAT จาก ราคา+SC)
+{ "title": "Dinner", "amount": 1000, "sc_rate": 10, "vat_rate": 7 }
+// -> subtotal 1000, sc_amount 100, vat_amount 77, amount 1177
+```
+
+→ `200`
+```json
+{
+  "success": true,
+  "message": "บันทึกรายการสำเร็จ",
+  "split_saved": true,
+  "dropped_fields": [],
+  "slip_url": "/uploads/slips/fd6b5293-....png",
+  "transaction": { "...": "..." }
+}
+```
+
+> ถ้ายังไม่รัน migration: `split_saved` จะเป็น `false` และ `dropped_fields`
+> จะระบุชื่อคอลัมน์ที่บันทึกไม่ได้ (เช่น `["sc_amount","paid_by"]`) — บิลยังถูกบันทึก
+> แต่ข้อมูลส่วนนั้นหาย ต้องรัน migration แล้วลองใหม่
+
+### POST `/api/v1/groups/:id/slips`
+
+`multipart/form-data`, field `slip` (ไฟล์รูป) → คืน URL สัมพัทธ์ไว้แนบกับบิล
+
+→ `200` `{ "success": true, "slip_url": "/uploads/slips/<uuid>.png" }`
+
+- รับเฉพาะรูปภาพ (jpg/png/webp/heic) สูงสุด 8 MB — ชนิดอื่นได้ `400`
+- ชื่อไฟล์ถูกสร้างโดย server (UUID) ไม่รับชื่อจาก client
+- เสิร์ฟกลับที่ `GET /uploads/slips/<uuid>.png` (static)
+- ไม่ใช่สมาชิกกลุ่ม → `403` (ไฟล์ที่อัปโหลดถูกลบทิ้งให้อัตโนมัติ)
+
+### GET `/api/v1/groups/:id/settlement`
+
+คำนวณยอดสุทธิรายคนจาก `split_data` ของบิลทั้งหมดในกลุ่ม (เฉพาะสมาชิก) — `income` ถูกข้าม, บิลที่ missing
+`paid_by` หรือ `split_data` เสียจะไปอยู่ใน `skipped`
+
+→ `200`
+```jsonc
+{
+  "success": true,
+  "balances": [ // net balance ต่อคน (บวก = ต้องได้รับ, ลบ = ต้องจ่าย)
+    { "user_id": "<uid-B>", "amount": -280, "name": "..." },
+    { "user_id": "<uid-A>", "amount": 480 }
+  ],
+  "transactions": [ // จำนวนโอนที่น้อยที่สุดที่ทำให้ยอดกลับเป็น 0 (debt simplifier)
+    { "from": "<uid>", "to": "<uid>", "amount": 200 }
+  ],
+  "per_bill": { "<billId>": { "<uid>": { "share": 1177, "sc": 77, "vat": 0, "total": 1254 } } },
+  "skipped": [ { "id": "...", "reason": "missing paid_by" } ]
+}
+```
+ผลรวม `balances` = 0 เสมอ และไม่มีเงื่อนไขทั้ง 3 กรณี (เท่ากัน/เปอร์เซ็นต์/กลุ่มย่อย) ก็คำนวณได้
+
+---
+
+## Bill Split — `/api/v1/bill-split` (JWT required)
+
+| Method | Path       | Auth | Description                                             |
+|--------|------------|------|---------------------------------------------------------|
+| POST   | `/split`   | ✔    | แจกบิลด้วยวิธีใดวิธีหนึ่งโดยไม่ต้องผูกกับ group (สมาชิกระบุอิสระ) |
+
+### POST `/api/v1/bill-split/split`
+
+| Field       | Type   | Notes                                                        |
+|-------------|--------|--------------------------------------------------------------|
+| `title`     | string | required                                                     |
+| `amount`    | number | required — ราคาก่อน SC/VAT                                   |
+| `subtotal`  | number | optional — ถ้าส่งมาใช้แทน `amount`                           |
+| `sc_rate`   | number | optional, เปอร์เซ็นต์ (0-100)                                  |
+| `vat_rate`  | number | optional, เปอร์เซ็นต์ (0-100)                                  |
+| `vat_base`  | string | optional — `itemPlusSC` (default) \| `itemOnly`               |
+| `paid_by`   | uuid   | required — ผู้จ่ายจริง (มีสิทธิ์จดจาก user อื่นได้)            |
+| `split_data`| object | same rules as `split_data` ด้านบน (`equal`/`percent`/`item`/`amount`) |
+
+```json
+{ "title": "Dinner", "amount": 1177, "paid_by": "<uid-A>",
+  "split_data": { "method": "percent", "shares": { "<uid-A>": 60, "<uid-B>": 40 } } }
+```
+→ `200` `{ "members": { "<uid-A>": { "total": 706.2, "sc": 70.62, "vat": 49.43 }, "<uid-B>": {...} }, "total": 1177 }`
+
+- วิธีไม่ถูกต้อง / percent รวม ≠ 100 / item รวม ≠ subtotal / amount รวม ≠ ยอดรวม → `400`
 
 ---
 
@@ -165,24 +302,50 @@ Preconditions: run `backend/sql/create_group_tables.sql` in Supabase first; serv
 | 22 | `POST /groups/create` valid `{name, category:"Trip"}` | `200`, returns `group.id`; owner auto-added as member (`members_count:1`) |
 | 23 | `POST /groups/create` empty/whitespace `name` | `400` "กรุณาระบุชื่อกลุ่ม" |
 | 24 | `POST /groups/create` with `category` Trip/Food/Event/General | correct icon + color mapping |
-| 25 | `GET /groups/my` | only groups you created, newest first |
+| 25 | `GET /groups/my` | groups you created **or joined**, with `members` + `bills` |
 | 26 | `GET /groups/:id/transactions` with none | `transactions: []` |
 | 27 | `POST /groups/:id/transactions` missing `title` or `amount` | `400` |
-| 28 | `POST /groups/:id/transactions` valid body | `200`; then appears in `GET /groups/:id/transactions` (newest first) |
-| 29 | `POST /groups/:id/transactions` with `type:"income"` and `paid_by` = other member's uuid | `200` persists as-is |
-| 30 | `POST /groups/:id/members` missing `user_id` | `400` "กรุณาระบุ user_id ของสมาชิก" |
-| 31 | `POST /groups/:id/members` valid user B | `200`; `members_count` increments (1→2) |
-| 32 | `POST /groups/:id/members` same member twice | `400` "ผู้ใช้นี้เป็นสมาชิกกลุ่มอยู่แล้ว" |
-| 33 | `GET /groups/:id/members` | members list incl. owner after create |
-| 34 | `DELETE /groups/:id` as **non-owner** | `404` "ไม่พบกลุ่มหรือคุณไม่มีสิทธิ์ลบกลุ่มนี้" |
-| 35 | `DELETE /groups/:id` as owner | `200`; members + transactions of that group removed |
-| 36 | All 6 group routes with no token | `401` |
+| 28 | `POST /groups/:id/transactions` valid body | `200`; appears in `GET /groups/:id/transactions` (newest first) |
+| 29 | `POST /groups/:id/transactions` `{amount:1000, sc_rate:10, vat_rate:7}` | `subtotal:1000`, `sc_amount:100`, `vat_amount:77`, `amount:1177` |
+| 30 | same + `vat_base:"itemOnly"` | `vat_amount:70`, `amount:1170` |
+| 31 | `POST /groups/:id/transactions` `sc_rate:500` | `400` "อัตรา SC/VAT ต้องไม่เกิน 100" |
+| 32 | `POST /groups/:id/transactions` `type:"income"` | `groups.total_spend` **ลด**ลง |
+| 33 | `POST /groups/:id/transactions` multipart + `split_data` as JSON string | stored as a real object, not a string |
+| 34 | `POST /groups/:id/transactions` with `paid_by` = other member's uuid | `200` persists as-is |
+| 35 | `POST /groups/:id/slips` multipart `slip` = png | `200` `{ slip_url: "/uploads/slips/<uuid>.png" }`; `GET` that URL → `200 image/*` |
+| 36 | `POST /groups/:id/slips` with a `.html` file | `400` "รองรับเฉพาะไฟล์รูปภาพ" |
+| 37 | `POST /groups/:id/slips` with no file | `400` "กรุณาแนบไฟล์รูปสลิป" |
+| 38 | `POST /groups/:id/transactions` as a **non-member** | `403` "คุณไม่ได้เป็นสมาชิกของกลุ่มนี้" |
+| 39 | `GET /groups/:id/transactions` as a **non-member** | `403` |
+| 40 | `POST /groups/:id/members` missing `user_id` | `400` "กรุณาระบุ user_id ของสมาชิก" |
+| 41 | `POST /groups/:id/members` valid user B | `200`; `members_count` increments (1→2) |
+| 42 | `POST /groups/:id/members` same member twice | `400` "ผู้ใช้นี้เป็นสมาชิกกลุ่มอยู่แล้ว" |
+| 43 | `GET /groups/:id/members` | members list incl. owner after create |
+| 44 | `DELETE /groups/:id` as **non-owner** | `404` "ไม่พบกลุ่มหรือคุณไม่มีสิทธิ์ลบกลุ่มนี้" |
+| 45 | `DELETE /groups/:id` as owner | `200`; members + transactions of that group removed |
+| 46 | All group routes with no/invalid token | `401` |
+| 47 | `POST /groups/:id/transactions` `{split_data:{method:"percent",shares:{A:70,B:30}}, paid_by:A}` | `200`; `GET /groups/:id/settlement` shows B = −amount×30% |
+| 48 | `POST /groups/:id/transactions` `{method:"item", items:[{price,sharedBy:[...]}]}` where Σ items ≠ `subtotal` | `400` "รวมราคา items ... ไม่เท่ากับยอด subtotal" |
+| 49 | `POST /groups/:id/transactions` `{method:"amount", amounts:{A:100,B:100}}` where Σ ≠ `amount` | `400` |
+| 50 | `POST /groups/:id/transactions` `{method:"equal", memberIds:[non-member uuid]}` | `400` (member outside group) |
+| 51 | `POST /groups/:id/transactions` `{method:"magic"}` | `400` "ไม่รู้จักวิธีแจกบิล" |
+| 52 | `GET /groups/:id/settlement` with bills from cases 34 + 47 | `balances` sum to `0`; `transactions` shortest transfer list; `skipped` lists broken bills |
+| 53 | `POST /bill-split/split` percent `{amount:1177, paid_by:A, shares:{A:60,B:40}}` | `200`; A total `706.2`, B `470.8`; NOT persisted |
+| 54 | `POST /bill-split/split` `{amount:500, shares:{A:30,B:50}}` (sum≠100) | `400`
 
 ### Known gaps (test accordingly / not yet implemented)
-- `GET /groups/my` does **not** include groups the user only joined (via `group_members`) — only `created_by`.
+- `GET /groups/my` includes groups the user **joined** (via `group_members`), not only ones they created.
 - `POST /groups/:id/members` has **no owner/member authorization** — any logged-in user can add anyone to any group.
-- Group transactions do **not** update `groups.total_spend` / `amount`.
-- Join via invite code / QR does not exist yet; frontend `group-detail` screen is missing (`create-group.js` navigates to it).
+  (`/:id/transactions` and `/:id/slips` **are** member-only.)
+- `POST /:id/transactions` updates `groups.total_spend`/`amount`, but the read-modify-write is not
+  atomic — two bills added at the exact same moment can race and lose one update.
+- `split-bill` and `preview` under `/api/v1/bill-split` only **compute**; they never persist
+  anything. Persisted group bills go through `POST /groups/:id/transactions`.
+- Uploads are stored on the API server's local disk (`backend/uploads/slips/`) — they are lost on
+  redeploy and are not shared across instances. Move to Supabase Storage for production.
+- The frontend has no UI yet for entering SC/VAT or attaching a slip to a group bill
+  (`add-group-expense.js`) — the API supports both, the screen does not send them
+  (it now does send the 4 split methods via `split_data`).
 
 ---
 

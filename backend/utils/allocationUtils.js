@@ -69,6 +69,7 @@ function distributeAmount(totalSatang, weights) {
  *        'itemOnly'   = คิด VAT จากราคาสินค้าอย่างเดียว (ไม่รวม SC)
  * @returns {{items: Array, summary: Object}}
  */
+
 function distributeSCVAT(items, scRate = 0, vatRate = 0, options = {}) {
   const { vatBase = 'itemPlusSC' } = options;
 

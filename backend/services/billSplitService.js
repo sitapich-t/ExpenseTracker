@@ -14,6 +14,7 @@
 
 const { toSatang, toBaht, distributeAmount, distributeSCVAT } = require('../utils/allocationUtils');
 const { simplifyDebts } = require('../utils/debtSimplifier');
+const { resolveSplit, SPLIT_METHODS } = require('../utils/splitMethod');
 
 /**
  * หารบิลของกลุ่ม: กระจาย SC/VAT ต่อ item แล้วคำนวณ net balance ของแต่ละคน
@@ -129,6 +130,81 @@ function settleGroupBalances(balances) {
 }
 
 /**
+ * หารบิลแบบเลือกวิธีหารได้ (3 เคส) — คำนวณเฉพาะก้อน ไม่ต้องหักหนี้
+ *
+ * ใช้คนละทางกับ splitBillForGroup:
+ *   - splitBillForGroup : หารตาม item (คนละคนจ่ายคนละ item ได้)  รองรับ paidBy ราย item
+ *   - splitBillByMethod : หารทั้งบิลเป็นก้อนเดียว เลือกวิธีได้ 4 แบบ
+ *                          ผู้จ่ายคนเดียว (paidBy รวม) แต่สัดส่วนที่แต่ละคนโดนกำหนดได้
+ *
+ * @param {Object} params
+ * @param {Object} params.split - config วิธีหาร { method, ... } (ดู splitMethod.js)
+ * @param {string} params.paidBy - personId คนที่จ่ายทั้งบิล
+ * @param {Array<{id?:string, price:number}>} [params.items] - ใช้หายอดก่อนภาษี
+ *        ถ้าไม่ส่ง ต้องส่ง params.subtotal
+ * @param {number} [params.subtotal] - ยอดก่อน SC/VAT (บาท)
+ * @param {number} [params.scRate=0] - อัตรา SC เช่น 0.10
+ * @param {number} [params.vatRate=0] - อัตรา VAT เช่น 0.07
+ * @param {Object} [params.options]
+ * @param {string[]} [params.options.groupMembers] - สมาชิกทั้งกลุ่ม (default ของ equal)
+ * @param {'itemPlusSC'|'itemOnly'} [params.options.vatBase='itemPlusSC']
+ * @returns {{method:string, members:Object, summary:Object, balances:Array}}
+ */
+function splitBillByMethod(params = {}) {
+  const { split = {}, paidBy, items, scRate = 0, vatRate = 0, options = {} } = params;
+  const { groupMembers = [], vatBase = 'itemPlusSC' } = options;
+
+  if (!paidBy) {
+    throw new Error('ต้องระบุ paidBy (คนที่จ่ายทั้งบิล)');
+  }
+
+  // หายอดก่อนภาษี: จาก items ถ้ามี ไม่งั้นใช้ subtotal ที่ส่งมา
+  let subtotal;
+  if (Array.isArray(items) && items.length > 0) {
+    subtotal = items.reduce((s, it) => s + (Number(it.price) || 0), 0);
+  } else {
+    subtotal = Number(params.subtotal) || 0;
+  }
+  if (subtotal <= 0) {
+    throw new Error('ยอดก่อนภาษีต้องมากกว่า 0 (ส่ง items หรือ subtotal)');
+  }
+
+  // คิด SC/VAT ด้วย core algorithm เดียวกัน เพื่อให้ยอดตรงกับที่บันทึกบิลไว้
+  const { summary } = distributeSCVAT([{ id: 'total', price: subtotal }], scRate, vatRate, { vatBase });
+
+  // ตัวแก้ปัญหาร่วม — คิดจาก subtotal/sc/vat ที่ได้ ไม่งั้นผลจะไม่ตรงกับบิลที่บันทึกไว้
+  const resolved = resolveSplit(split, {
+    subtotal,
+    scAmount: summary.totalSC,
+    vatAmount: summary.totalVAT,
+    memberIds: groupMembers,
+  });
+
+  // สร้าง balance แบบเดียวกับ splitBillForGroup: คนที่จ่าย = +ยอดเต็ม, ทุกคน = -ส่วนของตัวเอง
+  // ต้องหักส่วนของผู้จ่ายด้วย ถึงจะได้ผลรวม = 0 (ผลลัพธ์สุทธิเท่ากับ "คนอื่นเป็นหนี้เท่าไร")
+  const balanceMap = {};
+  for (const id of groupMembers) balanceMap[String(id)] = 0;
+  balanceMap[String(paidBy)] = (balanceMap[String(paidBy)] || 0) + summary.grandTotal;
+
+  for (const [personId, share] of Object.entries(resolved.members)) {
+    balanceMap[personId] = (balanceMap[personId] || 0) - share.total;
+  }
+
+  const balances = Object.entries(balanceMap).map(([person, amount]) => ({
+    person,
+    amount: toBaht(toSatang(amount)),
+  }));
+
+  return {
+    method: resolved.method,
+    participants: resolved.participants,
+    members: resolved.members,
+    summary,
+    balances,
+  };
+}
+
+/**
  * ฟังก์ชันรวม: หารบิล + ลดจำนวนธุรกรรม ในขั้นตอนเดียว
  * เหมาะสำหรับเรียกจาก controller ตรง ๆ (เช่น POST /groups/:id/split-bill)
  *
@@ -155,8 +231,22 @@ function splitBillAndSettle(items, scRate = 0, vatRate = 0, options = {}) {
   };
 }
 
+/**
+ * เหมือน splitBillByMethod แต่คืน "รายการโอนเงิน" ด้วย (ตัดหนี้ให้แล้ว)
+ *
+ * @param {Object} params - ดู splitBillByMethod
+ * @returns {{method:string, members:Object, summary:Object, balances:Array, transactions:Array}}
+ */
+function splitByMethodAndSettle(params = {}) {
+  const result = splitBillByMethod(params);
+  return { ...result, transactions: settleGroupBalances(result.balances) };
+}
+
 module.exports = {
+  SPLIT_METHODS,
   splitBillForGroup,
+  splitBillByMethod,
+  splitByMethodAndSettle,
   settleGroupBalances,
   splitBillAndSettle,
 };
