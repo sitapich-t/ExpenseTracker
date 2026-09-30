@@ -1,0 +1,107 @@
+[
+  {
+    "tag": "s2_p11_tnone",
+    "cfg": {
+      "scale": 2,
+      "psm": "11",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 5,
+        "n": 5
+      },
+      "date": {
+        "ok": 4,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 1,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "x*R"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Soup & cale"
+      },
+      {
+        "file": "162706.png",
+        "field": "date",
+        "expected": "2026-09-01",
+        "got": null
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "PPT"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 81.8,
+      "avgMs": 2985.6,
+      "avgCER": null
+    }
+  }
+]

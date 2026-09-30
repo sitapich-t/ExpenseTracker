@@ -1,0 +1,854 @@
+[
+  {
+    "tag": "s1_p3_tnone",
+    "cfg": {
+      "scale": 1,
+      "psm": "3",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 5,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 4,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 0,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Soup & cale"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "รหัสอ้างอิง: 202609015hKibKGyEMUFjZKTo"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 89.6,
+      "avgMs": 1116.4,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1_p3_t150",
+    "cfg": {
+      "scale": 1,
+      "psm": "3",
+      "threshold": "150"
+    },
+    "perField": {
+      "total": {
+        "ok": 5,
+        "n": 5
+      },
+      "date": {
+        "ok": 3,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 1,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 1,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "date",
+        "expected": "2026-08-30",
+        "got": "2026-08-20T00:00:00.000Z"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Yo-i soup Kamphaeng 9ลอท"
+      },
+      {
+        "file": "162706.png",
+        "field": "date",
+        "expected": "2026-09-01",
+        "got": null
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "จาก             @ ua. Anus ตามใจเพียร"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 89.6,
+      "avgMs": 1005.4,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1_p4_tnone",
+    "cfg": {
+      "scale": 1,
+      "psm": "4",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 5,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 4,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 0,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Yo-i soup Kamphaeng 5สอท"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "รหัสอ้างอิง: 202609015hKibKGyEMUFjZKTo"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 89.8,
+      "avgMs": 969.4,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1_p4_t150",
+    "cfg": {
+      "scale": 1,
+      "psm": "4",
+      "threshold": "150"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 3,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 0,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "total",
+        "expected": 210.25,
+        "got": 5210.25
+      },
+      {
+        "file": "162704.png",
+        "field": "date",
+        "expected": "2026-08-30",
+        "got": "2026-08-20T00:00:00.000Z"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Yo-i soup Kamphaeng 9ลอท"
+      },
+      {
+        "file": "162706.png",
+        "field": "date",
+        "expected": "2026-09-01",
+        "got": null
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "จาก             @ ua. Anus ตามใจเพียร"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 90,
+      "avgMs": 858.6,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1.5_p3_tnone",
+    "cfg": {
+      "scale": 1.5,
+      "psm": "3",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 1,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "total",
+        "expected": 210.25,
+        "got": 8210.25
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "จาก              @ !.ส. Anus ตามใจเพียร"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 90.6,
+      "avgMs": 1272.4,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1.5_p3_t150",
+    "cfg": {
+      "scale": 1.5,
+      "psm": "3",
+      "threshold": "150"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 1,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 1,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "total",
+        "expected": 210.25,
+        "got": 821025
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Yo-i soup Kamphaeng 9ลอท"
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "XXX-Xxx709-3"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 89.2,
+      "avgMs": 1102.2,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1.5_p4_tnone",
+    "cfg": {
+      "scale": 1.5,
+      "psm": "4",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 1,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "total",
+        "expected": 210.25,
+        "got": 8210.25
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "จาก              @ !.ส. Anus ตามใจเพียร"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 90.6,
+      "avgMs": 1270.8,
+      "avgCER": null
+    }
+  },
+  {
+    "tag": "s1.5_p4_t150",
+    "cfg": {
+      "scale": 1.5,
+      "psm": "4",
+      "threshold": "150"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 3,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 1,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 1,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "total",
+        "expected": 210.25,
+        "got": 8210.25
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Yo-i soup Kamphaeng 9ลอท"
+      },
+      {
+        "file": "162706.png",
+        "field": "transactionId",
+        "expected": "202609015hKibKGyEMuFjZKTo",
+        "got": "202609015"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "XXX-Xxx709-3"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 88.6,
+      "avgMs": 1120.8,
+      "avgCER": null
+    }
+  }
+]

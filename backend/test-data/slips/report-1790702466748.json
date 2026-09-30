@@ -1,0 +1,113 @@
+[
+  {
+    "tag": "s3_p6_tnone",
+    "cfg": {
+      "scale": 3,
+      "psm": "6",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 4,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 4,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 0,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "total",
+        "expected": 65,
+        "got": 5
+      },
+      {
+        "file": "12345.png",
+        "field": "date",
+        "expected": "2026-09-12",
+        "got": null
+      },
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "ป              บริษัท i แอสเสท จำกัด"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "| Emm"
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "SW       \\       |      ๒  | a               =a"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": "ง                            “a \"      Ksher SANOOK GAME zone, FN"
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 78,
+      "avgMs": 4123,
+      "avgCER": null
+    }
+  }
+]

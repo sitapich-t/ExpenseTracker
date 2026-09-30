@@ -3,7 +3,7 @@
 // ใช้ Tesseract.js (OCR แบบ open-source)
 // ==========================================
 
-const Tesseract = require('tesseract.js');
+const { recognizeText } = require('./ocrEngine');
 
 const USE_MOCK_OCR = String(process.env.USE_MOCK_OCR || '').toLowerCase() === 'true';
 
@@ -30,9 +30,10 @@ function detectDocumentTypeAndPaymentMethod(rawText) {
 
   const slipKeywords = [
     'successful transfer', 'transaction successful', 'transfer successful',
-    'payment completed', 'transfer completed', 'top-up completed',
+    'successful payment', 'payment completed', 'transfer completed', 'top-up completed',
     'scan to verify', 'scan for verify', 'verify the transfer status',
-    'ref id', 'transaction id', 'โอนแล้ว', 'โอนเงินสำเร็จ', 'ทำรายการสำเร็จ', 'ชำระเงินสำเร็จ'
+    'ref id', 'transaction id', 'โอนแล้ว', 'โอนเงินสำเร็จ', 'ทำรายการสำเร็จ', 'ชำระเงินสำเร็จ',
+    'เติมเงินสำเร็จ', 'รหัสอ้างอิง', 'คิวอาร์โค้ดนี้'
   ];
 
   const isSlip = slipKeywords.some(kw => text.includes(kw)) ||
@@ -50,6 +51,14 @@ function extractReceiptMerchant(rawText) {
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
   const ignoreKeywords = /^(ใบเสร็จ|ใบกำกับภาษี|พนักงาน|เจ้าของ|ระบบขายหน้าร้าน|POS|เสิร์ฟ|โต๊ะ|Table|Tax Invoice|Receipt|Welcome)/i;
 
+  const headerIdx = lines.findIndex(l => /(TAX\s*INVOICE|ใบกำกับภาษี|ใบเสร็จ)/i.test(l));
+  if (headerIdx > 0) {
+    for (let i = headerIdx - 1; i >= Math.max(0, headerIdx - 2); i--) {
+      const l = lines[i];
+      if (ignoreKeywords.test(l)) continue;
+      if ((l.match(/[ก-๙a-zA-Z]/g) || []).length >= 3) return l;
+    }
+  }
   for (const line of lines) {
     if (ignoreKeywords.test(line)) continue;
     if (line.length > 2 && !/^[\d\s\W]+$/.test(line)) {
@@ -57,6 +66,18 @@ function extractReceiptMerchant(rawText) {
     }
   }
   return '';
+}
+
+// ช่วยแก้ปัญหา OCR อ่านสัญลักษณ์ ฿ ผิดเป็นตัวเลข "8" นำหน้า (พบบ่อยกับฟอนต์ใบเสร็จเทอร์มอล)
+// ต้องรับตัวเลขดิบที่ "ยังมี comma" เท่านั้น (ห้าม .replace(/,/g,'') ก่อนเรียก)
+// เพราะ comma คือสัญญาณว่าเป็นเลขจริง เช่น 8,500.00
+// ประกาศไว้ก่อนฟังก์ชันที่เรียกใช้ (function declaration ถูก hoist อยู่แล้ว แต่เรียงไว้เพื่ออ่านง่าย)
+function stripMisreadBahtSymbol(rawNum) {
+  if (rawNum.includes(',')) return rawNum.replace(/,/g, ''); // 8,500.00 = ของจริง
+  if (rawNum.length > 6 && rawNum.startsWith('8') && parseFloat(rawNum.substring(1)) > 0) {
+    return rawNum.substring(1);
+  }
+  return rawNum;
 }
 
 // 🧾 3. สกัดยอดเงินจากใบเสร็จ (แก้ปัญหา ฿ กลายเป็นเลข 8)
@@ -72,11 +93,7 @@ function extractReceiptTotalAmount(rawText) {
 
     const match = cleanedLine.match(/(\d+(?:\,\d+)*\.\d{2})/);
     if (match) {
-      let amountStr = match[1].replace(/,/g, '');
-      if (amountStr.length > 6 && amountStr.startsWith('8')) {
-        amountStr = amountStr.substring(1);
-      }
-      return parseFloat(amountStr);
+      return parseFloat(stripMisreadBahtSymbol(match[1]));
     }
   }
   return 0;
@@ -86,33 +103,39 @@ function extractReceiptTotalAmount(rawText) {
 function extractRecipientFromSlip(rawText) {
   if (!rawText) return '';
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const stripLabel = (s) => s.replace(/^(?:ไปยัง|ถึง|TO)\s*[:：]?\s+/, '').trim();
 
-  // กรณี SCB/Kept ที่มีคำว่า TO / To
-  const toIndex = lines.findIndex(l => /^TO$/i.test(l) || /^To$/i.test(l));
+  // กรณี "TO TRUE TOP-UP" อยู่บรรทัดเดียวกัน (SCB ภาษาอังกฤษ)
+  for (const l of lines) {
+    const m = l.match(/^TO\s+(\S.*)$/);
+    if (m) return m[1].trim();
+  }
+
+  // กรณี SCB/Kept ที่มีคำว่า TO / To อยู่บรรทัดเดี่ยว
+  const toIndex = lines.findIndex(l => /^TO$/i.test(l));
   if (toIndex !== -1 && toIndex + 1 < lines.length) {
     const recipientLine = lines[toIndex + 1];
     if (!/^[\d\-xX=]{6,}$/i.test(recipientLine)) return recipientLine;
   }
 
-  // กรณี K+ อ่านย้อนยึดจากตำแหน่งผู้โอน
-  let senderEndIndex = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (/KBank|Kasikorn/i.test(lines[i]) || /x{2,}/i.test(lines[i]) || /^[\d\-xX=]{6,}$/i.test(lines[i])) {
-      senderEndIndex = i;
-    }
-  }
+  // ใช้บรรทัดเลขบัญชีที่ถูกปิดบัง (มี xx) บรรทัดแรกเป็นจุดสิ้นสุดของผู้โอน
+  let senderEndIndex = lines.findIndex(l => /x{2,}/i.test(l) && /\d/.test(l));
+  if (senderEndIndex === -1) senderEndIndex = lines.findIndex(l => /KBank|Kasikorn/i.test(l));
+  
 
   if (senderEndIndex !== -1 && senderEndIndex + 1 < lines.length) {
     const recipientLines = [];
     for (let i = senderEndIndex + 1; i < lines.length; i++) {
       const line = lines[i];
-      if (/(?:Transaction ID|Amount|Fee|เลขที่รายการ|จำนวนเงิน|Ref ID)/i.test(line)) break;
+      if (/(?:Transaction ID|Amount|Fee|เลขที่รายการ|จำนวนเงิน|Ref ID|Customer No|Reference No|Biller)/i.test(line)) break;
       if (/^[\d\s\-]{7,}$/.test(line)) break;
       if (/^(?:[A-Z0-9]{10,}|LICENSED|COPYRIGHT)/i.test(line)) break;
       if (/^PromptPay ID$/i.test(line)) continue;
       if (line.length <= 2 || /^[\=\+\-\*\.\_]+$/.test(line)) continue;
 
-      recipientLines.push(line);
+      const cleaned = stripLabel(line);
+      if (!cleaned) continue;
+      recipientLines.push(cleaned);
       if (recipientLines.length >= 2) break;
     }
     if (recipientLines.length > 0) return recipientLines.join(' ');
@@ -183,10 +206,14 @@ function extractMerchant(text) {
   return '';
 }
 
-// 🔢 7. สกัด Transaction ID
+// 🔢 7. สกัด Transaction ID (รวม Ref ID ของ SCB ภาษาอังกฤษ)
 function extractTransactionId(text) {
-  const match = text.match(/(?:Transaction\s*ID|เลขที่รายการ|รหัสอ้างอิง)[\s:]*([A-Za-z0-9]+)/i);
-  return match ? match[1] : null;
+  const match = text.match(/(?:Transaction\s*ID|Ref\s*ID|เลขที่รายการ|รหัสอ้างอิง)[\s:]*([A-Za-z0-9]+)/i);
+  if (!match) return null;
+  const id = match[1];
+  // รหัส SCB ขึ้นต้น yyyymmdd และปกติยาว 18+ ตัว ถ้าสั้นแปลว่า OCR อ่านตัดกลางคัน -> คืน null ดีกว่ารหัสที่ขาด
+  if (/^20\d{6}/.test(id) && id.length < 15) return null;
+  return id;
 }
 
 // 🏦 8. สกัดชื่อธนาคาร
@@ -203,17 +230,30 @@ function extractBankName(text) {
     { pattern: /BAY|KMA|Krungsri|krungsri|กรุงศรี/i, name: 'ธนาคารกรุงศรีอยุธยา' },
   ];
 
-  // ✅ ค้นหาจาก text เต็ม ไม่ตัด scope เพราะชื่อธนาคารต้นทางมักอยู่หลังจุดตัด
-  let best = null;
-  for (const { pattern, name } of banks) {
-    const match = text.match(pattern);
-    if (match && (best === null || match.index < best.index)) {
-      best = { index: match.index, name };
+  const findBank = (src) => {
+    let best = null;
+    for (const { pattern, name } of banks) {
+      const m = src.match(pattern);
+      if (m && (best === null || m.index < best.index)) best = { index: m.index, name };
     }
-  }
-  if (best) return best.name;
+    return best && best.name;
+  };
 
-  // fallback เป็น PromptPay เฉพาะตอนหาชื่อธนาคารเฉพาะไม่เจอเลยจริงๆ — ใช้ scopedText กันเผลอ match ผิดจุด
+  // 1) ค้นเฉพาะส่วนก่อน "ข้อมูลเพิ่มเติม" (กันชื่อธนาคารของผู้รับ เช่น (KTB) มาแย่ง)
+  const scoped = findBank(scopedText);
+  if (scoped) return scoped;
+
+  // 2) ลายเซ็นสลิป SCB Easy: หัว "Successful payment" / "เติมเงินสำเร็จ" + รหัสอ้างอิงขึ้นต้น yyyymmdd
+  //    (เดาจากรูปแบบ ตั้งอยู่บนสลิป SCB 2 ใบ ถ้าไม่มั่นใจให้ลบข้อนี้ทิ้งแล้วปล่อย null)
+  if (/(successful payment|เติมเงินสำเร็จ|ทำรายการสำเร็จ)/i.test(scopedText) &&
+      /(Ref ID|รหัสอ้างอิง)[\s:]*20\d{6}/i.test(scopedText)) {
+    return 'ธนาคารไทยพาณิชย์';
+  }
+
+  // 3) ค้นทั้งข้อความ ก่อนถอยไป PromptPay
+  const full = findBank(text);
+  if (full) return full;
+
   if (/PromptPay|พร้อมเพย์/i.test(scopedText)) return 'PromptPay';
   return null;
 }
@@ -355,14 +395,6 @@ function extractVatAndServiceCharge(rawText, total) {
 
   return { netAmount, vat, serviceCharge };
 }
-// ช่วยแก้ปัญหา OCR อ่านสัญลักษณ์ ฿ ผิดเป็นตัวเลข "8" นำหน้า (พบบ่อยกับฟอนต์ใบเสร็จเทอร์มอล)
-// ใช้ heuristic เดียวกับที่ extractReceiptTotalAmount ใช้อยู่แล้ว: ตัวเลขยาวผิดปกติ + ขึ้นต้นด้วย 8
-function stripMisreadBahtSymbol(numStr) {
-  if (numStr.length > 6 && numStr.startsWith('8')) {
-    return numStr.substring(1);
-  }
-  return numStr;
-}
 
 // 🧺 10. สกัดรายการสินค้า (Line Items) จากใบเสร็จ — รองรับหลายรูปแบบ
 function extractLineItems(parsedText) {
@@ -389,7 +421,7 @@ function extractLineItems(parsedText) {
     if (!qtyMatch) continue;
 
     const qty = parseFloat(qtyMatch[1]);
-    const unitPriceStr = stripMisreadBahtSymbol(qtyMatch[2].replace(/,/g, ''));
+    const unitPriceStr = stripMisreadBahtSymbol(qtyMatch[2]);
     const unitPrice = parseFloat(unitPriceStr);
     if (isNaN(qty) || isNaN(unitPrice)) continue;
 
@@ -428,7 +460,7 @@ function extractLineItems(parsedText) {
     if (name.length < 2 || isNoiseLine(name)) continue;
 
     const qty = parseFloat(qtyStr);
-    const total = parseFloat(stripMisreadBahtSymbol(totalStr.replace(/,/g, '')));
+    const total = parseFloat(stripMisreadBahtSymbol(totalStr));
     if (isNaN(qty) || isNaN(total)) continue;
 
     items.push({ name, quantity: qty, price: total });
@@ -451,7 +483,7 @@ function extractLineItems(parsedText) {
       const name = rawName.trim().replace(/^\d+[-.]\s*/, '');
       if (name.length < 3 || isNoiseLine(name) || /^\d+$/.test(name)) continue;
 
-      const price = parseFloat(stripMisreadBahtSymbol(priceStr.replace(/,/g, '')));
+      const price = parseFloat(stripMisreadBahtSymbol(priceStr));
       if (isNaN(price)) continue;
 
       items.push({ name, quantity: 1, price });
@@ -523,16 +555,23 @@ function extractDate(text) {
   const monthsEn = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
   // 1. รูปแบบสลิปภาษาอังกฤษ เช่น "29 Aug 26 12:49 PM" หรือ "29 Aug 2026"
-  const enMatch = text.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/i);
+  // เวลาบนสลิปเป็นเวลาไทย (UTC+7) -> ลบ 7 ชั่วโมงก่อนเก็บเป็น UTC
+  // รองรับ AM/PM (12:49 PM = 12:49, 01:05 PM = 13:05, 12:10 AM = 00:10)
+  const enMatch = text.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?)?/i);
   if (enMatch) {
-    let [, day, monthStr, yearStr, hours, minutes] = enMatch;
+    let [, day, monthStr, yearStr, hours, minutes, ampm] = enMatch;
     const month = monthsEn[monthStr.toLowerCase()];
     if (month !== undefined) {
       let year = parseInt(yearStr, 10);
       if (year < 100) year += 2000;
-      const h = hours ? parseInt(hours, 10) : 0;
+      let h = hours ? parseInt(hours, 10) : 0;
       const m = minutes ? parseInt(minutes, 10) : 0;
-      return new Date(Date.UTC(year, month, parseInt(day, 10), h, m)).toISOString();
+      if (ampm) {
+        const isPm = ampm.toLowerCase() === 'pm';
+        if (isPm && h < 12) h += 12;
+        if (!isPm && h === 12) h = 0;
+      }
+      return new Date(Date.UTC(year, month, parseInt(day, 10), h - 7, m)).toISOString();
     }
   }
 
@@ -573,6 +612,64 @@ function extractDate(text) {
   return null;
 }
 
+function cleanMerchantLabel(s) {
+  return (s || '')
+    .replace(/^(?:\u0E44\u0E1B\u0E22\u0E31\u0E07|\u0E16\u0E36\u0E07)[\s:：]*/, '')
+    .replace(/^TO(?:\s*[:：]\s*|\s+)/i, '')
+    .trim();
+}
+
+// ---------- Parse ข้อความ OCR (แยกออกมาเพื่อให้ evalOcr.js เรียกตรงได้) ----------
+exports.parseText = (raw) => {
+  let rawText = (raw || '').trim().normalize('NFC')
+    .replace(/\u0E4D\u0E32/g, '\u0E33')
+    .replace(/พร้อม[เแ]{1,2}พย์/gi, 'พร้อมเพย์');
+  rawText = applyMerchantCorrections(rawText);
+
+  // 1. กำหนด parsedText จาก rawText
+  const parsedText = rawText;
+
+  // 2. ตรวจจับประเภทเอกสาร และวิธีชำระเงิน
+  const { documentType, paymentMethod } = detectDocumentTypeAndPaymentMethod(rawText);
+
+  // 3. ดึงข้อมูล Merchant, Total และ Items แยกตามประเภทเอกสาร
+  let total = 0;
+  let merchant = '';
+  let items = [];
+  let netAmount = 0;
+  let vat = 0;
+  let serviceCharge = 0;
+
+  if (documentType === 'slip' || documentType === 'transfer_slip') {
+    total = extractAmountFromSlip(rawText) || extractTotal(rawText) || 0;
+    merchant = extractRecipientFromSlip(rawText) || extractMerchant(rawText);
+    netAmount = total;
+  } else {
+    total = extractReceiptTotalAmount(rawText) || extractTotal(rawText) || 0;
+    merchant = extractReceiptMerchant(rawText) || extractMerchant(rawText);
+    items = extractLineItems(parsedText);
+
+    const vatScResult = extractVatAndServiceCharge(rawText, total);
+    netAmount = vatScResult.netAmount;
+    vat = vatScResult.vat;
+    serviceCharge = vatScResult.serviceCharge;
+  }
+
+  merchant = cleanMerchantLabel(merchant);
+  // 4. Metadata อื่นๆ
+  const date = extractDate(rawText);
+  const bankName = extractBankName(rawText);
+  const transactionId = extractTransactionId(rawText);
+  const categoryId = 1;
+
+  return {
+    success: true,
+    merchant, total, netAmount, vat, serviceCharge, date,
+    parsedText, items, documentType, paymentMethod,
+    bankName, transactionId, categoryId,
+  };
+};
+
 // ---------- Main Export Function ----------
 exports.scanReceipt = async ({ file, image } = {}) => {
   if (USE_MOCK_OCR) {
@@ -589,105 +686,17 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     throw new Error('ไม่พบไฟล์รูปภาพหรือข้อมูลรูปภาพ');
   }
 
-  let rawText = '';
+  let rawOcr = '';
   try {
-    const worker = await Tesseract.createWorker('tha+eng', 1, {
-      logger: () => {},
-    });
-
-    const psmModesToTry = [
-      Tesseract.PSM.SINGLE_BLOCK, // 6: บังคับอ่านบรรทัดซ้ายไปขวา
-      Tesseract.PSM.AUTO_LAYOUT,  // 1: Auto detection
-      Tesseract.PSM.SINGLE_COLUMN // 4: ตัวสำรอง
-    ];
-
-    let bestResult = null;
-
-    for (const psm of psmModesToTry) {
-      await worker.setParameters({
-        tessedit_pageseg_mode: psm,
-        preserve_interword_spaces: '1',
-      });
-
-      const { data } = await worker.recognize(inputImage);
-
-      if (!bestResult || data.confidence > bestResult.confidence) {
-        bestResult = data;
-      }
-    }
-
-    await worker.terminate();
-
-    rawText = (bestResult?.text || '').trim().normalize('NFC');
-    rawText = rawText.replace(/\u0E4D\u0E32/g, '\u0E33');
-    rawText = rawText.replace(/พร้อม[เแ]{1,2}พย์/gi, 'พร้อมเพย์');
-    rawText = applyMerchantCorrections(rawText);
-    console.log('📊 OCR confidence (best PSM):', bestResult?.confidence);
+    ({ rawText: rawOcr } = await recognizeText(inputImage));
   } catch (err) {
-    console.error('❌ Tesseract OCR error:', err.message);
+    console.error('❌ OCR error:', err.message);
     throw new Error('ไม่สามารถประมวลผล OCR ได้ กรุณาลองใหม่อีกครั้ง หรือถ่ายรูปให้ชัดเจนขึ้น');
   }
 
-  if (!rawText) {
+  if (!rawOcr) {
     throw new Error('อ่านข้อความจากรูปไม่ได้เลย กรุณาถ่ายรูปให้ชัดเจนขึ้นและมีแสงเพียงพอ');
   }
 
-  // 1. กำหนด parsedText จาก rawText
-  const parsedText = rawText;
-
-  // 2. ตรวจจับประเภทเอกสาร และวิธีชำระเงิน (รองรับ SCB / Kept / K+ / ใบเสร็จ)
-  const { documentType, paymentMethod } = detectDocumentTypeAndPaymentMethod(rawText);
-
-  // 3. ดึงข้อมูล Merchant, Total และ Items แยกตามประเภทเอกสาร
-  let total = 0;
-  let merchant = '';
-  let items = [];
-  let netAmount = 0;
-    let vat = 0;
-    let serviceCharge = 0;
-
-    if (documentType === 'slip' || documentType === 'transfer_slip') {
-      total = extractAmountFromSlip(rawText) || extractTotal(rawText) || 0;
-      merchant = extractRecipientFromSlip(rawText) || extractMerchant(rawText);
-      netAmount = total;
-    } else {
-      total = extractReceiptTotalAmount(rawText) || extractTotal(rawText) || 0;
-      merchant = extractReceiptMerchant(rawText) || extractMerchant(rawText);
-      items = extractLineItems(parsedText);
-      console.log('🧺 Extracted items:', JSON.stringify(items, null, 2));
-
-      const vatScResult = extractVatAndServiceCharge(rawText, total);
-      netAmount = vatScResult.netAmount;
-      vat = vatScResult.vat;
-      serviceCharge = vatScResult.serviceCharge;
-      console.log('💰 VAT/SC breakdown:', vatScResult);
-    }
-
-  // 4. ดึงข้อมูล Metadata อื่นๆ
-  const date = extractDate(rawText);
-  const bankName = extractBankName(rawText);
-  const transactionId = extractTransactionId(rawText);
-  const categoryId = 1; // หมวดหมู่เริ่มต้น
-
-  console.log('=== RAW OCR TEXT ===');
-  console.log(rawText);
-  console.log('====================');
-
-  // 5. ส่ง Plain Object กลับออกไป
-  return {
-    success: true,
-    merchant: merchant,
-    total: total,
-    netAmount: netAmount,
-    vat: vat,
-    serviceCharge: serviceCharge,
-    date: date,
-    parsedText: parsedText,
-    items: items,
-    documentType: documentType,
-    paymentMethod: paymentMethod,
-    bankName: bankName,
-    transactionId: transactionId,
-    categoryId: categoryId,
-  };
+  return exports.parseText(rawOcr);
 };
