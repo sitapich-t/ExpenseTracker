@@ -223,9 +223,27 @@ export function GroupProvider({ children }) {
     [authHeaders, refresh]
   );
 
-  // ปิดหนี้กลุ่ม -> เปลี่ยน status_type จริงใน DB
-  const settleGroup = useCallback(
+  // ดึงยอดสะสด + รายการโอนเงินของกลุ่มจาก backend
+  // สำคัญ: ให้ backend เป็นคนคำนวณ เพราะแต่ละบิลหารด้วยวิธีต่างกัน
+  // (เท่ากัน / เปอร์เซ็นต์ / item-based / amount-based)
+  // ถ้าคำนวณเองในหน้าจอจะได้ผิดทันทีที่บิลไม่ได้หารเท่ากัน
+  const fetchSettlement = useCallback(
     async (groupId) => {
+      const headers = await authHeaders();
+      const res = await http.get(`/groups/${groupId}/settlement`, headers);
+      if (!res.data?.success) throw new Error(res.data?.error || 'คำนวณยอดสะสดไม่สำเร็จ');
+      return {
+        balances: Array.isArray(res.data.balances) ? res.data.balances : [],
+        transactions: Array.isArray(res.data.transactions) ? res.data.transactions : [],
+        perBill: Array.isArray(res.data.per_bill) ? res.data.per_bill : [],
+        skipped: Array.isArray(res.data.skipped) ? res.data.skipped : [],
+      };
+    },
+    [authHeaders]
+  );
+
+  // ปิดหนี้กลุ่ม -> เปลี่ยน status_type จริงใน DB
+  const settleGroup = useCallback(    async (groupId) => {
       const headers = await authHeaders();
       const res = await http.patch(
         `/groups/${groupId}/status`,
@@ -262,6 +280,7 @@ export function GroupProvider({ children }) {
         getGroup,
         addGroup,
         addGroupBill,
+        fetchSettlement,
         settleGroup,
         removeGroup,
       }}

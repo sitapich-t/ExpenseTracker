@@ -6,7 +6,7 @@
  * ไม่ควรมี business logic (การคำนวณ) อยู่ในนี้ ให้อยู่ใน service ทั้งหมด
  */
 
-const { splitBillForGroup, settleGroupBalances, splitBillAndSettle } = require('../services/billSplitService');
+const { splitBillForGroup, settleGroupBalances, splitBillAndSettle, splitByMethodAndSettle, SPLIT_METHODS } = require('../services/billSplitService');
 
 /**
  * POST /api/groups/:groupId/split-bill
@@ -89,8 +89,62 @@ async function simplifyDebtsHandler(req, res) {
   }
 }
 
+/**
+ * POST /api/v1/bill-split/split
+ * Body: {
+ *   split: { method: 'equal'|'percent'|'item'|'amount', ... },
+ *   paidBy: 'user-id',
+ *   items: [{ id, price }]        // หรือ subtotal: number
+ *   scRate: 0.10, vatRate: 0.07,
+ *   groupMembers: ['A','B','C'],
+ *   vatBase: 'itemPlusSC'          // optional
+ * }
+ *
+ * รองรับ 3 เคสการหาร:
+ *   1. equal   { split: { method:'equal',   memberIds:['A','B'] } }
+ *   2. percent { split: { method:'percent', shares:{ A:60, B:40 } } }        (รวมต้อง = 100)
+ *   3. sub-group แบบ item-based   { split: { method:'item',   items:[{ id, price, sharedBy:['A'] }] } }
+ *              sub-group แบบ amount-based { split: { method:'amount', amounts:{ A:120, B:80 } } }  (รวมต้อง = ยอดบิล)
+ *
+ * คืน method, members (ส่วนที่แต่ละคนโดน), summary, balances, transactions
+ */
+async function split(req, res) {
+  try {
+    const { split: splitConfig, paidBy, items, subtotal, scRate = 0, vatRate = 0, groupMembers = [], vatBase } = req.body || {};
+
+    if (!splitConfig || typeof splitConfig !== 'object') {
+      return res.status(400).json({ error: 'split ต้องเป็น object ที่ระบุ method' });
+    }
+    if (!SPLIT_METHODS.includes(String(splitConfig.method || '').toLowerCase())) {
+      return res.status(400).json({ error: `method ไม่รองรับ (รองรับ: ${SPLIT_METHODS.join(', ')})` });
+    }
+    if (!paidBy) {
+      return res.status(400).json({ error: 'กรุณาระบุ paidBy (คนที่จ่ายทั้งบิล)' });
+    }
+    if (typeof scRate !== 'number' || typeof vatRate !== 'number') {
+      return res.status(400).json({ error: 'scRate และ vatRate ต้องเป็นตัวเลข' });
+    }
+
+    const result = splitByMethodAndSettle({
+      split: splitConfig,
+      paidBy,
+      items,
+      subtotal,
+      scRate,
+      vatRate,
+      options: { groupMembers, ...(vatBase ? { vatBase } : {}) },
+    });
+
+    return res.status(200).json(result);
+  } catch (err) {
+    // validation ภายใน (เช่น shares ไม่รวม 100, items ไม่ตรงยอด) -> 400
+    return res.status(400).json({ error: err.message });
+  }
+}
+
 module.exports = {
   splitBill,
   previewBillSplit,
   simplifyDebtsHandler,
+  split,
 };

@@ -2,6 +2,8 @@ const supabase = require('../config/supabase');
 const { v4: uuidv4 } = require('uuid');
 const transactionService = require('../services/transactionService');
 const { distributeSCVAT } = require('../utils/allocationUtils');
+const { validateSplit } = require('../utils/splitMethod');
+const { calculateSettlement } = require('../utils/settlementCalculator');
 const { slipPathOf, removeSlip } = require('../middlewares/uploadMiddleware');
 
 // ==========================================
@@ -174,6 +176,34 @@ const isGroupMember = async (groupId, userId) => {
   return Boolean(data);
 };
 
+// รายชื่อสมาชิกทั้งหมดของกลุ่ม (user_id) — ใช้เป็นค่า default ตอนหารเท่ากัน
+// และใช้ตรวจว่า split_data ที่ส่งมาอ้างเฉพาะสมาชิกจริง
+const getGroupMemberIds = async (groupId) => {
+  const { data, error } = await supabase
+    .from('group_members')
+    .select('user_id')
+    .eq('group_id', groupId);
+
+  if (error) throw error;
+  return (data || []).map((m) => String(m.user_id));
+};
+
+/**
+ * ตอบกลับพร้อมลบไฟล์ที่เผลออัปโหลดค้างไว้
+ * ถ้า request นี้เป็น multipart และผ่าน validation ไม่ได้ ไฟล์จะถูกเก็บไว้
+ * โดยไม่มีใครอ้างถึง (orphan) -> ต้องลบทิ้ง ไม่งั้นจะทยอยเติมดิสก์
+ */
+const early = (res, status, error) => {
+  if (res.req && res.req.file) {
+    try {
+      removeSlip(slipPathOf(res.req.file));
+    } catch {
+      /* ลบไฟล์ไม่สำเร็จก็ปล่อยไป ไม่ควรทำให้ response พัง */
+    }
+  }
+  return res.status(status).json({ success: false, error });
+};
+
 const markInviteCodeUnavailable = () => {
   inviteCodeAvailable = false;
   inviteCodeCheckedAt = Date.now();
@@ -340,6 +370,50 @@ exports.getGroupTransactions = async (req, res) => {
   }
 };
 
+// GET /:id/settlement
+// คำนวณ "ใครต้องจ่ายใคร" ของทั้งกลุ่ม โดยอ่าน split_data ของแต่ละบิลที่บันทึกไว้
+// รองรับทั้ง 3 เคส: equal / percent / sub-group (item, amount)
+// ฝั่งหน้าจอไม่ต้องคำนวณเอง (เดิมหารเท่ากันอย่างเดียว แล้วผิดเมื่อบิลไม่ได้หารเท่ากัน)
+exports.getGroupSettlement = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id || req.user.user_id;
+
+    if (!(await isGroupMember(id, userId))) {
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
+
+    const memberIds = await getGroupMemberIds(id);
+
+    const { data, error } = await supabase
+      .from('group_transactions')
+      .select('id, title, type, subtotal, amount, sc_amount, vat_amount, paid_by, split_data, transaction_date')
+      .eq('group_id', id);
+
+    if (error) throw error;
+
+    const result = calculateSettlement(data || [], memberIds);
+
+    return res.json({
+      success: true,
+      balances: result.balances,
+      transactions: result.transactions,
+      // รายละเอียดต่อบิล เผื่อ UI อยากแสดงว่าใครโดนเท่าไร
+      per_bill: result.perBill.map((b) => ({
+        bill_id: b.billId,
+        method: b.method,
+        payer: b.paidBy,
+        shares: b.shares,
+      })),
+      // บิลที่คำนวณไม่ได้ (split_data ไม่ครบ/เสีย) — ต้องให้ผู้ใช้รู้ ไม่เงียบทิ้ง
+      skipped: result.skipped,
+    });
+  } catch (err) {
+    console.error('❌ Get group settlement error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
 // อัปโหลดรูปสลิปล่วงหน้า แล้วเอา slip_url ที่ได้ไปใส่ตอน POST transaction
 // (POST /:id/transactions ก็อัดไฟล์มาพร้อมกันได้ ถ้าสะดวกกว่า)
 exports.uploadGroupSlip = async (req, res) => {
@@ -381,13 +455,12 @@ exports.createGroupTransaction = async (req, res) => {
     } = req.body || {};
 
     if (!title || !title.trim() || amount === undefined || amount === null || amount === '') {
-      return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อรายการและจำนวนเงิน' });
+      return early(res, 400, 'กรุณากรอกชื่อรายการและจำนวนเงิน');
     }
 
     // บิลของกลุ่ม: เฉพาะสมาชิกเท่านั้นที่เพิ่มได้
     if (!(await isGroupMember(id, userId))) {
-      if (req.file) removeSlip(slipPathOf(req.file));
-      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+      return early(res, 403, 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้');
     }
 
     // ถ้าอัปโหลดรูปมากับ request นี้ ให้ใช้รูปนั้น (ชนะ slip_url ที่ส่งมา)
@@ -404,10 +477,10 @@ exports.createGroupTransaction = async (req, res) => {
     const baseAmount = transactionService.parseAmount(rawBase);
 
     if (baseAmount <= 0) {
-      return res.status(400).json({ success: false, error: 'จำนวนเงินต้องมากกว่า 0' });
+      return early(res, 400, 'จำนวนเงินต้องมากกว่า 0');
     }
     if (scRate > 100 || vatRate > 100) {
-      return res.status(400).json({ success: false, error: 'อัตรา SC/VAT ต้องไม่เกิน 100' });
+      return early(res, 400, 'อัตรา SC/VAT ต้องไม่เกิน 100');
     }
 
     // ใช้ core algorithm เดียวกับ bill-split (คิดเป็นสตางค์ กันเศษจาก float)
@@ -426,11 +499,33 @@ exports.createGroupTransaction = async (req, res) => {
       try {
         parsedSplitData = JSON.parse(parsedSplitData);
       } catch {
-        return res.status(400).json({ success: false, error: 'รูปแบบ split_data ไม่ถูกต้อง (ต้องเป็น JSON)' });
+        return early(res, 400, 'รูปแบบ split_data ไม่ถูกต้อง (ต้องเป็น JSON)');
       }
     }
     if (parsedSplitData !== null && typeof parsedSplitData !== 'object') {
-      return res.status(400).json({ success: false, error: 'split_data ต้องเป็น object' });
+      return early(res, 400, 'split_data ต้องเป็น object');
+    }
+
+    // ตรวจวิธีหารทันทีตอนบันทึก (fail fast)
+    // ดีกว่าปล่อยให้บันทึกผ่าน แล้วพังตอนมาคิดยอดตอน settle
+    if (parsedSplitData && type !== 'income') {
+      const groupMemberIds = await getGroupMemberIds(id);
+      const check = validateSplit(parsedSplitData, {
+        subtotal: baseAmount,
+        scAmount: summary.totalSC,
+        vatAmount: summary.totalVAT,
+        memberIds: groupMemberIds,
+      });
+      if (!check.ok) {
+        return early(res, 400, `วิธีหารบิลไม่ถูกต้อง: ${check.error}`);
+      }
+
+      // ทุกคนที่ถูกระบุใน split_data ต้องเป็นสมาชิกจริงในกลุ่ม
+      const groupSet = new Set((groupMemberIds || []).map(String));
+      const notInGroup = (check.result.participants || []).filter((p) => !groupSet.has(String(p)));
+      if (notInGroup.length > 0) {
+        return early(res, 400, 'สมาชิกที่ระบุใน split_data ไม่ได้อยู่ในกลุ่มนี้');
+      }
     }
 
     const newTransaction = {

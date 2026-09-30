@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -35,6 +35,20 @@ const CATEGORIES = [
   { id: 'General', label: 'อื่นๆ', icon: 'ellipsis-horizontal-outline' },
 ];
 
+// 3 เคสการหารบิล (เคสที่ 3 มี 2 แบบย่อย)
+const SPLIT_METHODS = [
+  { id: 'equal', label: 'หารเท่ากัน', icon: 'people-outline' },
+  { id: 'percent', label: 'ตาม %', icon: 'pie-chart-outline' },
+  { id: 'item', label: 'ตามรายการ', icon: 'list-outline' },
+  { id: 'amount', label: 'ตามยอด', icon: 'cash-outline' },
+];
+
+const round2 = (n) => Math.round(n * 100) / 100;
+const toNum = (v) => {
+  const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+
 export default function AddGroupExpenseScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -53,6 +67,40 @@ export default function AddGroupExpenseScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showPayerModal, setShowPayerModal] = useState(false);
+
+  // วิธีหารบิล: equal | percent | item | amount
+  const [splitMethod, setSplitMethod] = useState('equal');
+  // equal: ใครร่วมบิลบ้าง
+  const [selectedIds, setSelectedIds] = useState([]);
+  // percent: { memberId: '30' }  (เก็บเป็น string เพื่อให้พิมพ์คั่นวรรคได้)
+  const [shares, setShares] = useState({});
+  // amount: { memberId: '120' }
+  const [amounts, setAmounts] = useState({});
+  // item: [{ key, name, price, sharedBy: [memberId] }]
+  const [items, setItems] = useState([]);
+
+  const memberIds = useMemo(
+    () => members.map((m) => m.user_id ?? m.id).filter(Boolean).map(String),
+    [members]
+  );
+
+  // โหลดสมาชิกเสร็จ -> เริ่มเป็น "ทุกคน" สำหรับการหารเท่ากัน
+  const initSplitDefaults = useCallback((list) => {
+    const ids = (list || []).map((m) => m.user_id ?? m.id).filter(Boolean).map(String);
+    if (ids.length === 0) return;
+
+    setSelectedIds((prev) => (prev.length > 0 ? prev.filter((id) => ids.includes(id)) : ids));
+    setShares((prev) => {
+      if (Object.keys(prev).length > 0) return prev;
+      // เปอร์เซ็นต์เริ่มต้นหารเท่ากัน (ปัดให้รวมได้ 100 พอดี)
+      const each = round2(100 / ids.length);
+      const init = {};
+      ids.forEach((id, i) => {
+        init[id] = i === ids.length - 1 ? String(round2(100 - each * i)) : String(each);
+      });
+      return init;
+    });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,14 +131,146 @@ export default function AddGroupExpenseScreen() {
   );
 
   const numAmount = parseAmount(amount);
-  const splitCount = members.length || 1;
-  const perPerson = numAmount / splitCount;
 
   const payerLabel = useMemo(() => {
     const found = members.find((m) => String(m.user_id) === String(payerId));
     if (found) return displayNameFor(found.user_id, currentUser);
     return currentUser?.name ? `${currentUser.name} (ฉัน)` : 'ฉัน';
   }, [members, payerId, currentUser]);
+
+  // ยอด % รวม — ใช้แสดงผลและเช็คก่อนบันทึก
+  const percentTotal = useMemo(
+    () => round2(Object.values(shares).reduce((s, v) => s + toNum(v), 0)),
+    [shares]
+  );
+
+  // สร้าง split_data ตามวิธีที่เลือก + เช็คเงื่อนไขก่อนส่ง
+  // คืน { error } ถ้าข้อมูลไม่ครบ มิฉะนั้น { data }
+  const buildSplitData = useCallback(() => {
+    if (splitMethod === 'equal') {
+      if (selectedIds.length === 0) {
+        return { error: 'กรุณาเลือกอย่างน้อย 1 คนที่ร่วมหารบิล' };
+      }
+      return { data: { method: 'equal', memberIds: selectedIds } };
+    }
+
+    if (splitMethod === 'percent') {
+      const map = {};
+      let sum = 0;
+      for (const id of selectedIds.length > 0 ? selectedIds : memberIds) {
+        const pct = toNum(shares[id]);
+        if (pct < 0) return { error: 'เปอร์เซ็นต์ต้องไม่ติดลบ' };
+        map[id] = pct;
+        sum += pct;
+      }
+      if (Object.keys(map).length === 0) {
+        return { error: 'กรุณาเลือกอย่างน้อย 1 คนที่ร่วมหารบิล' };
+      }
+      if (Math.abs(round2(sum) - 100) > 0.01) {
+        return { error: `ผลรวมเปอร์เซ็นต์ต้องเท่ากับ 100 (ตอนนี้ ${round2(sum)})` };
+      }
+      return { data: { method: 'percent', shares: map } };
+    }
+
+    if (splitMethod === 'amount') {
+      const map = {};
+      let sum = 0;
+      for (const id of selectedIds.length > 0 ? selectedIds : memberIds) {
+        const v = toNum(amounts[id]);
+        if (v < 0) return { error: 'ยอดต้องไม่ติดลบ' };
+        map[id] = v;
+        sum += v;
+      }
+      if (Object.keys(map).length === 0) {
+        return { error: 'กรุณาเลือกอย่างน้อย 1 คนที่ร่วมหารบิล' };
+      }
+      if (Math.abs(round2(sum) - round2(numAmount)) > 0.01) {
+        return {
+          error: `ผลรวมยอดที่กรอก (${formatBaht(round2(sum))}) ต้องเท่ากับยอดบิล (${formatBaht(round2(numAmount))})`,
+        };
+      }
+      return { data: { method: 'amount', amounts: map } };
+    }
+
+    // item-based: ต้องมีรายการ และราคารวมต้องตรงกับยอดบิล
+    const clean = items
+      .filter((it) => (it.name || '').trim() || toNum(it.price) > 0 || it.sharedBy.length > 0)
+      .map((it, i) => ({
+        id: (it.name || '').trim() || `item_${i + 1}`,
+        price: toNum(it.price),
+        sharedBy: it.sharedBy.map(String),
+      }));
+
+    if (clean.length === 0) {
+      return { error: 'กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ' };
+    }
+    const noShare = clean.find((it) => it.sharedBy.length === 0);
+    if (noShare) {
+      return { error: `รายการ "${noShare.id}" ต้องเลือกว่าใครร่วมกินอย่างน้อย 1 คน` };
+    }
+    const priceSum = round2(clean.reduce((s, it) => s + it.price, 0));
+    if (Math.abs(priceSum - round2(numAmount)) > 0.01) {
+      return {
+        error: `ผลรวมราคาสินค้า (${formatBaht(priceSum)}) ต้องเท่ากับยอดบิล (${formatBaht(round2(numAmount))})`,
+      };
+    }
+    return { data: { method: 'item', items: clean } };
+  }, [splitMethod, selectedIds, memberIds, shares, amounts, items, numAmount]);
+
+  // ยอดที่แต่ละคนจะโดน (preview) — คำนวณเบื้องต้นบนเครื่อง
+  const previewRows = useMemo(() => {
+    const total = round2(numAmount);
+    if (total <= 0) return [];
+
+    const nameOf = (id) => {
+      const m = members.find((x) => String(x.user_id) === String(id));
+      return m ? displayNameFor(m.user_id, currentUser) : 'สมาชิก';
+    };
+
+    if (splitMethod === 'equal') {
+      const ids = selectedIds.length > 0 ? selectedIds : memberIds;
+      if (ids.length === 0) return [];
+      const per = round2(total / ids.length);
+      return ids.map((id) => ({ id, name: nameOf(id), value: per, unit: 'เท่ากัน' }));
+    }
+
+    if (splitMethod === 'percent') {
+      const ids = selectedIds.length > 0 ? selectedIds : memberIds;
+      const sum = ids.reduce((s, id) => s + toNum(shares[id]), 0);
+      if (ids.length === 0) return [];
+      return ids.map((id) => ({
+        id,
+        name: nameOf(id),
+        value: round2((total * toNum(shares[id])) / (sum || 100)),
+        unit: `${toNum(shares[id])}%`,
+      }));
+    }
+
+    if (splitMethod === 'amount') {
+      const ids = selectedIds.length > 0 ? selectedIds : memberIds;
+      if (ids.length === 0) return [];
+      return ids.map((id) => ({ id, name: nameOf(id), value: round2(toNum(amounts[id])), unit: 'บาท' }));
+    }
+
+    // item: ราคาที่แต่ละคนโดน = ราคารายการที่เขาแชร์ หารกันในรายการนั้น
+    const out = {};
+    items.forEach((it) => {
+      const p = toNum(it.price);
+      const n = it.sharedBy.length;
+      if (n === 0 || p <= 0) return;
+      const per = p / n;
+      it.sharedBy.forEach((sid) => {
+        const k = String(sid);
+        out[k] = (out[k] || 0) + per;
+      });
+    });
+    return Object.entries(out).map(([id, v]) => ({
+      id,
+      name: nameOf(id),
+      value: round2(v),
+      unit: 'ตามของที่กิน',
+    }));
+  }, [splitMethod, numAmount, selectedIds, memberIds, shares, amounts, items, members, currentUser]);
 
   const handleSave = async () => {
     if (!title.trim() || numAmount <= 0) {
@@ -104,8 +284,12 @@ export default function AddGroupExpenseScreen() {
 
     setSaving(true);
     try {
-      // สมาชิกจาก /groups/:id/members ใช้ user_id เป็น id จริง
-      const memberIds = members.map((m) => m.user_id ?? m.id).filter(Boolean).map(String);
+      // เช็คสัดส่วนก่อนยิง API — backend ก็ validate ซ้ำอีกชั้น แต่รู้เร็วกว่าและข้อความชัดกว่า
+      const split = buildSplitData();
+      if (split.error) {
+        Alert.alert('สัดส่วนไม่ครบถ้วน', split.error);
+        return;
+      }
 
       const result = await addGroupBill(groupId, {
         title: title.trim(),
@@ -114,8 +298,8 @@ export default function AddGroupExpenseScreen() {
         category,
         payer: payerId || currentUserId(currentUser),
         payerName: payerLabel,
-        // แบ่งเท่ากันทุกคนในกลุ่ม
-        splitData: { memberIds, method: 'equal' },
+        // วิธีหาร: equal | percent | item | amount
+        splitData: split.data,
       });
 
       // บันทึกบิลสำเร็จ แต่บางข้อมูลยังบันทึกไม่ได้ (ฐานข้อมูลยังไม่มีคอลัมน์) -> ต้องเตือน
@@ -242,9 +426,31 @@ export default function AddGroupExpenseScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardHeaderTitle}>
-            ผู้ร่วมหารบิล ({members.length} คน)
-          </Text>
+          <Text style={styles.cardHeaderTitle}>วิธีหารบิล</Text>
+
+          <View style={styles.methodRow}>
+            {SPLIT_METHODS.map((m) => {
+              const isSelected = splitMethod === m.id;
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.methodPill, isSelected && styles.methodPillActive]}
+                  onPress={() => setSplitMethod(m.id)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={m.icon}
+                    size={13}
+                    color={isSelected ? '#6D28D9' : '#64748B'}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={[styles.methodPillText, isSelected && styles.methodPillTextActive]}>
+                    {m.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {loading ? (
             <ActivityIndicator color="#6D28D9" style={{ marginVertical: 12 }} />
@@ -252,28 +458,208 @@ export default function AddGroupExpenseScreen() {
             <Text style={styles.emptyHint}>ยังไม่มีสมาชิกในกลุ่มนี้</Text>
           ) : (
             <>
-              <View style={styles.splitBanner}>
-                <Ionicons name="calculator-outline" size={16} color="#059669" />
-                <Text style={styles.splitBannerText}>
-                  หารเท่ากัน: คนละ ฿{formatBaht(perPerson)}
-                </Text>
-              </View>
+              {/* เลือกว่าใครร่วมบิลนี้ (equal / percent / amount) */}
+              {splitMethod !== 'item' && (
+                <View style={styles.memberPickSection}>
+                  <Text style={styles.sectionHint}>ผู้ร่วมบิลนี้ (แตะเพื่อเลือก/เอาออก)</Text>
+                  {members.map((member, index) => {
+                    const id = String(member.user_id ?? member.id);
+                    const on = selectedIds.includes(id);
+                    return (
+                      <TouchableOpacity
+                        key={id}
+                        style={styles.memberPickRow}
+                        onPress={() =>
+                          setSelectedIds((prev) =>
+                            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                          )
+                        }
+                        activeOpacity={0.8}
+                      >
+                        <View
+                          style={[
+                            styles.checkbox,
+                            on && { backgroundColor: memberColor(index), borderColor: memberColor(index) },
+                          ]}
+                        >
+                          {on && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+                        </View>
+                        <Text style={styles.memberPickName} numberOfLines={1}>
+                          {displayNameFor(member.user_id, currentUser)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
 
-              {members.map((member, index) => (
-                <View key={member.id ?? member.user_id ?? index} style={styles.memberSplitRow}>
-                  <View style={styles.memberLeft}>
-                    <View
-                      style={[styles.memberDot, { backgroundColor: memberColor(index) }]}
-                    />
-                    <Text style={styles.memberSplitName} numberOfLines={1}>
-                      {displayNameFor(member.user_id, currentUser)}
-                    </Text>
-                  </View>
-                  <Text style={styles.perPersonAmount}>
-                    {numAmount > 0 ? `฿${formatBaht(perPerson)}` : '—'}
+              {/* percent: ช่องกรอก % */}
+              {splitMethod === 'percent' && (
+                <View style={styles.amountInputsSection}>
+                  {members.map((member, index) => {
+                    const id = String(member.user_id ?? member.id);
+                    return (
+                      <View key={id} style={styles.inputRow}>
+                        <View style={[styles.memberDot, { backgroundColor: memberColor(index) }]} />
+                        <Text style={styles.inputRowName} numberOfLines={1}>
+                          {displayNameFor(member.user_id, currentUser)}
+                        </Text>
+                        <TextInput
+                          style={styles.smallInput}
+                          value={shares[id] ?? ''}
+                          onChangeText={(v) => setShares((p) => ({ ...p, [id]: v }))}
+                          keyboardType="decimal-pad"
+                          placeholder="0"
+                          placeholderTextColor="#94A3B8"
+                        />
+                        <Text style={styles.inputUnit}>%</Text>
+                      </View>
+                    );
+                  })}
+                  <Text
+                    style={[
+                      styles.totalHint,
+                      { color: Math.abs(percentTotal - 100) <= 0.01 ? '#059669' : '#DC2626' },
+                    ]}
+                  >
+                    รวม {percentTotal}% {Math.abs(percentTotal - 100) <= 0.01 ? '(ถูกต้อง)' : '(ต้องเท่ากับ 100%)'}
                   </Text>
                 </View>
-              ))}
+              )}
+
+              {/* amount: ช่องกรอกยอดตายตัว */}
+              {splitMethod === 'amount' && (
+                <View style={styles.amountInputsSection}>
+                  {members.map((member, index) => {
+                    const id = String(member.user_id ?? member.id);
+                    return (
+                      <View key={id} style={styles.inputRow}>
+                        <View style={[styles.memberDot, { backgroundColor: memberColor(index) }]} />
+                        <Text style={styles.inputRowName} numberOfLines={1}>
+                          {displayNameFor(member.user_id, currentUser)}
+                        </Text>
+                        <TextInput
+                          style={styles.smallInput}
+                          value={amounts[id] ?? ''}
+                          onChangeText={(v) => setAmounts((p) => ({ ...p, [id]: v }))}
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor="#94A3B8"
+                        />
+                        <Text style={styles.inputUnit}>฿</Text>
+                      </View>
+                    );
+                  })}
+                  <Text style={styles.totalHint}>
+                    ยอดบิลทั้งหมด ฿{formatBaht(numAmount)} — ผลรวมต้องเท่ากัน
+                  </Text>
+                </View>
+              )}
+
+              {/* item: รายการสินค้า + ใครกินอะไร */}
+              {splitMethod === 'item' && (
+                <View style={styles.itemSection}>
+                  {items.map((it, idx) => (
+                    <View key={it.key} style={styles.itemCard}>
+                      <View style={styles.itemHeadRow}>
+                        <TextInput
+                          style={styles.itemNameInput}
+                          value={it.name}
+                          onChangeText={(v) =>
+                            setItems((p) => p.map((x, i) => (i === idx ? { ...x, name: v } : x)))
+                          }
+                          placeholder={`รายการที่ ${idx + 1}`}
+                          placeholderTextColor="#94A3B8"
+                        />
+                        <TextInput
+                          style={styles.itemPriceInput}
+                          value={it.price}
+                          onChangeText={(v) =>
+                            setItems((p) => p.map((x, i) => (i === idx ? { ...x, price: v } : x)))
+                          }
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor="#94A3B8"
+                        />
+                        <Text style={styles.inputUnit}>฿</Text>
+                        <TouchableOpacity
+                          onPress={() => setItems((p) => p.filter((_, i) => i !== idx))}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={17} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.sectionHint}>ใครร่วมกินรายการนี้</Text>
+                      <View style={styles.itemMemberRow}>
+                        {members.map((member, mi) => {
+                          const id = String(member.user_id ?? member.id);
+                          const on = it.sharedBy.map(String).includes(id);
+                          return (
+                            <TouchableOpacity
+                              key={id}
+                              style={[
+                                styles.itemMemberChip,
+                                on && { backgroundColor: memberColor(mi), borderColor: memberColor(mi) },
+                              ]}
+                              onPress={() =>
+                                setItems((p) =>
+                                  p.map((x, i) =>
+                                    i === idx
+                                      ? {
+                                          ...x,
+                                          sharedBy: on
+                                            ? x.sharedBy.filter((y) => String(y) !== id)
+                                            : [...x.sharedBy, id],
+                                        }
+                                      : x
+                                  )
+                                )
+                              }
+                              activeOpacity={0.8}
+                            >
+                              <Text
+                                style={[styles.itemMemberChipText, on && { color: '#FFFFFF' }]}
+                                numberOfLines={1}
+                              >
+                                {displayNameFor(member.user_id, currentUser)}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={styles.addItemBtn}
+                    onPress={() =>
+                      setItems((p) => [
+                        ...p,
+                        { key: `${Date.now()}_${p.length}`, name: '', price: '', sharedBy: [] },
+                      ])
+                    }
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color="#6D28D9" />
+                    <Text style={styles.addItemBtnText}>เพิ่มรายการสินค้า</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.totalHint}>
+                    ยอดบิลทั้งหมด ฿{formatBaht(numAmount)} — ผลรวมราคาสินค้าต้องเท่ากัน
+                  </Text>
+                </View>
+              )}
+
+              {/* พรีวิวว่าใครโดนเท่าไร */}
+              {previewRows.length > 0 && (
+                <View style={styles.splitBanner}>
+                  <Ionicons name="calculator-outline" size={16} color="#059669" />
+                  <Text style={styles.splitBannerText} numberOfLines={2}>
+                    {previewRows.map((r) => `${r.name} ฿${formatBaht(r.value)}`).join('  ·  ')}
+                  </Text>
+                </View>
+              )}
             </>
           )}
         </View>
@@ -418,6 +804,110 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   splitBannerText: { fontSize: 13, color: '#059669', fontWeight: '600' },
+
+  methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  methodPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  methodPillActive: { backgroundColor: '#F5F3FF', borderColor: '#6D28D9' },
+  methodPillText: { fontSize: 12, color: '#64748B' },
+  methodPillTextActive: { color: '#6D28D9', fontWeight: '700' },
+
+  memberPickSection: { marginBottom: 12 },
+  sectionHint: { fontSize: 11, color: '#94A3B8', marginBottom: 6, marginTop: 4 },
+  memberPickRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberPickName: { flex: 1, fontSize: 14, color: '#1E293B' },
+
+  amountInputsSection: { marginTop: 4, marginBottom: 12 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7 },
+  inputRowName: { flex: 1, fontSize: 14, color: '#1E293B' },
+  smallInput: {
+    width: 84,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 14,
+    color: '#1E293B',
+    textAlign: 'right',
+  },
+  inputUnit: { width: 22, fontSize: 13, color: '#94A3B8', marginLeft: 6 },
+  totalHint: { fontSize: 12, color: '#64748B', marginTop: 8, fontWeight: '600' },
+
+  itemSection: { marginBottom: 12 },
+  itemCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+    marginBottom: 10,
+  },
+  itemHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  itemNameInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 14,
+    color: '#1E293B',
+  },
+  itemPriceInput: {
+    width: 76,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    fontSize: 14,
+    color: '#1E293B',
+    textAlign: 'right',
+  },
+  itemMemberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  itemMemberChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  itemMemberChipText: { fontSize: 12, color: '#64748B' },
+  addItemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#C4B5FD',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  addItemBtnText: { fontSize: 13, color: '#6D28D9', fontWeight: '600' },
 
   memberSplitRow: {
     flexDirection: 'row',
