@@ -18,7 +18,7 @@ function toSharpInput(input) {
  * @param opts.threshold 'none' หรือตัวเลข 0-255 (เช่น 150)
  * @returns Buffer (PNG) พร้อมส่งให้ worker.recognize
  */
-async function preprocess(input, { scale = 2, threshold = 'none' } = {}) {
+async function preprocess(input, { scale = 1, threshold = 'none' } = {}) {
   // 1) หมุนตาม EXIF ก่อน เพื่อให้ width/height หลังหมุนถูกต้อง
   const { data: rotated, info } = await sharp(toSharpInput(input), { failOn: 'none' })
     .rotate()

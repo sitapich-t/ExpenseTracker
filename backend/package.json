@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@google-cloud/vision": "^5.3.7",
     "@supabase/supabase-js": "^2.109.0",
     "bcrypt": "^6.0.0",

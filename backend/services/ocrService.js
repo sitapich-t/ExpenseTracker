@@ -4,7 +4,7 @@
 // ==========================================
 
 const { recognizeText } = require('./ocrEngine');
-
+const { shouldUseAI, fixItemsWithAI } = require('./aiFallback');
 const USE_MOCK_OCR = String(process.env.USE_MOCK_OCR || '').toLowerCase() === 'true';
 
 const { applyMerchantCorrections } = require('./merchantCorrections');
@@ -51,6 +51,18 @@ function extractReceiptMerchant(rawText) {
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
   const ignoreKeywords = /^(ใบเสร็จ|ใบกำกับภาษี|พนักงาน|เจ้าของ|ระบบขายหน้าร้าน|POS|เสิร์ฟ|โต๊ะ|Table|Tax Invoice|Receipt|Welcome)/i;
 
+  // ใบเสร็จจากแอป 7-Eleven: หัวข้อหน้าจอ "รายการสั่งซื้อที่ร้านและ 7Delivery" ไม่ใช่ชื่อร้าน
+  // ชื่อร้านจริงอยู่บรรทัด "สาขา 7-Eleven ..." (OCR อาจมีตัวขยะนำหน้า เช่น "Bl")
+  const branchLine = lines.find(l => /สาขา\s*7-?\s*Eleven/i.test(l));
+  if (branchLine) {
+    const m = branchLine.match(/7-?\s*Eleven[^\n]*/i);
+    if (m) {
+      return m[0]
+        .replace(/[.…]{2,}.*$/, '')   // ตัด "กม...." ที่แอปตัดข้อความทิ้ง
+        .replace(/\s+กม\s*$/, '')
+        .trim();
+    }
+  }
   const headerIdx = lines.findIndex(l => /(TAX\s*INVOICE|ใบกำกับภาษี|ใบเสร็จ)/i.test(l));
   if (headerIdx > 0) {
     for (let i = headerIdx - 1; i >= Math.max(0, headerIdx - 2); i--) {
@@ -80,17 +92,25 @@ function stripMisreadBahtSymbol(rawNum) {
   return rawNum;
 }
 
-// 🧾 3. สกัดยอดเงินจากใบเสร็จ (แก้ปัญหา ฿ กลายเป็นเลข 8)
+// 3.ยอดสุทธิ + รูปที่ OCR อ่านเพี้ยน (ยอดสูทธิ / ยอด สุทธิ)
+const NET_TOTAL_LABEL = /ยอด\s*ส[ุูิ]?\s*ท\S*/i;
+
 function extractReceiptTotalAmount(rawText) {
   if (!rawText) return 0;
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-  const totalLine = lines.find(l => /(?:รวมทั้งหมด|รวมทั้งสิ้น|ยอดรวม|Total|Net Amount)/i.test(l));
+
+  // ให้ความสำคัญกับ "ยอดสุทธิ" ก่อน (หลังหักส่วนลดแล้ว) ค่อยถอยไป รวม/Total
+  const totalLine =
+    lines.find(l => NET_TOTAL_LABEL.test(l) || /Net\s*Amount/i.test(l)) ||
+    lines.find(l => /(?:รวมทั้งหมด|รวมทั้งสิ้น|ยอดรวม|Total)/i.test(l));
 
   if (totalLine) {
-    let cleanedLine = totalLine
+    const cleanedLine = totalLine
       .replace(/[฿Bb]/g, '')
+      .replace(NET_TOTAL_LABEL, '')
       .replace(/รวมทั้งหมด|รวมทั้งสิ้น|ยอดรวม|Total|Net Amount/gi, '');
 
+    // "3 ชั้น 113.00" -> ข้ามจำนวนชิ้น เอาเฉพาะเลขที่มีทศนิยม
     const match = cleanedLine.match(/(\d+(?:\,\d+)*\.\d{2})/);
     if (match) {
       return parseFloat(stripMisreadBahtSymbol(match[1]));
@@ -262,9 +282,8 @@ function extractBankName(text) {
 function extractTotal(text) {
   const patternGroups = [
     {
-      // เฉพาะเจาะจงที่สุด: ยอดสุทธิ/Amount (ไม่รวม Fee)
       priority: 3,
-      regex: /(?:ยอดชำระสุทธิ|ยอดสุทธิ|รวมสุทธิ|\bamount\b|net\s*total)[^\d]{0,20}([\d,]+\.\d{1,2}|[\d,]+)/gi,
+      regex: /(?:ยอดชำระสุทธิ|ยอด\s*ส[ุูิ]?\s*ท\S*|รวมสุทธิ|\bamount\b|net\s*total)[^\d\n]{0,20}(?:\d+\s*(?:ชิ้น|ชั้น|รายการ)\s*)?([\d,]+\.\d{1,2}|[\d,]+)/gi,
     },
     {
       // รองลงมา: ยอดชำระ/รวมทั้งหมด
@@ -399,18 +418,29 @@ function extractVatAndServiceCharge(rawText, total) {
 // 🧺 10. สกัดรายการสินค้า (Line Items) จากใบเสร็จ — รองรับหลายรูปแบบ
 function extractLineItems(parsedText) {
   if (!parsedText) return [];
-  const lines = parsedText.split('\n').map((l) => l.trim()).filter(Boolean);
+  let lines = parsedText.split('\n').map((l) => l.trim()).filter(Boolean);
+  // ส่วนหลังบรรทัดยอดรวม (ตาราง VAT, เงินสด, ฯลฯ) ไม่ใช่สินค้า
+  let cutoff = lines.findIndex((l) => /^(total\b|sub\s*total|ยอด|รวมทั้ง|รวมสุทธิ)/i.test(l));
+
+  // สำรอง: บรรทัดก่อน "Cash / เงินสด" คือบรรทัดยอดรวมเสมอ แม้ OCR จะอ่านคำว่า Total เป็นขยะ
+  const cashIdx = lines.findIndex((l) => /^(cash|เง.{0,3}สด)/i.test(l));
+  if (cashIdx > 0 && /\d[\d,]*\.\d{2}\s*\S{0,2}$/.test(lines[cashIdx - 1])) {
+   const c = cashIdx - 1;
+    if (cutoff === -1 || c < cutoff) cutoff = c;
+  }
+  if (cutoff > 0) lines = lines.slice(0, cutoff);
   const items = [];
   const usedLineIdx = new Set();
 
   // บรรทัดที่ไม่ใช่รายการสินค้าแน่ๆ (header/footer/ยอดรวม/ส่วนลด/metadata)
-  const noiseRegex = /(ใบเสร็จ|พนักงาน|ระบบขายหน้าร้าน|เสริฟในร้าน|รวมทั้งหมด|ยอดรวม|ยอดสุทธิ|ยอดชำระ|ส่วนลด|รวมส่วนลด|ภาษี|VAT|Tax\b|Subtotal|Total\b|Net\s*Amount|เงินทอน|เงินสด|Cash|Change|ไทยช่วยไทย|THANK YOU|Tax Invoice|โต๊ะ|Table|เวลา|วันที่|Tran{1,2}\s*ID|โทร|Tel\b|^[A-Z]{2,}#|^\d+[-=|]\d|บริการ|Service\s*Charge|ขอบคุณ)/i;
+  const noiseRegex = /(ใบเสร็จ|พนักงาน|ระบบขายหน้าร้าน|เสริฟในร้าน|รวมทั้งหมด|ยอดรวม|ยอดสุทธิ|ยอดชำระ|ส่วนลด|รวมส่วนลด|ภาษี|VAT|Tax\b|Subtotal|Total\b|Net\s*Amount|เงินทอน|เงินสด|Cash|Change|ไทยช่วยไทย|THANK YOU|Tax Invoice|โต๊ะ|Table|เวลา|วันที่|Tran{1,2}\s*ID|โทร|Tel\b|^[A-Z]{2,}#|^\d+[-=|]\d|บริการ|Service\s*Charge|ขอบคุณ|^ยอด)/i;
   const pureNumberLine = /^[\$8฿]?[\d,]+\.\d{2}$/;
   // หัวข้อหมวดหมู่ในใบเสร็จ (เช่น "เครื่องดื่ม 10%", "อาหาร") ไม่ใช่ตัวสินค้า
   const sectionHeaderRegex = /^(เครื่องดื่ม|อาหาร|ของหวาน|อื่นๆ|ทั่วไป|Beverages?|Foods?|Drinks?)\s*(\(?\d+\s*%\)?)?$/i;
 
   const pureNumbersRowRegex = /^[\d,\s]+\.\d{2}(?:\s+[\d,]+\.\d{2}){1,3}$/;
-  const isNoiseLine = (line) => noiseRegex.test(line) || sectionHeaderRegex.test(line) || pureNumberLine.test(line) || pureNumbersRowRegex.test(line);
+  const manyMoneyRow = /(\d[\d,]*\.\d{2}\D+){2,}\d[\d,]*\.\d{2}/;
+  const isNoiseLine = (line) => noiseRegex.test(line) || sectionHeaderRegex.test(line) || pureNumberLine.test(line) || pureNumbersRowRegex.test(line) || manyMoneyRow.test(line);
   // ---------- Pattern A: ชื่ออยู่บรรทัดก่อนหน้า, "qty x unitPrice" อยู่คนละบรรทัด ----------
   // เช่น "A ซุปกระดูกหมูหม่าล่าเผ็ดกลาง" แล้วบรรทัดถัดมา "0.725 x ฿290.00"
   const qtyPriceRegex = /^(\d+(?:\.\d+)?)\s*[xX×]\s*[฿Bb]?\s*([\d,]+\.\d{2})/;
@@ -437,6 +467,7 @@ function extractLineItems(parsedText) {
     }
 
     if (name) {
+      name = name.replace(/\s+[฿8Bb]?[\d,]+\.\d{2}.*$/, '').trim();
       items.push({ name, quantity: qty, price: parseFloat((qty * unitPrice).toFixed(2)) });
       usedLineIdx.add(i);
       if (nameIdx !== -1) usedLineIdx.add(nameIdx);
@@ -469,7 +500,7 @@ function extractLineItems(parsedText) {
 
   // ---------- Pattern C: บรรทัดเดียว "ชื่อสินค้า  ราคา" แบบง่าย (จำนวน = 1) ----------
   // รองรับตัวอักษรต่อท้ายราคา เช่น "V" (VAT-applicable marker) ที่ใบเสร็จบางร้านใส่ไว้
-  const simpleRowRegex = /^(.+?)\s+([\d,]+\.\d{2})\s*[A-Za-z]?\s*$/;
+  const simpleRowRegex = /^(.+?)\s+([\d,]+\.\d{2})\s*([A-Za-zก-๙])?\s*$/;
   if (items.length === 0) {
     for (let i = 0; i < lines.length; i++) {
       if (usedLineIdx.has(i)) continue;
@@ -479,14 +510,24 @@ function extractLineItems(parsedText) {
       const rowMatch = line.match(simpleRowRegex);
       if (!rowMatch) continue;
 
-      const [, rawName, priceStr] = rowMatch;
-      const name = rawName.trim().replace(/^\d+[-.]\s*/, '');
+      const [, rawName, priceStr, marker] = rowMatch;
+      if (marker && /[Nnนมผ]/.test(marker)) continue; // 0.00N (แต้ม/สิทธิ์) ที่ OCR อ่านเป็น ม/ผ
+      let name = rawName.trim().replace(/^\d+[-.]\s*/, '');
+
+      // "1 ขนมรีบกุ้ง" -> quantity 1, name "ขนมรีบกุ้ง"
+      let quantity = 1;
+      const qtyPrefix = name.match(/^(\d{1,2})\s+(\S.*)$/);
+      if (qtyPrefix) {
+        quantity = parseInt(qtyPrefix[1], 10);
+        name = qtyPrefix[2].trim();
+      }
+
       if (name.length < 3 || isNoiseLine(name) || /^\d+$/.test(name)) continue;
 
       const price = parseFloat(stripMisreadBahtSymbol(priceStr));
       if (isNaN(price)) continue;
 
-      items.push({ name, quantity: 1, price });
+      items.push({ name, quantity, price });
       usedLineIdx.add(i);
     }
   }
@@ -519,7 +560,8 @@ function extractLineItems(parsedText) {
     }
   }
 
-  return items;
+  // ตัดรายการราคา 0 ออก (แต้มสะสม, M-Stamp, ภารกิจ, สิทธิ์แลกซื้อ ฯลฯ)
+  return items.filter((it) => it.price > 0 && !/ภารกิ|M-?Stamp|สิทธิ์?แลก/i.test(it.name));
 }
 
 // 📅 11. เดาว่าปี 2 หลักเป็น ค.ศ. หรือ พ.ศ. โดยเทียบกับปีปัจจุบัน
@@ -622,8 +664,9 @@ function cleanMerchantLabel(s) {
 // ---------- Parse ข้อความ OCR (แยกออกมาเพื่อให้ evalOcr.js เรียกตรงได้) ----------
 exports.parseText = (raw) => {
   let rawText = (raw || '').trim().normalize('NFC')
-    .replace(/\u0E4D\u0E32/g, '\u0E33')
-    .replace(/พร้อม[เแ]{1,2}พย์/gi, 'พร้อมเพย์');
+   .replace(/\u0E4D\u0E32/g, '\u0E33')
+   .replace(/\u0E40\u0E40/g, '\u0E41')   // เ + เ -> แ
+   .replace(/พร้อม[เแ]{1,2}พย์/gi, 'พร้อมเพย์');
   rawText = applyMerchantCorrections(rawText);
 
   // 1. กำหนด parsedText จาก rawText
@@ -687,8 +730,9 @@ exports.scanReceipt = async ({ file, image } = {}) => {
   }
 
   let rawOcr = '';
+  let confidence = 100;
   try {
-    ({ rawText: rawOcr } = await recognizeText(inputImage));
+    ({ rawText: rawOcr, confidence } = await recognizeText(inputImage));
   } catch (err) {
     console.error('❌ OCR error:', err.message);
     throw new Error('ไม่สามารถประมวลผล OCR ได้ กรุณาลองใหม่อีกครั้ง หรือถ่ายรูปให้ชัดเจนขึ้น');
@@ -698,5 +742,16 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     throw new Error('อ่านข้อความจากรูปไม่ได้เลย กรุณาถ่ายรูปให้ชัดเจนขึ้นและมีแสงเพียงพอ');
   }
 
-  return exports.parseText(rawOcr);
+  const result = exports.parseText(rawOcr);
+
+  if (shouldUseAI(result, confidence)) {
+    const aiItems = await fixItemsWithAI(inputImage, result);
+    if (aiItems) {
+      result.items = aiItems;
+      result.aiAssisted = true;
+    }
+  }
+
+  console.log(`[scan] conf=${confidence?.toFixed?.(1)} ai=${!!result.aiAssisted} items=${JSON.stringify(result.items)}`);
+  return result;
 };

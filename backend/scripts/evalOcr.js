@@ -36,7 +36,7 @@ const LABELS = JSON.parse(fs.readFileSync(path.join(DIR, 'labels.json'), 'utf8')
 const CACHE_ROOT = path.join(DIR, '.ocr-cache');
 
 const grid = [];
-for (const scale of list(args.scale, '2'))
+for (const scale of list(args.scale, '1'))
   for (const psm of list(args.psm, '6'))
     for (const threshold of list(args.threshold, 'none'))
       grid.push({ scale: Number(scale), psm, threshold });
