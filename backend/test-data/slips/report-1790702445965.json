@@ -1,0 +1,95 @@
+[
+  {
+    "tag": "s3_p4_tnone",
+    "cfg": {
+      "scale": 3,
+      "psm": "4",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 4,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 4,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 3,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 4,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 2,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "total",
+        "expected": 210.25,
+        "got": 0.72
+      },
+      {
+        "file": "162706.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": "ธนาคารกรุงไทย"
+      },
+      {
+        "file": "162706.png",
+        "field": "documentType",
+        "expected": "slip",
+        "got": "receipt"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "รหัสอ้างอิง: 202609015hKibKGYEMUFjZKTo"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "transactionId",
+        "expected": "202605035k4VFnLFyeXWweXmG",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "bankName",
+        "expected": "ธนาคารไทยพาณิชย์",
+        "got": null
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 88.8,
+      "avgMs": 3431.8,
+      "avgCER": null
+    }
+  }
+]

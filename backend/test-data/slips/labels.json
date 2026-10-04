@@ -1,0 +1,42 @@
+{
+  "12345.png": {
+    "total": 65,
+    "date": "2026-09-12",
+    "transactionId": null,
+    "bankName": null,
+    "merchant": "บริษัท พัฒนาดี แอสเสท จำกัด",
+    "documentType": "receipt"
+  },
+  "162704.png": {
+    "total": 210.25,
+    "date": "2026-08-30",
+    "transactionId": null,
+    "bankName": null,
+    "merchant": "Yo-i soup Kamphaeng Saen",
+    "documentType": "receipt"
+  },
+  "162706.png": {
+    "total": 100,
+    "date": "2026-09-01",
+    "transactionId": "202609015hKibKGyEMuFjZKTo",
+    "bankName": "ธนาคารไทยพาณิชย์",
+    "merchant": "เติมเงินพร้อมเพย์",
+    "documentType": "slip"
+  },
+  "LINE_ALBUM_สลิป_260916_1.png": {
+    "total": 100,
+    "date": "2026-05-03",
+    "transactionId": "202605035k4VFnLFyeXWweXmG",
+    "bankName": "ธนาคารไทยพาณิชย์",
+    "merchant": "TRUE TOP-UP",
+    "documentType": "slip"
+  },
+  "LINE_ALBUM_สลิป_260916_3.png": {
+    "total": 120,
+    "date": "2026-08-29",
+    "transactionId": "016241124912DPM14401",
+    "bankName": "ธนาคารกสิกรไทย",
+    "merchant": "Ksher_SANOOK GAME ZONE",
+    "documentType": "slip"
+  }
+}

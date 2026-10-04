@@ -4,6 +4,7 @@ const transactionService = require('../services/transactionService');
 const ocrService = require('../services/ocrService');
 const budgetService = require('../services/budgetService'); // ← เพิ่มใหม่
 const { classifyCategory } = require('../services/categoryService');
+const analyticsService = require('../services/analyticsService');
 
 // ==========================================
 // Budgets Controllers
@@ -440,5 +441,36 @@ exports.scanReceipt = async (req, res) => {
   } catch (err) {
     console.error('❌ Scan receipt error:', err);
     return res.status(500).json({ success: false, error: err.message || 'การอ่านสแกนใบเสร็จล้มเหลว' });
+  }
+};
+// ==========================================
+// Analytics Controllers
+// ==========================================
+
+// GET /personal/analytics?from=2026-01-01&to=2026-12-31
+exports.getAnalytics = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { from, to } = req.query;
+
+    let query = supabase
+      .from('personal_transactions')
+      .select('transaction_date, amount, type, categories(id, name, icon_type)')
+      .eq('user_id', userId);
+
+    // กรองที่ DB ตามเวลาไทย (UTC+7)
+    if (from) query = query.gte('transaction_date', new Date(`${from}T00:00:00+07:00`).toISOString());
+    if (to) query = query.lte('transaction_date', new Date(`${to}T23:59:59.999+07:00`).toISOString());
+
+    const { data, error } = await query.order('transaction_date', { ascending: true });
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      analytics: analyticsService.buildAnalytics(data || [], { from, to }),
+    });
+  } catch (err) {
+    console.error('❌ Get analytics error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };

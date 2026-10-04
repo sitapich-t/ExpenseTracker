@@ -1,0 +1,77 @@
+[
+  {
+    "tag": "s1_p3_tnone",
+    "cfg": {
+      "scale": 1,
+      "psm": "3",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 5,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 5,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 5,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 5,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 0,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 0,
+      "n": 5
+    },
+    "failures": [
+      {
+        "file": "12345.png",
+        "field": "merchant",
+        "expected": "บริษัท พัฒนาดี แอสเสท จำกัด",
+        "got": "Shop: PFC516-PTF พัฒนาคีแอสเสท"
+      },
+      {
+        "file": "162704.png",
+        "field": "merchant",
+        "expected": "Yo-i soup Kamphaeng Saen",
+        "got": "Soup & cale"
+      },
+      {
+        "file": "162706.png",
+        "field": "merchant",
+        "expected": "เติมเงินพร้อมเพย์",
+        "got": "ไปยัง  เติมเงินพร้อมเพย์"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_1.png",
+        "field": "merchant",
+        "expected": "TRUE TOP-UP",
+        "got": "Customer No. : 0626974269 Reference No. : RFRFO0007999360"
+      },
+      {
+        "file": "LINE_ALBUM_สลิป_260916_3.png",
+        "field": "merchant",
+        "expected": "Ksher_SANOOK GAME ZONE",
+        "got": ""
+      }
+    ],
+    "ocrStats": {
+      "avgConfidence": 89.6,
+      "avgMs": 1135,
+      "avgCER": null
+    }
+  }
+]

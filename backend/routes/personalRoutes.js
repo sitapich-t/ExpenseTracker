@@ -30,5 +30,5 @@ router.post('/transactions', authenticate, personalController.createTransaction)
 router.post('/transactions/scan-receipt', scanUpload, personalController.scanReceipt);
 router.put('/transactions/:id', authenticate, personalController.updateTransaction);
 router.delete('/transactions/:id', authenticate, personalController.deleteTransaction);
-
+router.get('/analytics', authenticate, personalController.getAnalytics);
 module.exports = router;

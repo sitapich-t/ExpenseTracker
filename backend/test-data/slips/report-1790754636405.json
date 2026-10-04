@@ -1,0 +1,46 @@
+[
+  {
+    "tag": "s1_p3_tnone",
+    "cfg": {
+      "scale": 1,
+      "psm": "3",
+      "threshold": "none"
+    },
+    "perField": {
+      "total": {
+        "ok": 5,
+        "n": 5
+      },
+      "date": {
+        "ok": 5,
+        "n": 5
+      },
+      "transactionId": {
+        "ok": 5,
+        "n": 5
+      },
+      "bankName": {
+        "ok": 5,
+        "n": 5
+      },
+      "documentType": {
+        "ok": 5,
+        "n": 5
+      },
+      "merchant": {
+        "ok": 5,
+        "n": 5
+      }
+    },
+    "e2e": {
+      "ok": 5,
+      "n": 5
+    },
+    "failures": [],
+    "ocrStats": {
+      "avgConfidence": 89.6,
+      "avgMs": 995,
+      "avgCER": null
+    }
+  }
+]
