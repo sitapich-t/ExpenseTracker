@@ -57,9 +57,9 @@ export default function MainTabsLayout() {
       <Tabs.Screen
         name="analytics"
         options={{
-          title: 'การใช้งาน',
+          title: 'วิเคราะห์',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
+            <Ionicons name="pie-chart-outline" size={size} color={color} />
           ),
         }}
       />
@@ -68,7 +68,7 @@ export default function MainTabsLayout() {
         options={{
           title: 'โปรไฟล์',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />

@@ -295,3 +295,7 @@ export function useGroup() {
   if (!ctx) throw new Error('useGroup ต้องอยู่ภายใน <GroupProvider>');
   return ctx;
 }
+
+export default function GroupContextRouteDummy() {
+  return null;
+}
