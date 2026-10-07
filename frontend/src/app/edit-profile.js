@@ -4,7 +4,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,7 +25,7 @@ const FIELDS = [
   { key: 'name', label: 'ชื่อ-นามสกุล', placeholder: 'ระบุชื่อ-นามสกุล' },
   { key: 'email', label: 'อีเมล', placeholder: 'ระบุอีเมล', keyboardType: 'email-address', autoCapitalize: 'none' },
   { key: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'ระบุเบอร์โทรศัพท์', keyboardType: 'phone-pad' },
-  { key: 'studentId', label: 'รหัสนักศึกา', placeholder: 'ระบุรหัสนักศึกา' },
+  { key: 'studentId', label: 'รหัสนักศึกษา', placeholder: 'ระบุรหัสนักศึกษา' },
   { key: 'birthDate', label: 'วันเกิด', placeholder: 'วัน/เดือน/ปี เช่น 15/03/2003' },
 ];
 
