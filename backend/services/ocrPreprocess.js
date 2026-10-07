@@ -1,7 +1,12 @@
 // backend/services/ocrPreprocess.js
 // เตรียมภาพก่อนส่งเข้า Tesseract: หมุนตาม EXIF -> ขาวดำ -> ขยาย -> (ไม่บังคับ) threshold
 // ต้องติดตั้ง: npm i sharp
-const sharp = require('sharp');
+let sharp = null;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  console.warn('⚠️ sharp module could not be loaded. Preprocessing will return raw input.');
+}
 
 // รับได้ 3 แบบ: path, data URI (base64), Buffer
 function toSharpInput(input) {
@@ -19,6 +24,10 @@ function toSharpInput(input) {
  * @returns Buffer (PNG) พร้อมส่งให้ worker.recognize
  */
 async function preprocess(input, { scale = 1, threshold = 'none' } = {}) {
+  if (!sharp) {
+    return toSharpInput(input);
+  }
+
   // 1) หมุนตาม EXIF ก่อน เพื่อให้ width/height หลังหมุนถูกต้อง
   const { data: rotated, info } = await sharp(toSharpInput(input), { failOn: 'none' })
     .rotate()

@@ -58,8 +58,9 @@ try {
   const expensesRoute = require('./routes/expenses');
   app.use('/api', authRoute);
   app.use('/api', expensesRoute);
+  console.log('✅ Legacy MySQL routes (/api/login, /api/expenses, etc.) mounted successfully');
 } catch (e) {
-  // Ignored if MySQL is not configured
+  console.error('❌ Failed to mount legacy MySQL routes:', e);
 }
 
 // จับ error ที่หลุดจาก route (เช่น multer พัง) ให้เป็น JSON เสมอ

@@ -40,8 +40,8 @@ export default function ProfileScreen() {
         }, [currentUser])
     );
 
-    // Profile attributes with fallbacks matching Figma
-    const name = profile?.name || profile?.username || currentUser?.name || currentUser?.username || 'ผู้ใช้งาน';
+    // Use the same source as Home / History / Report headers so names always match
+    const name = currentUser?.name || currentUser?.username || profile?.username || 'ผู้ใช้งาน';
     const email = profile?.email || currentUser?.email || "peet@email.com";
     const studentId = profile?.studentId || currentUser?.studentId || "pt1569";
     const avatar = profile?.avatar || currentUser?.avatar || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80";

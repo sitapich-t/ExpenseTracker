@@ -13,12 +13,13 @@ if (typeof global !== 'undefined' && !global.WebSocket) {
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY in .env file!');
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false }
+  });
+} else {
+  console.warn('⚠️ Supabase URL/KEY not set. Operating in local MySQL/fallback mode.');
 }
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: false }
-});
 
 module.exports = supabase;

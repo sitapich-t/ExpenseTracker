@@ -21,6 +21,7 @@ const API_BASE_URL = 'http://10.0.2.2:3000/api';
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { currentUser } = useAuth();
+  const displayName = currentUser?.name || currentUser?.username || 'My';
   
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -205,7 +206,7 @@ export default function HomeScreen() {
           <View style={styles.avatarCircle}>
             <Ionicons name="wallet-outline" size={20} color={COLORS.primary} />
           </View>
-          <Text style={styles.headerTitle}>peet Wallet</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{displayName} Wallet</Text>
         </View>
         <TouchableOpacity style={styles.headerBellBtn} activeOpacity={0.7}>
           <Ionicons name="notifications-outline" size={22} color="#1F2937" />

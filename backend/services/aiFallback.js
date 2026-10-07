@@ -1,15 +1,21 @@
 // backend/services/aiFallback.js
 // ใช้ AI อ่านรายการสินค้าซ้ำ เฉพาะใบเสร็จที่ผล Tesseract น่าสงสัย
-const fs = require('fs');
-const Anthropic = require('@anthropic-ai/sdk');
+let Anthropic = null;
+try {
+  Anthropic = require('@anthropic-ai/sdk');
+} catch (e) {
+  // SDK not installed or broken in node_modules
+}
 
 const MODEL = process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
 const MODE = (process.env.AI_FALLBACK_MODE || 'off').toLowerCase();
 const CONF_THRESHOLD = Number(process.env.AI_CONF_THRESHOLD || 85);
 
 let client = null;
-const getClient = () =>
-  (client ||= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 20000, maxRetries: 1 }));
+const getClient = () => {
+  if (!Anthropic) return null;
+  return (client ||= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 20000, maxRetries: 1 }));
+};
 
 // รูปแบบชื่อสินค้าที่ OCR ภาษาไทยมักเพี้ยน
 const SUSPICIOUS_NAME = [

@@ -121,6 +121,7 @@ function mapExpenseToTransaction(expense) {
 export default function HistoryScreen() {
   const navigation = useNavigation();
   const { currentUser } = useAuth();
+  const displayName = currentUser?.name || currentUser?.username || 'My';
   const userId = currentUser?.id || 'demo_user';
 
   // 3 view tabs matching Figma mockup: วัน, สัปดาห์, เดือน
@@ -367,7 +368,7 @@ export default function HistoryScreen() {
             <View style={styles.avatarPlaceholder}>
               <Ionicons name="person" size={20} color="#6D28D9" />
             </View>
-            <Text style={styles.headerAppTitle}>peet Wallet</Text>
+            <Text style={styles.headerAppTitle} numberOfLines={1}>{displayName} Wallet</Text>
           </View>
           <TouchableOpacity 
             style={styles.bellButton}

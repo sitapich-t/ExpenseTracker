@@ -229,6 +229,7 @@ function buildWeeklyTrends(byDay) {
 
 export default function ReportScreen() {
   const { currentUser } = useAuth();
+  const displayName = currentUser?.name || currentUser?.username || 'My';
 
   // Tabs: 'week' or 'month'
   const [activeTab, setActiveTab] = useState('week');
@@ -364,7 +365,7 @@ export default function ReportScreen() {
             <View style={styles.avatarCircle}>
               <Ionicons name="person" size={18} color="#6D28D9" />
             </View>
-            <Text style={styles.appTitle}>peet Wallet</Text>
+            <Text style={styles.appTitle} numberOfLines={1}>{displayName} Wallet</Text>
           </View>
           <TouchableOpacity 
             style={styles.bellBtn}
