@@ -13,28 +13,31 @@ function toSharpInput(input) {
 }
 
 /**
- * @param input      path | data URI | Buffer
- * @param opts.scale     ตัวคูณขยายภาพ (เช่น 1.5, 2, 3)
- * @param opts.threshold 'none' หรือตัวเลข 0-255 (เช่น 150)
- * @returns Buffer (PNG) พร้อมส่งให้ worker.recognize
- */
-async function preprocess(input, { scale = 1, threshold = 'none' } = {}) {
-  // 1) หมุนตาม EXIF ก่อน เพื่อให้ width/height หลังหมุนถูกต้อง
+ 
+@param input      path | data URI | Buffer
+@param opts.scale     ตัวคูณขยายภาพ (เช่น 1.5, 2, 3)
+@param opts.threshold 'none' หรือตัวเลข 0-255 (เช่น 150)
+@returns Buffer (PNG) พร้อมส่งให้ worker.recognize*/
+async function preprocess(input, { scale = 1, threshold = 'none', sharpen = false, pad = true } = {}) {
   const { data: rotated, info } = await sharp(toSharpInput(input), { failOn: 'none' })
     .rotate()
     .toBuffer({ resolveWithObject: true });
 
-  // 2) ขาวดำ + ยืด contrast + ขยาย
-  let pipe = sharp(rotated)
-    .grayscale()
-    .normalize()
-    .resize({ width: Math.round(info.width * Number(scale)), kernel: 'lanczos3' });
+  const st = await sharp(rotated).grayscale().stats();
+  const isDark = st.channels[0].mean < 110;
 
-  // 3) threshold (ไม่บังคับ)
+  const width = Math.min(Math.round(info.width * Number(scale)), 3000);
+
+  let pipe = sharp(rotated).grayscale();
+  if (isDark) pipe = pipe.negate();
+  pipe = pipe.normalize().resize({ width, kernel: 'lanczos3' });
+
+  if (sharpen) pipe = pipe.sharpen({ sigma: 1 });
+
   const t = Number(threshold);
-  if (threshold !== 'none' && Number.isFinite(t)) {
-    pipe = pipe.threshold(t);
-  }
+  if (threshold !== 'none' && Number.isFinite(t)) pipe = pipe.median(3).threshold(t);
+
+  if (pad) pipe = pipe.extend({ top: 20, bottom: 20, left: 20, right: 20, background: '#fff' });
 
   return pipe.png().toBuffer();
 }

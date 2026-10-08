@@ -32,7 +32,10 @@ const list = (v, fallback) => String(v ?? fallback).split(',').map((s) => s.trim
 
 const DIR = path.resolve(args.dir || 'test-data/slips');
 const STAGE = args.stage || 'all'; // ocr | parse | all
-const LABELS = JSON.parse(fs.readFileSync(path.join(DIR, 'labels.json'), 'utf8'));
+const RAW_LABELS = JSON.parse(fs.readFileSync(path.join(DIR, 'labels.json'), 'utf8'));
+const LABELS = Object.fromEntries(
+  Object.entries(RAW_LABELS).filter(([, v]) => !args.split || v.split === args.split)
+);
 const CACHE_ROOT = path.join(DIR, '.ocr-cache');
 
 const grid = [];
@@ -42,7 +45,10 @@ for (const scale of list(args.scale, '1'))
       grid.push({ scale: Number(scale), psm, threshold });
 
 // ---------- helpers ----------
-const tagOf = (c) => `s${c.scale}_p${c.psm}_t${c.threshold}`;
+const PIPELINE_VERSION = 'v1'; // เพิ่มเลขทุกครั้งที่แก้ ocrPreprocess.js / ocrEngine.js
+const tagOf = (c) => `${PIPELINE_VERSION}_s${c.scale}_p${c.psm}_t${c.threshold}`;
+// psm แบบ "6+11" = รวมผลหลาย psm (ใช้แคชของแต่ละ psm ร่วมกัน)
+const subCfgs = (c) => String(c.psm).split('+').map((p) => ({ ...c, psm: p }));
 const collapse = (s) => String(s ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
 const norm = (s) => collapse(s).replace(/\s/g, '').toLowerCase();
 const pct = (ok, n) => (n ? `${((ok / n) * 100).toFixed(1)}% (${ok}/${n})` : 'n/a');
@@ -88,8 +94,13 @@ async function runOcr(cfg) {
   let confSum = 0, n = 0, ms = 0;
 
   for (const file of Object.keys(LABELS)) {
+    const imgPath = path.join(DIR, file);
+    if (!fs.existsSync(imgPath)) {
+      console.warn(`  ⚠ ข้าม ${file} (ไม่พบไฟล์ภาพ)`);
+      continue;
+    }
     const t0 = Date.now();
-    const { rawText, confidence } = await engine.recognizeText(path.join(DIR, file), cfg);
+    const { rawText, confidence } = await engine.recognizeText(imgPath, cfg);
     ms += Date.now() - t0;
     confSum += confidence ?? 0;
     n++;
@@ -113,14 +124,19 @@ function evaluateParse(cfg) {
   const perField = {};
   let e2eOk = 0, e2eN = 0;
   const failures = [];
+  const perBank = {};
 
   for (const [file, gt] of Object.entries(LABELS)) {
-    const cacheFile = path.join(CACHE_ROOT, tag, `${file}.txt`);
-    if (!fs.existsSync(cacheFile)) continue;
+    const texts = [];
+    for (const s of subCfgs(cfg)) {
+      const f = path.join(CACHE_ROOT, tagOf(s), `${file}.txt`);
+      if (fs.existsSync(f)) texts.push(fs.readFileSync(f, 'utf8'));
+    }
+    if (!texts.length) continue;
 
     let parsed;
     try {
-      parsed = ocr.parseText(fs.readFileSync(cacheFile, 'utf8'));
+      parsed = texts.length > 1 ? ocr.parseBest(texts) : ocr.parseText(texts[0]);
     } catch (e) {
       failures.push({ file, field: '(parse error)', expected: '', got: e.message });
       e2eN++;
@@ -141,8 +157,12 @@ function evaluateParse(cfg) {
     }
     e2eN++;
     if (allOk) e2eOk++;
+    const bank = gt.bankName || 'unknown';
+    perBank[bank] ||= { ok: 0, n: 0 };
+    perBank[bank].n++;
+    if (allOk) perBank[bank].ok++;
   }
-  return { tag, cfg, perField, e2e: { ok: e2eOk, n: e2eN }, failures };
+  return { tag, cfg, perField, e2e: { ok: e2eOk, n: e2eN }, failures, perBank };
 }
 
 // ---------- main ----------
@@ -154,12 +174,14 @@ function evaluateParse(cfg) {
     let ocrStats = null;
 
     if (STAGE !== 'parse') {
-      console.log(`\n▶ OCR  ${tag} ...`);
-      ocrStats = await runOcr(cfg);
-      console.log(
-        `  avg confidence ${ocrStats.avgConfidence.toFixed(1)} | ${Math.round(ocrStats.avgMs)} ms/ภาพ` +
-        (ocrStats.avgCER !== null ? ` | CER ${(ocrStats.avgCER * 100).toFixed(2)}%` : '')
-      );
+      for (const sub of subCfgs(cfg)) {
+        console.log(`\n▶ OCR  ${tagOf(sub)} ...`);
+        ocrStats = await runOcr(sub);
+        console.log(
+          `  avg confidence ${ocrStats.avgConfidence.toFixed(1)} | ${Math.round(ocrStats.avgMs)} ms/ภาพ` +
+          (ocrStats.avgCER !== null ? ` | CER ${(ocrStats.avgCER * 100).toFixed(2)}%` : '')
+        );
+      }
     }
 
     if (STAGE !== 'ocr') {
@@ -168,15 +190,23 @@ function evaluateParse(cfg) {
       results.push(r);
 
       console.log(`\n=== ${tag} — end-to-end ${pct(r.e2e.ok, r.e2e.n)} ===`);
+
       for (const [field, s] of Object.entries(r.perField)) {
         console.log(`  ${field.padEnd(14)} ${pct(s.ok, s.n)}`);
       }
+
+      for (const [bank, s] of Object.entries(r.perBank)) {
+        console.log(`  [${bank}] ${pct(s.ok, s.n)}`);
+      }
+
       if (grid.length === 1 || args.verbose) {
         const shown = args.verbose ? r.failures : r.failures.slice(0, 15);
         for (const f of shown) {
           console.log(`  ✗ ${f.file} [${f.field}] expected=${JSON.stringify(f.expected)} got=${JSON.stringify(f.got)}`);
         }
-        if (!args.verbose && r.failures.length > 15) console.log(`  ... อีก ${r.failures.length - 15} รายการ (ใช้ --verbose)`);
+        if (!args.verbose && r.failures.length > 15) {
+          console.log(`  ... อีก ${r.failures.length - 15} รายการ (ใช้ --verbose)`);
+        }
       }
     }
   }
