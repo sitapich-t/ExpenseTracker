@@ -151,6 +151,10 @@ function extractRecipientFromSlip(rawText) {
       if (/^[\d\s\-]{7,}$/.test(line)) break;
       if (/^(?:[A-Z0-9]{10,}|LICENSED|COPYRIGHT)/i.test(line)) break;
       if (/^PromptPay ID$/i.test(line)) continue;
+      if (/^(พร้อมเพย์|PromptPay)/i.test(line)) {
+        if (recipientLines.length) break;
+        continue;
+      }
       if (line.length <= 2 || /^[\=\+\-\*\.\_]+$/.test(line)) continue;
 
       const cleaned = stripLabel(line);
@@ -231,6 +235,8 @@ function extractTransactionId(text) {
   const match = text.match(/(?:Transaction\s*ID|Ref\s*ID|เลขที่รายการ|รหัสอ้างอิง)[\s:]*([A-Za-z0-9]+)/i);
   if (!match) return null;
   const id = match[1];
+  const kb = id.match(/^(\d{12})[0O]PM(\d{5})$/i);
+  if (kb) return `${kb[1]}DPM${kb[2]}`;
   // รหัส SCB ขึ้นต้น yyyymmdd และปกติยาว 18+ ตัว ถ้าสั้นแปลว่า OCR อ่านตัดกลางคัน -> คืน null ดีกว่ารหัสที่ขาด
   if (/^20\d{6}/.test(id) && id.length < 15) return null;
   return id;
@@ -301,8 +307,7 @@ function extractTotal(text) {
   for (const { priority, regex } of patternGroups) {
     let match;
     while ((match = regex.exec(text)) !== null) {
-      const num = parseFloat(match[1].replace(/,/g, ''));
-      // ป้องกันการเผลอดึงค่า Fee: 0.00 Baht หากไม่ใช่ยอดหลัก
+      const num = parseFloat(stripMisreadBahtSymbol(match[1])); // ป้องกันการเผลอดึงค่า Fee: 0.00 Baht หากไม่ใช่ยอดหลัก
       if (!isNaN(num) && num > 0) {
         candidates.push({ priority, position: match.index, value: num });
       }
@@ -590,10 +595,16 @@ const monthsTh = {
   'ธันวาคม': 11, 'ธ.ค.': 11,
 };
 
+// OCR อ่านเดือนไทยย่อเพี้ยนเป็นอักษรละติน (ก→n, พ→w ฯลฯ) ใช้แก้เฉพาะรูปที่เจอจริง
+const monthOcrFix = { 'n.w.': 'ก.พ.' };
+
 // 📅 12. สกัดวันที่จากข้อความ OCR
 function extractDate(text) {
   // แก้ OCR อ่านเดือนไทยแบบย่อผิดบ่อย เช่น "ก.ุย." ที่จริงคือ "ก.ย." (มีสระ ุ แทรกผิดระหว่างจุด)
   text = text.replace(/([ก-๙])\.\s*ุ?\s*([ก-๙])\./g, '$1.$2.');
+    for (const [bad, good] of Object.entries(monthOcrFix)) {
+    text = text.split(bad).join(good);
+  }
   const monthsEn = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
   // 1. รูปแบบสลิปภาษาอังกฤษ เช่น "29 Aug 26 12:49 PM" หรือ "29 Aug 2026"
@@ -636,22 +647,18 @@ function extractDate(text) {
     }
   }
 
-  // 3. รูปแบบตัวเลข เช่น dd/mm/yy, dd/mm/yyyy, dd-mm-yy
-  const numMatch = text.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
-  if (numMatch) {
-    let [, day, month, year] = numMatch.map(Number);
+    // 3. รูปแบบตัวเลข dd/mm/yy ลองทุกที่ที่เจอ
+  for (const m of text.matchAll(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/g)) {
+    let [, day, month, year] = m.map(Number);
     if (year < 100) year = convertTwoDigitYear(year);
-    if (year > 2500) year -= 543; // แปลง พ.ศ. -> ค.ศ.
+    if (year > 2500) year -= 543;
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      try {
-        return new Date(Date.UTC(year, month - 1, day)).toISOString();
-      } catch {
-        return null;
-      }
+      return new Date(Date.UTC(year, month - 1, day)).toISOString();
     }
   }
-
   return null;
+
+  
 }
 
 function cleanMerchantLabel(s) {
@@ -659,6 +666,23 @@ function cleanMerchantLabel(s) {
     .replace(/^(?:\u0E44\u0E1B\u0E22\u0E31\u0E07|\u0E16\u0E36\u0E07)[\s:：]*/, '')
     .replace(/^TO(?:\s*[:：]\s*|\s+)/i, '')
     .trim();
+}
+
+function cleanMerchantNoise(s) {
+  if (!s) return '';
+  // ต้องมี \p{M} ไม่งั้นสระ/วรรณยุกต์ไทยท้ายคำ (เช่น ์ ุ) จะถูกตัดทิ้ง
+  const strip = (t) => t.replace(/^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu, '');
+  const tokens = s.split(/\s+/).map(strip).filter(Boolean);
+  const letters = (t) => (t.match(/\p{L}/gu) || []).length;
+  const isThai = (t) => /[\u0E00-\u0E7F]/.test(t);
+  const dominantThai = tokens.filter(isThai).length >= tokens.length / 2;
+  const isJunk = (t) =>
+    letters(t) <= 1 ||
+    (/\d/.test(t) && isThai(t)) ||
+    (isThai(t) !== dominantThai && letters(t) <= 3);
+  while (tokens.length > 1 && isJunk(tokens[0])) tokens.shift();
+  while (tokens.length > 1 && isJunk(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(' ');
 }
 
 // ---------- Parse ข้อความ OCR (แยกออกมาเพื่อให้ evalOcr.js เรียกตรงได้) ----------
@@ -698,7 +722,7 @@ exports.parseText = (raw) => {
     serviceCharge = vatScResult.serviceCharge;
   }
 
-  merchant = cleanMerchantLabel(merchant);
+  merchant = cleanMerchantNoise(cleanMerchantLabel(merchant));
   // 4. Metadata อื่นๆ
   const date = extractDate(rawText);
   const bankName = extractBankName(rawText);
@@ -712,6 +736,25 @@ exports.parseText = (raw) => {
     bankName, transactionId, categoryId,
   };
 };
+
+// เลือกผล parse ที่ "น่าเชื่อถือกว่า" จากหลาย psm
+function scoreParsed(r) {
+  let s = 0;
+  if (r.total > 0) s += 3;
+  if (r.date) s += 2;
+  if (r.transactionId) s += 2;
+  if (r.bankName) s += 1;
+  if (r.merchant && r.merchant.length >= 3) s += 1;
+  if (r.documentType === 'slip' && r.transactionId) s += 2; // สลิปที่มี id น่าเชื่อถือ
+  return s;
+}
+
+exports.parseBest = (rawTexts) => {
+  const parsed = rawTexts.map((t) => exports.parseText(t));
+  return parsed.reduce((best, r) => (scoreParsed(r) > scoreParsed(best) ? r : best));
+};
+
+
 
 // ---------- Main Export Function ----------
 exports.scanReceipt = async ({ file, image } = {}) => {
@@ -731,8 +774,15 @@ exports.scanReceipt = async ({ file, image } = {}) => {
 
   let rawOcr = '';
   let confidence = 100;
+  let rawTexts = [];
   try {
-    ({ rawText: rawOcr, confidence } = await recognizeText(inputImage));
+    const runs = [];
+    for (const psm of ['6', '11']) {          // ต้องรันทีละรอบ เพราะใช้ worker ตัวเดียว
+      runs.push(await recognizeText(inputImage, { psm }));
+    }
+    rawTexts = runs.map((r) => r.rawText).filter(Boolean);
+    rawOcr = rawTexts[0] || '';
+    confidence = Math.max(...runs.map((r) => r.confidence ?? 0));
   } catch (err) {
     console.error('❌ OCR error:', err.message);
     throw new Error('ไม่สามารถประมวลผล OCR ได้ กรุณาลองใหม่อีกครั้ง หรือถ่ายรูปให้ชัดเจนขึ้น');
@@ -742,7 +792,7 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     throw new Error('อ่านข้อความจากรูปไม่ได้เลย กรุณาถ่ายรูปให้ชัดเจนขึ้นและมีแสงเพียงพอ');
   }
 
-  const result = exports.parseText(rawOcr);
+  const result = rawTexts.length > 1 ? exports.parseBest(rawTexts) : exports.parseText(rawOcr);
 
   if (shouldUseAI(result, confidence)) {
     const aiItems = await fixItemsWithAI(inputImage, result);
