@@ -42,7 +42,9 @@ export default function ScanReceiptScreen() {
       }
     } catch {
       Alert.alert('ข้อผิดพลาด', 'ไม่สามารถถ่ายภาพได้ กรุณาลองใหม่อีกครั้ง');
-    }
+        } finally {
+      setLoading(false);
+    }}
   };
 
   const processOCR = async (imageUri) => {
@@ -84,11 +86,28 @@ export default function ScanReceiptScreen() {
       // bug ของ Expo Go) แล้วให้หน้า confirm-receipt ดึงมาใช้ตรงๆ ผ่าน getScannedImage()
       setScannedImage(`data:image/jpeg;base64,${base64Image}`);
 
-      const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
-      const returnTo = params.returnTo ? String(params.returnTo) : null;
-      const groupId = params.groupId ? String(params.groupId) : null;
+            const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
+      const returnToRoute = params.returnTo ? String(params.returnTo) : null;
+      const groupIdRoute = params.groupId ? String(params.groupId) : null;
 
-      if (returnTo === 'add-group-expense' && groupId) {
+      if (returnToRoute === 'add-group-expense' && groupIdRoute) {
+        router.push({
+          pathname: '/add-group-expense',
+          params: {
+            groupId: groupIdRoute,
+            ocr_amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
+            ocr_merchant: data.merchant || '',
+            ocr_netAmount: String(data.netTotal ?? data.total ?? ''),
+            ocr_vat: String(data.vat ?? '0'),
+            ocr_serviceCharge: String(data.serviceCharge ?? '0'),
+            ocr_items: JSON.stringify(data.items || []),
+            ocr_date: data.date || '',
+            ocr_parsed: data.parsedText || '',
+          },
+        });
+        return;
+      }
+
         router.push({
           pathname: '/add-group-expense',
           params: {
