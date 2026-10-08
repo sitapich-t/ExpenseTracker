@@ -89,7 +89,7 @@ export default function ProfileScreen() {
 
                         {/* Sub details: studentId • email */}
                         <Text style={styles.userSubDetails}>
-                            {studentId ? `${studentId} • ` : ''}{email}
+                            {email}
                         </Text>
 
                         {/* Edit Profile Button Pill */}
@@ -124,52 +124,6 @@ export default function ProfileScreen() {
                             <View style={styles.settingInfoCol}>
                                 <Text style={styles.settingItemTitle}>Personal Info</Text>
                                 <Text style={styles.settingItemSub}>Update your details</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
-                        </TouchableOpacity>
-
-                        <View style={styles.rowDivider} />
-
-                        {/* Student Info */}
-                        <TouchableOpacity
-                            style={styles.settingsRow}
-                            onPress={() =>
-                                Alert.alert(
-                                    "ข้อมูลนักศึกษา 🎓",
-                                    `รหัสนักศึกษา: ${studentId || 'pt1569'}\nสถานะ: กำลังศึกษา\nคณะ: วิศวกรรมศาสตร์และเทคโนโลยีสารสนเทศ`
-                                )
-                            }
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.settingIconBox}>
-                                <Ionicons name="school" size={18} color="#7C3AED" />
-                            </View>
-                            <View style={styles.settingInfoCol}>
-                                <Text style={styles.settingItemTitle}>Student Info</Text>
-                                <Text style={styles.settingItemSub}>Manage university details</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
-                        </TouchableOpacity>
-
-                        <View style={styles.rowDivider} />
-
-                        {/* Payment Methods */}
-                        <TouchableOpacity
-                            style={styles.settingsRow}
-                            onPress={() =>
-                                Alert.alert(
-                                    "ช่องทางการชำระเงิน 💳",
-                                    "• พร้อมเพย์: 098-765-4321\n• บัญชีกสิกรไทย: xxx-x-xx569-x"
-                                )
-                            }
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.settingIconBox}>
-                                <Ionicons name="card" size={18} color="#7C3AED" />
-                            </View>
-                            <View style={styles.settingInfoCol}>
-                                <Text style={styles.settingItemTitle}>Payment Methods</Text>
-                                <Text style={styles.settingItemSub}>Linked cards & accounts</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                         </TouchableOpacity>

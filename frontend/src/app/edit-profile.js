@@ -25,8 +25,6 @@ const FIELDS = [
   { key: 'name', label: 'ชื่อ-นามสกุล', placeholder: 'ระบุชื่อ-นามสกุล' },
   { key: 'email', label: 'อีเมล', placeholder: 'ระบุอีเมล', keyboardType: 'email-address', autoCapitalize: 'none' },
   { key: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'ระบุเบอร์โทรศัพท์', keyboardType: 'phone-pad' },
-  { key: 'studentId', label: 'รหัสนักศึกษา', placeholder: 'ระบุรหัสนักศึกษา' },
-  { key: 'birthDate', label: 'วันเกิด', placeholder: 'วัน/เดือน/ปี เช่น 15/03/2003' },
 ];
 
 export default function EditProfileScreen() {
@@ -35,8 +33,6 @@ export default function EditProfileScreen() {
     name: '',
     email: '',
     phone: '',
-    studentId: '',
-    birthDate: '',
   });
   const [avatar, setAvatar] = useState(DEFAULT_AVATAR);
   const [loading, setLoading] = useState(true);
@@ -51,8 +47,6 @@ export default function EditProfileScreen() {
         name: user?.name ?? '',
         email: user?.email ?? '',
         phone: user?.phone ?? '',
-        studentId: user?.studentId ?? '',
-        birthDate: user?.birthDate ?? '',
       });
       setAvatar(user?.avatar || DEFAULT_AVATAR);
       setLoading(false);
@@ -101,8 +95,6 @@ export default function EditProfileScreen() {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
-        studentId: form.studentId.trim(),
-        birthDate: form.birthDate.trim(),
         avatar,
       };
       await AsyncStorage.setItem('user', JSON.stringify(updated));

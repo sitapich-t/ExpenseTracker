@@ -61,8 +61,15 @@ export default function AddGroupExpenseScreen() {
   const groupId = scalar(params.groupId ?? params.id);
   const groupName = scalar(params.groupName ?? params.name) || 'กลุ่ม';
 
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
+  const ocr_amount = scalar(params.ocr_amount);
+  const ocr_merchant = scalar(params.ocr_merchant);
+  const ocr_items = scalar(params.ocr_items);
+  const ocr_vat = scalar(params.ocr_vat);
+  const ocr_serviceCharge = scalar(params.ocr_serviceCharge);
+  const ocr_date = scalar(params.ocr_date);
+
+  const [title, setTitle] = useState(ocr_merchant || '');
+  const [amount, setAmount] = useState(ocr_amount || '');
   const [category, setCategory] = useState('Food');
   const [payerId, setPayerId] = useState(null);
   const [members, setMembers] = useState([]);
@@ -118,14 +125,30 @@ export default function AddGroupExpenseScreen() {
       let active = true;
       (async () => {
         try {
-          const user = await getCurrentUser();
-          const bundle = await fetchGroupBundle(groupId);
-          if (!active) return;
-          setCurrentUser(user);
-          setMembers(bundle.members);
-          initSplitDefaults(bundle.members);
-          setPayerId((prev) => prev ?? currentUserId(user));
-        } catch (err) {
+      const user = await getCurrentUser();
+      const bundle = await fetchGroupBundle(groupId);
+      if (!active) return;
+      setCurrentUser(user);
+      setMembers(bundle.members);
+      initSplitDefaults(bundle.members);
+      setPayerId((prev) => prev ?? currentUserId(user));
+
+      if (ocr_items) {
+        try {
+          const itemsRaw = JSON.parse(ocr_items);
+          const mapped = (itemsRaw || []).map((it, i) => ({
+            key: `${Date.now()}_${i}`,
+            name: it.name || '',
+            price: String(it.price ?? it.total ?? ''),
+            sharedBy: [],
+          }));
+          if (mapped.length > 0) setItems(mapped);
+        } catch (e) {}
+      }
+      if (ocr_vat && parseFloat(ocr_vat) > 0) setVatRate(String(parseFloat(ocr_vat) * 100 / ((parseFloat(ocr_amount||'0')-(parseFloat(ocr_serviceCharge||'0')||0)) || 1)).replace(/\.0+$/, '') || '7');
+      if (ocr_serviceCharge && parseFloat(ocr_serviceCharge) > 0) setServiceChargeRate(String(parseFloat(ocr_serviceCharge)*100/parseFloat(ocr_amount||'1')).replace(/\.0+$/,'') || '10');
+      if (ocr_vat || ocr_serviceCharge) setIncludeVatSc(true);
+    } catch (err) {
           if (active) {
             Alert.alert(
               'โหลดข้อมูลไม่สำเร็จ',
@@ -445,8 +468,18 @@ export default function AddGroupExpenseScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#1E293B" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>กรอกข้อมูลรายการ</Text>
-        <View style={styles.backButton} />
+      <Text style={styles.headerTitle}>กรอกข้อมูลรายการ</Text>
+      <TouchableOpacity
+        onPress={() =>
+          router.push({
+            pathname: '/scan-receipt',
+            params: { returnTo: 'add-group-expense', groupId },
+          })
+        }
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="scan-outline" size={22} color="#1E293B" />
+      </TouchableOpacity>
       </View>
 
       <View style={styles.groupBanner}>

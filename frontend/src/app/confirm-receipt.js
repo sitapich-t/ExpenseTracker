@@ -250,7 +250,25 @@ export default function ConfirmReceiptScreen() {
         throw new Error(errData.message || errData.error || `HTTP ${response.status}`);
       }
 
+      const groupId = params.groupId ? String(params.groupId) : null;
+      const returnTo = params.returnTo ? String(params.returnTo) : null;
       clearScannedImage();
+      if (returnTo === 'add-group-expense' && groupId) {
+        router.replace({
+          pathname: '/add-group-expense',
+          params: {
+            groupId,
+            ocr_amount: String(amount || ''),
+            ocr_merchant: merchant || '',
+            ocr_vat: String(vat || '0'),
+            ocr_serviceCharge: String(serviceCharge || '0'),
+            ocr_items: JSON.stringify(lineItems || []),
+            ocr_date: displayDateToIso(date) || params.date || '',
+          },
+        });
+        return;
+      }
+
       Alert.alert('สำเร็จ', 'บันทึกใบเสร็จเรียบร้อยแล้ว', [
         { text: 'ตกลง', onPress: () => router.replace('/(main)/dashboard') },
       ]);

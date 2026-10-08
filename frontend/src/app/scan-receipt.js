@@ -11,9 +11,9 @@ import { setScannedImage } from '@/utils/scannedImageStore';
 export default function ScanReceiptScreen() {
   const router = useRouter();
   const cameraRef = useRef(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [flash, setFlash] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const params = useLocalSearchParams();
+  const returnTo = params.returnTo ? String(params.returnTo) : null;
+  const groupId = params.groupId ? String(params.groupId) : null;
 
   useEffect(() => {
     if (!permission) requestPermission();
@@ -85,11 +85,26 @@ export default function ScanReceiptScreen() {
       setScannedImage(`data:image/jpeg;base64,${base64Image}`);
 
       const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
+      const returnTo = params.returnTo ? String(params.returnTo) : null;
+      const groupId = params.groupId ? String(params.groupId) : null;
 
-      console.log('=== OCR API RESPONSE ===', JSON.stringify(data, null, 2));
-      
-      // ส่งข้อมูลอื่นๆ ไปยัง confirm-receipt ผ่าน params ตามปกติ (ไม่ใช่รูป)
-      router.push({
+      if (returnTo === 'add-group-expense' && groupId) {
+        router.push({
+          pathname: '/add-group-expense',
+          params: {
+            groupId,
+            ocr_amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
+            ocr_merchant: data.merchant || '',
+            ocr_netAmount: String(data.netTotal ?? data.total ?? ''),
+            ocr_vat: String(data.vat ?? '0'),
+            ocr_serviceCharge: String(data.serviceCharge ?? '0'),
+            ocr_items: JSON.stringify(data.items || []),
+            ocr_date: data.date || '',
+            ocr_parsed: data.parsedText || '',
+          },
+        });
+        return;
+      }
         pathname: '/confirm-receipt',
         params: {
           merchant: data.merchant || '',
