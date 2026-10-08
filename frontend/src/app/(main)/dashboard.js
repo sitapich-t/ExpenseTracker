@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -120,8 +120,24 @@ export default function DashboardScreen() {
   const balance = totalIncome - totalExpense;
   const budgetPercent = monthlyBudget > 0 ? (totalExpense / monthlyBudget) * 100 : 0;
   const budgetProgress = Math.min(budgetPercent, 100);
-  // threshold สี ให้ตรงกับ backend budgetService (WARNING = 80%, OVER = 100%)
-  const progressColor = budgetPercent >= 100 ? '#ef4444' : budgetPercent >= 80 ? '#f59e0b' : '#10b981';
+  // threshold สี (WARNING = 70%, OVER = 100%)
+  const progressColor = budgetPercent >= 100 ? '#ef4444' : budgetPercent >= 70 ? '#f59e0b' : '#10b981';
+
+  const handleShowNotification = () => {
+    if (monthlyBudget > 0 && budgetPercent >= 100) {
+      Alert.alert(
+        '🚨 แจ้งเตือนงบประมาณ',
+        `คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้แล้ว (${budgetPercent.toFixed(0)}%)\nยอดใช้จ่าย: ฿${totalExpense.toLocaleString()} จากงบ ฿${monthlyBudget.toLocaleString()}`
+      );
+    } else if (monthlyBudget > 0 && budgetPercent >= 70) {
+      Alert.alert(
+        '⚠️ แจ้งเตือนงบประมาณ',
+        `คุณใช้จ่ายใกล้เต็มงบประมาณแล้ว (${budgetPercent.toFixed(0)}%)\nยอดใช้จ่าย: ฿${totalExpense.toLocaleString()} จากงบ ฿${monthlyBudget.toLocaleString()}`
+      );
+    } else {
+      Alert.alert('🔔 การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในขณะนี้ ยอดใช้จ่ายอยู่ในเกณฑ์ปกติ');
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#fcfbfe' }}>
@@ -141,7 +157,7 @@ export default function DashboardScreen() {
               <Text style={styles.greetingTitle}>{userName}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.iconBtn}>
+          <TouchableOpacity style={styles.iconBtn} onPress={handleShowNotification}>
             <Ionicons name="notifications-outline" size={24} color="#333" />
           </TouchableOpacity>
         </View>

@@ -2,9 +2,11 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -12,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   currentUserId,
@@ -67,6 +70,14 @@ export default function AddGroupExpenseScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showPayerModal, setShowPayerModal] = useState(false);
+
+  // คิด VAT (7%) & Service Charge (10%)
+  const [includeVatSc, setIncludeVatSc] = useState(false);
+  const [serviceChargeRate, setServiceChargeRate] = useState('10');
+  const [vatRate, setVatRate] = useState('7');
+
+  // แนบรูปสลิป / ใบเสร็จ
+  const [slipImage, setSlipImage] = useState(null);
 
   // วิธีหารบิล: equal | percent | item | amount
   const [splitMethod, setSplitMethod] = useState('equal');
@@ -132,6 +143,80 @@ export default function AddGroupExpenseScreen() {
   );
 
   const numAmount = parseAmount(amount);
+  const scPercent = includeVatSc ? toNum(serviceChargeRate) : 0;
+  const vatPercent = includeVatSc ? toNum(vatRate) : 0;
+  const scAmount = round2(numAmount * (scPercent / 100));
+  const vatAmount = round2((numAmount + scAmount) * (vatPercent / 100));
+  const grandTotal = round2(numAmount + scAmount + vatAmount);
+  const effectiveAmount = includeVatSc ? grandTotal : numAmount;
+
+  const handlePickFromGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('ขอสิทธิ์เข้าถึง', 'กรุณาอนุญาตให้เข้าถึงคลังภาพเพื่อเลือกสลิป');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const asset = result.assets[0];
+        const filename = asset.uri.split('/').pop() || 'slip.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        setSlipImage({
+          uri: asset.uri,
+          name: filename,
+          type: asset.mimeType || type,
+        });
+      }
+    } catch (err) {
+      Alert.alert('เลือกรูปไม่สำเร็จ', err.message || 'เกิดข้อผิดพลาดในการเลือกรูปภาพ');
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('ขอสิทธิ์เข้าถึง', 'กรุณาอนุญาตให้เข้าถึงกล้องเพื่อถ่ายภาพสลิป');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const asset = result.assets[0];
+        const filename = asset.uri.split('/').pop() || 'slip.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        setSlipImage({
+          uri: asset.uri,
+          name: filename,
+          type: asset.mimeType || type,
+        });
+      }
+    } catch (err) {
+      Alert.alert('ถ่ายรูปไม่สำเร็จ', err.message || 'เกิดข้อผิดพลาดในการถ่ายภาพ');
+    }
+  };
+
+  const handleAttachSlip = () => {
+    Alert.alert(
+      'แนบรูปสลิป / ใบเสร็จ',
+      'กรุณาเลือกช่องทาง',
+      [
+        { text: 'ถ่ายรูป', onPress: handleTakePhoto },
+        { text: 'เลือกจากคลังภาพ', onPress: handlePickFromGallery },
+        { text: 'ยกเลิก', style: 'cancel' },
+      ]
+    );
+  };
 
   const payerLabel = useMemo(() => {
     const found = members.find((m) => String(m.user_id) === String(payerId));
@@ -185,15 +270,15 @@ export default function AddGroupExpenseScreen() {
       if (Object.keys(map).length === 0) {
         return { error: 'กรุณาเลือกอย่างน้อย 1 คนที่ร่วมหารบิล' };
       }
-      if (Math.abs(round2(sum) - round2(numAmount)) > 0.01) {
+      if (Math.abs(round2(sum) - round2(effectiveAmount)) > 0.01) {
         return {
-          error: `ผลรวมยอดที่กรอก (${formatBaht(round2(sum))}) ต้องเท่ากับยอดบิล (${formatBaht(round2(numAmount))})`,
+          error: `ผลรวมยอดที่กรอก (${formatBaht(round2(sum))}) ต้องเท่ากับยอดบิล (${formatBaht(round2(effectiveAmount))})`,
         };
       }
       return { data: { method: 'amount', amounts: map } };
     }
 
-    // item-based: ต้องมีรายการ และราคารวมต้องตรงกับยอดบิล
+    // item-based: ต้องมีรายการ และราคารวมต้องตรงกับยอดก่อนภาษี
     const clean = items
       .filter((it) => (it.name || '').trim() || toNum(it.price) > 0 || it.sharedBy.length > 0)
       .map((it, i) => ({
@@ -216,11 +301,11 @@ export default function AddGroupExpenseScreen() {
       };
     }
     return { data: { method: 'item', items: clean } };
-  }, [splitMethod, selectedIds, memberIds, shares, amounts, items, numAmount]);
+  }, [splitMethod, selectedIds, memberIds, shares, amounts, items, numAmount, effectiveAmount]);
 
   // ยอดที่แต่ละคนจะโดน (preview) — คำนวณเบื้องต้นบนเครื่อง
   const previewRows = useMemo(() => {
-    const total = round2(numAmount);
+    const total = round2(effectiveAmount);
     if (total <= 0) return [];
 
     const nameOf = (id) => {
@@ -253,8 +338,9 @@ export default function AddGroupExpenseScreen() {
       return ids.map((id) => ({ id, name: nameOf(id), value: round2(toNum(amounts[id])), unit: 'บาท' }));
     }
 
-    // item: ราคาที่แต่ละคนโดน = ราคารายการที่เขาแชร์ หารกันในรายการนั้น
+    // item: ราคาที่แต่ละคนโดน = ราคารายการที่เขาแชร์ หารกันในรายการนั้น (รวม SC/VAT ตามสัดส่วน)
     const out = {};
+    const itemTotal = items.reduce((s, it) => s + toNum(it.price), 0);
     items.forEach((it) => {
       const p = toNum(it.price);
       const n = it.sharedBy.length;
@@ -265,13 +351,29 @@ export default function AddGroupExpenseScreen() {
         out[k] = (out[k] || 0) + per;
       });
     });
-    return Object.entries(out).map(([id, v]) => ({
-      id,
-      name: nameOf(id),
-      value: round2(v),
-      unit: 'ตามของที่กิน',
-    }));
-  }, [splitMethod, numAmount, selectedIds, memberIds, shares, amounts, items, members, currentUser]);
+    return Object.entries(out).map(([id, v]) => {
+      const taxRatio = includeVatSc && itemTotal > 0 ? (scAmount + vatAmount) * (v / itemTotal) : 0;
+      return {
+        id,
+        name: nameOf(id),
+        value: round2(v + taxRatio),
+        unit: includeVatSc ? 'รวม SC/VAT' : 'ตามของที่กิน',
+      };
+    });
+  }, [
+    splitMethod,
+    effectiveAmount,
+    selectedIds,
+    memberIds,
+    shares,
+    amounts,
+    items,
+    members,
+    currentUser,
+    includeVatSc,
+    scAmount,
+    vatAmount,
+  ]);
 
   const handleSave = async () => {
     if (!title.trim() || numAmount <= 0) {
@@ -295,12 +397,17 @@ export default function AddGroupExpenseScreen() {
       const result = await addGroupBill(groupId, {
         title: title.trim(),
         type: 'expense',
-        amount: numAmount,
+        amount: effectiveAmount,
+        subtotal: numAmount,
+        scRate: includeVatSc ? scPercent : 0,
+        vatRate: includeVatSc ? vatPercent : 0,
+        vatBase: 'itemPlusSC',
         category,
         payer: payerId || currentUserId(currentUser),
         payerName: payerLabel,
         // วิธีหาร: equal | percent | item | amount
         splitData: split.data,
+        slipFile: slipImage,
       });
 
       // บันทึกบิลสำเร็จ แต่บางข้อมูลยังบันทึกไม่ได้ (ฐานข้อมูลยังไม่มีคอลัมน์) -> ต้องเตือน
@@ -308,7 +415,7 @@ export default function AddGroupExpenseScreen() {
         const dropped = (result.droppedFields || []).join(', ');
         Alert.alert(
           'บันทึกบิลแล้ว แต่ข้อมูลบางส่วนไม่ครบ',
-          `บันทึกรายการ "${title.trim()}" ฿${formatBaht(numAmount)} แล้ว\n\n` +
+          `บันทึกรายการ "${title.trim()}" ฿${formatBaht(effectiveAmount)} แล้ว\n\n` +
             `ยังบันทึกไม่ได้: ${dropped || 'ข้อมูลบางส่วน'}\n` +
             'เพราะฐานข้อมูลยังไม่มีคอลัมน์เหล่านี้ (ต้องรัน migration)\n' +
             'ยอดรวมของกลุ่มจึงอาจไม่ตรงกับที่ควรเป็น',
@@ -319,7 +426,7 @@ export default function AddGroupExpenseScreen() {
 
       Alert.alert(
         'บันทึกสำเร็จ',
-        `บันทึกรายการ "${title.trim()}" ฿${formatBaht(numAmount)} เข้ากลุ่มเรียบร้อยแล้ว`,
+        `บันทึกรายการ "${title.trim()}" ฿${formatBaht(effectiveAmount)} เข้ากลุ่มเรียบร้อยแล้ว`,
         [{ text: 'ตกลง', onPress: () => router.back() }]
       );
     } catch (err) {
@@ -402,6 +509,83 @@ export default function AddGroupExpenseScreen() {
               );
             })}
           </View>
+        </View>
+
+        {/* Card: คิด Service Charge & VAT */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={styles.cardHeaderTitle}>คิด Service Charge & VAT</Text>
+              <Text style={styles.cardHeaderSub}>คำนวณภาษีและค่าบริการเพิ่มเติม</Text>
+            </View>
+            <Switch
+              value={includeVatSc}
+              onValueChange={setIncludeVatSc}
+              trackColor={{ false: '#E2E8F0', true: '#DDD6FE' }}
+              thumbColor={includeVatSc ? '#7C3AED' : '#94A3B8'}
+            />
+          </View>
+
+          {includeVatSc && (
+            <View style={styles.vatScDetails}>
+              <View style={styles.vatScInputRow}>
+                <View style={styles.vatScInputCol}>
+                  <Text style={styles.inputLabel}>Service Charge (%)</Text>
+                  <View style={styles.rateInputWrap}>
+                    <TextInput
+                      style={styles.rateInput}
+                      value={serviceChargeRate}
+                      onChangeText={setServiceChargeRate}
+                      keyboardType="numeric"
+                      placeholder="10"
+                      placeholderTextColor="#94A3B8"
+                    />
+                    <Text style={styles.rateInputUnit}>%</Text>
+                  </View>
+                </View>
+
+                <View style={styles.vatScInputCol}>
+                  <Text style={styles.inputLabel}>VAT (%)</Text>
+                  <View style={styles.rateInputWrap}>
+                    <TextInput
+                      style={styles.rateInput}
+                      value={vatRate}
+                      onChangeText={setVatRate}
+                      keyboardType="numeric"
+                      placeholder="7"
+                      placeholderTextColor="#94A3B8"
+                    />
+                    <Text style={styles.rateInputUnit}>%</Text>
+                  </View>
+                </View>
+              </View>
+
+              {numAmount > 0 && (
+                <View style={styles.breakdownCard}>
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>ยอดก่อนภาษี</Text>
+                    <Text style={styles.breakdownValue}>฿{formatBaht(numAmount)}</Text>
+                  </View>
+                  {scPercent > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.breakdownLabel}>Service Charge ({scPercent}%)</Text>
+                      <Text style={styles.breakdownValue}>+฿{formatBaht(scAmount)}</Text>
+                    </View>
+                  )}
+                  {vatPercent > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.breakdownLabel}>VAT ({vatPercent}%)</Text>
+                      <Text style={styles.breakdownValue}>+฿{formatBaht(vatAmount)}</Text>
+                    </View>
+                  )}
+                  <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
+                    <Text style={styles.breakdownTotalLabel}>ยอดรวมสุทธิ</Text>
+                    <Text style={styles.breakdownTotalValue}>฿{formatBaht(grandTotal)}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -662,6 +846,59 @@ export default function AddGroupExpenseScreen() {
                 </View>
               )}
             </>
+          )}
+        </View>
+
+        {/* Card: หลักฐานการชำระเงิน (สลิป/ใบเสร็จ) */}
+        <View style={styles.card}>
+          <Text style={styles.cardHeaderTitle}>หลักฐานการชำระเงิน (สลิป / ใบเสร็จ)</Text>
+          <Text style={styles.cardHeaderSub}>แนบรูปถ่ายใบเสร็จหรือสลิปโอนเงินสำหรับบิลนี้</Text>
+
+          {slipImage ? (
+            <View style={styles.slipPreviewContainer}>
+              <Image source={{ uri: slipImage.uri }} style={styles.slipImage} />
+              <View style={styles.slipOverlayActions}>
+                <View style={styles.slipBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                  <Text style={styles.slipBadgeText}>แนบหลักฐานแล้ว</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.slipRemoveBtn}
+                  onPress={() => setSlipImage(null)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={24} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.changeSlipBtn} onPress={handleAttachSlip}>
+                <Ionicons name="camera-reverse-outline" size={16} color="#6D28D9" />
+                <Text style={styles.changeSlipText}>เปลี่ยนรูปภาพ</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.attachBtnRow}>
+              <TouchableOpacity
+                style={styles.attachBtn}
+                onPress={handleTakePhoto}
+                activeOpacity={0.8}
+              >
+                <View style={styles.attachIconWrap}>
+                  <Ionicons name="camera" size={22} color="#6D28D9" />
+                </View>
+                <Text style={styles.attachBtnText}>ถ่ายภาพ</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.attachBtn}
+                onPress={handlePickFromGallery}
+                activeOpacity={0.8}
+              >
+                <View style={styles.attachIconWrap}>
+                  <Ionicons name="images" size={22} color="#6D28D9" />
+                </View>
+                <Text style={styles.attachBtnText}>เลือกจากคลังภาพ</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -941,4 +1178,181 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   modalOptionText: { flex: 1, fontSize: 15, color: '#1E293B' },
+
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  cardHeaderSub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  vatScDetails: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  vatScInputRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  vatScInputCol: {
+    flex: 1,
+  },
+  rateInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginTop: 6,
+  },
+  rateInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  rateInputUnit: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  breakdownCard: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  breakdownLabel: {
+    fontSize: 13,
+    color: '#6D28D9',
+  },
+  breakdownValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6D28D9',
+  },
+  breakdownTotalRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#DDD6FE',
+    marginTop: 6,
+    paddingTop: 6,
+  },
+  breakdownTotalLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4C1D95',
+  },
+  breakdownTotalValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#4C1D95',
+  },
+
+  attachBtnRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 14,
+  },
+  attachBtn: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed',
+    gap: 8,
+  },
+  attachIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  slipPreviewContainer: {
+    marginTop: 14,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#0F172A',
+  },
+  slipImage: {
+    width: '100%',
+    height: 180,
+    resizeMode: 'cover',
+  },
+  slipOverlayActions: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  slipBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  slipBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  slipRemoveBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeSlipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  changeSlipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6D28D9',
+  },
 });

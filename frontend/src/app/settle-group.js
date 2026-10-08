@@ -233,7 +233,7 @@ export default function GroupSettleScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.segmentText, activeTab === 'summary' && styles.segmentTextActive]}>
-              จ่าย
+              ตัดหนี้ (ง่าย)
             </Text>
           </TouchableOpacity>
         </View>

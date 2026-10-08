@@ -198,7 +198,7 @@ export default function BudgetScreen() {
 
   let statusColor = '#10B981';
   if (percentage >= 100) statusColor = '#EF4444';
-  else if (percentage >= 80) statusColor = '#F59E0B';
+  else if (percentage >= 70) statusColor = '#F59E0B';
 
   const thaiYear = currentDate.getFullYear() + 543;
   const monthName = THAI_MONTHS[currentDate.getMonth()];
@@ -255,10 +255,12 @@ export default function BudgetScreen() {
                 <Ionicons name="warning" size={24} color="#FFFFFF" />
                 <Text style={styles.alertTextCritical}>คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้!</Text>
               </View>
-            ) : hasBudget && percentage >= 80 ? (
+            ) : hasBudget && percentage >= 70 ? (
               <View style={[styles.alertCard, styles.alertWarning]}>
                 <Ionicons name="warning" size={24} color="#92400E" />
-                <Text style={styles.alertTextWarning}>คุณใช้จ่ายเกิน 80% ของงบประมาณแล้ว!</Text>
+                <Text style={styles.alertTextWarning}>
+                  คุณใช้จ่ายถึง {percentage.toFixed(0)}% ของงบประมาณแล้ว (เกิน 70%)!
+                </Text>
               </View>
             ) : null}
 
@@ -274,7 +276,7 @@ export default function BudgetScreen() {
               />
               <View style={styles.infoRow}>
                 <Ionicons name="warning-outline" size={16} color={COLORS.warning} />
-                <Text style={styles.infoText}>แจ้งเตือนเมื่อใช้จ่ายถึง 80% ของงบประมาณ</Text>
+                <Text style={styles.infoText}>แจ้งเตือนเมื่อใช้จ่ายถึง 70% ของงบประมาณ</Text>
               </View>
             </View>
 
@@ -289,7 +291,7 @@ export default function BudgetScreen() {
                 const catPercentage = Math.min(catRatio * 100, 100);
                 let catStatusColor = '#10B981';
                 if (catLimit > 0 && catRatio >= 1) catStatusColor = '#EF4444';
-                else if (catLimit > 0 && catRatio >= 0.8) catStatusColor = '#F59E0B';
+                else if (catLimit > 0 && catRatio >= 0.7) catStatusColor = '#F59E0B';
 
                 return (
                   <View key={cat.id} style={styles.categoryBlock}>

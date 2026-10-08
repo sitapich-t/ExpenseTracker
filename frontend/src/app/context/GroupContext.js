@@ -42,6 +42,7 @@ const buildBillFormData = (bill) => {
 
   put('title', bill.title);
   put('amount', bill.amount);
+  put('subtotal', bill.subtotal);
   put('type', bill.type || 'expense');
   put('merchant', bill.payerName || bill.merchant);
   put('category', bill.category);
@@ -196,6 +197,7 @@ export function GroupProvider({ children }) {
             {
               title: bill.title,
               amount: bill.amount,
+              subtotal: bill.subtotal,
               type: bill.type || 'expense',
               merchant: bill.payerName || bill.merchant || 'General',
               category: bill.category || 'General',
