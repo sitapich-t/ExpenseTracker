@@ -7,23 +7,52 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import api, { setToken } from '@/lib/api';
+import { getFlow, setFlow, clearFlow } from '@/lib/authFlow';
 
 export default function VerifyOtpScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const passedEmail = String(params.email || '').trim();
+  const mode = params.mode === 'reset' ? 'reset' : 'register';
 
-  const [email, setEmail] = useState(passedEmail);
+  const flow = getFlow();
+  const email = flow?.email || '';
+
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  if (!flow) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+          <View style={styles.topSection}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="alert-circle-outline" size={64} color="#ef4444" />
+            </View>
+            <Text style={styles.appName}>เซสชันหมดอายุ</Text>
+            <Text style={styles.subtitle}>กรุณาเริ่มขั้นตอนยืนยันตัวตนใหม่</Text>
+          </View>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.verifyButton}
+              onPress={() => router.replace(mode === 'reset' ? '/forgot-password' : '/register')}
+            >
+              <Text style={styles.verifyButtonText}>เริ่มใหม่</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  const isRegister = mode === 'register';
+  const tokenKey = isRegister ? 'registration_token' : 'password_reset_token';
 
   const handleVerify = async () => {
-    const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otp.trim();
-    if (!cleanEmail) {
-      Alert.alert('ข้อผิดพลาด', 'กรุณากรอกอีเมลที่ใช้ลงทะเบียน');
-      return;
-    }
     if (cleanOtp.length !== 6) {
       Alert.alert('ข้อผิดพลาด', 'กรุณากรอกรหัส OTP 6 หลักให้ครบ');
       return;
@@ -31,21 +60,65 @@ export default function VerifyOtpScreen() {
 
     try {
       setLoading(true);
-      const res = await api.post('/api/v1/auth/verify-otp', {
-        email: cleanEmail,
+      const path = isRegister
+        ? '/api/v1/auth/register/verify-otp'
+        : '/api/v1/auth/reset-password/verify-otp';
+      const res = await api.post(path, {
+        [tokenKey]: flow[tokenKey],
         otp: cleanOtp,
       });
-      await setToken(res.token);
-      if (res.user) {
-        await AsyncStorage.setItem('user', JSON.stringify(res.user));
+
+      if (isRegister) {
+        await setToken(res.token);
+        if (res.user) {
+          await AsyncStorage.setItem('user', JSON.stringify(res.user));
+        }
+        clearFlow();
+        Alert.alert('สมัครสมาชิกสำเร็จ', 'เข้าสู่ระบบเรียบร้อยแล้ว');
+        router.replace('/(main)/dashboard');
+      } else {
+        setFlow({
+          reset_verified_token: res.reset_verified_token,
+          expires_in: res.expires_in,
+          email,
+        });
+        router.replace('/reset-password');
       }
-      Alert.alert('ยืนยันตัวตนสำเร็จ', 'เข้าสู่ระบบเรียบร้อยแล้ว');
-      router.replace('/(main)/dashboard');
     } catch (err) {
       console.error('Verify OTP error:', err);
-      Alert.alert('ยืนยันไม่สำเร็จ', err.body?.error || err.message || 'กรุณาลองใหม่อีกครั้ง');
+      const attempts = err.body?.attempts_remaining;
+      const message = err.body?.error || err.message || 'กรุณาลองใหม่อีกครั้ง';
+      Alert.alert(
+        'ยืนยันไม่สำเร็จ',
+        typeof attempts === 'number' ? `${message} (เหลืออีก ${attempts} ครั้ง)` : message
+      );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!isRegister) return;
+    try {
+      setResending(true);
+      const res = await api.post('/api/v1/auth/register/resend-otp', {
+        registration_token: flow.registration_token,
+      });
+      setFlow({
+        registration_token: res.registration_token,
+        expires_in: res.expires_in,
+        email,
+      });
+      Alert.alert('ส่งรหัส OTP ใหม่แล้ว', 'กรุณาเช็คอีเมลของคุณ');
+    } catch (err) {
+      const body = err.body || {};
+      const wait = body.retry_after;
+      Alert.alert(
+        'ยังส่งใหม่ไม่ได้',
+        wait ? `${body.error || 'ต้องรอ'} (${wait} วินาที)` : body.error || err.message || 'กรุณาลองใหม่อีกครั้ง'
+      );
+    } finally {
+      setResending(false);
     }
   };
 
@@ -59,22 +132,17 @@ export default function VerifyOtpScreen() {
           <View style={styles.iconContainer}>
             <Ionicons name="shield-checkmark-outline" size={64} color="#5f3dc4" />
           </View>
-          <Text style={styles.appName}>ยืนยันตัวตน</Text>
+          <Text style={styles.appName}>{isRegister ? 'ยืนยันตัวตน' : 'ยืนยันรหัส OTP'}</Text>
           <Text style={styles.subtitle}>กรอกรหัส OTP 6 หลักจากอีเมล</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.labelTitle}>อีเมล</Text>
-          <TextInput
-            style={styles.emailInput}
-            placeholder="อีเมลที่ใช้ลงทะเบียน"
-            placeholderTextColor="#a0a0a0"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            editable={!passedEmail}
-          />
+          <View style={styles.emailBox}>
+            <Ionicons name="mail-outline" size={20} color="#6c5ce7" style={{ marginRight: 8 }} />
+            <Text style={styles.emailText}>{email || '-'}</Text>
+          </View>
+
           <Text style={styles.labelTitle}>รหัส OTP</Text>
           <TextInput
             style={styles.otpInput}
@@ -97,13 +165,29 @@ export default function VerifyOtpScreen() {
             {loading ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.verifyButtonText}>ยืนยันและเข้าสู่ระบบ</Text>
+              <Text style={styles.verifyButtonText}>
+                {isRegister ? 'ยืนยันและเข้าสู่ระบบ' : 'ยืนยันตัวตน'}
+              </Text>
             )}
           </TouchableOpacity>
 
+          {isRegister && (
+            <TouchableOpacity
+              style={styles.resendButton}
+              onPress={handleResend}
+              disabled={resending}
+            >
+              {resending ? (
+                <ActivityIndicator color="#5f3dc4" />
+              ) : (
+                <Text style={styles.resendText}>ไม่ได้รับรหัส? ส่งรหัสใหม่</Text>
+              )}
+            </TouchableOpacity>
+          )}
+
           <View style={styles.backRow}>
-            <TouchableOpacity onPress={() => router.replace('/login')}>
-              <Text style={styles.backLink}>กลับไปหน้าเข้าสู่ระบบ</Text>
+            <TouchableOpacity onPress={() => router.replace(isRegister ? '/register' : '/forgot-password')}>
+              <Text style={styles.backLink}>ย้อนกลับ</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -129,11 +213,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06, shadowRadius: 12, elevation: 3,
   },
   labelTitle: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8, marginTop: 4 },
-  emailInput: {
+  emailBox: {
+    flexDirection: 'row', alignItems: 'center',
     borderWidth: 1.5, borderColor: '#e2d9f3', borderRadius: 12,
-    backgroundColor: '#f3f0ff', color: '#1f2937', paddingVertical: 12,
-    paddingHorizontal: 14, fontSize: 16, marginBottom: 12,
+    backgroundColor: '#f3f0ff', paddingVertical: 12, paddingHorizontal: 14, marginBottom: 12,
   },
+  emailText: { fontSize: 16, color: '#1f2937' },
   otpInput: {
     borderWidth: 1.5, borderColor: '#e2d9f3', borderRadius: 12,
     backgroundColor: '#f3f0ff', fontSize: 28, fontWeight: '700',
@@ -147,6 +232,8 @@ const styles = StyleSheet.create({
     elevation: 4, shadowColor: '#5f3dc4', shadowOpacity: 0.3, shadowRadius: 8,
   },
   verifyButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  backRow: { alignItems: 'center', marginTop: 16 },
-  backLink: { color: '#5f3dc4', fontSize: 14, fontWeight: '600' },
+  resendButton: { alignItems: 'center', marginTop: 16, paddingVertical: 8 },
+  resendText: { color: '#5f3dc4', fontSize: 14, fontWeight: '600' },
+  backRow: { alignItems: 'center', marginTop: 8 },
+  backLink: { color: '#9ca3af', fontSize: 14, fontWeight: '600' },
 });

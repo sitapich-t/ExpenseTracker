@@ -5,7 +5,7 @@
 # ============================================================
 
 @baseUrl = http://localhost:3000/api/v1
-# วาง JWT token จาก response ของข้อ 2 (Login) หรือข้อ 3 (Verify OTP) ลงในตัวแปรนี้
+# วาง JWT token จาก response ของข้อ 2 (ยืนยัน OTP) หรือข้อ 4 (Login) ลงในตัวแปรนี้
 @authToken = <วาง-JWT-token-ที่นี่>
 # วาง group id จาก response ของข้อ 10 (Create Group) ลงในตัวแปรนี้
 @groupId = <วาง-group-id-ที่นี่>
@@ -14,11 +14,13 @@
 # AUTH DOMAIN
 ############################################################
 
-### 1. ลงทะเบียนผู้ใช้ใหม่
-# ส่ง OTP ไปที่อีเมล (หมดอายุ 10 นาที) — ยังเข้าสู่ระบบไม่ได้จนกว่าจะยืนยัน OTP
-# คาดหวัง: 201 Created
-# { "success": true, "message": "สมัครสมาชิกสำเร็จ กรุณาเช็คอีเมลเพื่อนำรหัส OTP มายืนยัน", "email": "..." }
-POST {{baseUrl}}/auth/register
+### 1. สมัครสมาชิก — ขอ OTP (ส่งอีเมล)
+# ได้ registration_token (อายุ 10 นาที) เก็บไว้ใน app memory เท่านั้น — ไม่มี row ใน DB
+# OTP 6 หลัก ถูกส่งทางอีเมล (ถ้าส่งไม่สำเร็จจะ log fallback ลง console ของ server)
+# คาดหวัง: 200 OK
+# { "success": true, "message": "ส่งรหัส OTP ไปทางอีเมลแล้ว", "registration_token": "...", "expires_in": 600 }
+# error: 400 (รูปแบบผิด) / 409 (อีเมลซ้ำ) / 429 (cooldown 60 วิ หรือ เกิน 5 ครั้ง/วัน)
+POST {{baseUrl}}/auth/register/request-otp
 Content-Type: application/json
 
 {
@@ -27,7 +29,29 @@ Content-Type: application/json
   "password": "password123"
 }
 
-### 2. เข้าสู่ระบบ
+### 2. ยืนยันรหัส OTP (สมัครสมาชิก)
+# OTP = ตัวเลข 6 หลัก จากอีเมล — ผิดครบ 5 ครั้ง → token ถูกบล็อก (429)
+# คาดหวัง: 200 OK
+# { "success": true, "message": "สมัครสมาชิกสำเร็จ", "token": "...", "user": { "id", "name", "email" } }
+POST {{baseUrl}}/auth/register/verify-otp
+Content-Type: application/json
+
+{
+  "registration_token": "<วาง-registration_token จากข้อ 1>",
+  "otp": "123456"
+}
+
+### 3. ขอ OTP ใหม่ (resend — สมัครสมาชิก)
+# ต้องเว้น 60 วินาทีจากครั้งก่อน (429 + retry_after ถ้าเร็วเกินไป)
+# คาดหวัง: 200 OK { "success": true, "registration_token": "<token ใหม่>", "expires_in": 600 }
+POST {{baseUrl}}/auth/register/resend-otp
+Content-Type: application/json
+
+{
+  "registration_token": "<วาง-registration_token จากข้อ 1>"
+}
+
+### 4. เข้าสู่ระบบ
 # ต้องยืนยัน OTP เรียบร้อยแล้ว (is_verified = true) ถึงจะสำเร็จ
 # คาดหวัง: 200 OK
 # { "success": true, "message": "เข้าสู่ระบบสำเร็จ", "token": "...", "user": { "id", "email", "name" } }
@@ -39,24 +63,55 @@ Content-Type: application/json
   "password": "password123"
 }
 
-### 3. ยืนยันรหัส OTP
-# ใช้ OTP จากอีเมลที่ได้ตอนสมัคร — หลังยืนยันสำเร็จจะได้รับ token กลับมา
-# คาดหวัง: 200 OK
-# { "success": true, "message": "ยืนยันตัวตนสำเร็จ เข้าสู่ระบบเรียบร้อย", "token": "...", "user": { "id", "email", "name" } }
-POST {{baseUrl}}/auth/verify-otp
+############################################################
+# PASSWORD RESET FLOW (อีเมล) — stateless
+############################################################
+
+### 4A. ลืมรหัสผ่าน — ข้อ 1: ขอ OTP (ส่งอีเมล)
+# OTP ถูกส่งทางอีเมล (ถ้าส่งไม่สำเร็จจะ log fallback ลง console)
+# คาดหวัง: 200 OK { "success": true, "password_reset_token": "...", "expires_in": 600 }
+# error: 404 (ไม่พบอีเมล) / 403 (บัญชียังไม่ยืนยันตัวตน) / 429
+POST {{baseUrl}}/auth/reset-password/request-otp
+Content-Type: application/json
+
+{
+  "email": "test@example.com"
+}
+
+### 4B. ลืมรหัสผ่าน — ข้อ 2: ยืนยัน OTP
+# ได้ reset_verified_token (อายุ 4 นาที, ใช้ได้ 1 ครั้ง)
+# ผิดครบ 5 ครั้ง → token ถูกบล็อก (429)
+# คาดหวัง: 200 OK { "success": true, "reset_verified_token": "...", "expires_in": 240 }
+POST {{baseUrl}}/auth/reset-password/verify-otp
+Content-Type: application/json
+
+{
+  "password_reset_token": "<วาง-password_reset_token จากข้อ 4A>",
+  "otp": "123456"
+}
+
+### 4C. ลืมรหัสผ่าน — ข้อ 3: ตั้งรหัสผ่านใหม่ (จะเด้งทุกเครื่องออก)
+# สำเร็จแล้ว token เก่าทั้งหมดใช้ไม่ได้ (token_version +1) → ต้อง login ใหม่ทุกเครื่อง
+# token เดิมใช้ซ้ำไม่ได้ (401)
+# คาดหวัง: 200 OK { "success": true, "message": "เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่" }
+POST {{baseUrl}}/auth/reset-password/confirm
+Content-Type: application/json
+
+{
+  "reset_verified_token": "<วาง-reset_verified_token จากข้อ 4B>",
+  "newPassword": "newsecret456"
+}
+
+### 4D. เข้าสู่ระบบใหม่หลังรีเซ็ตรหัสผ่าน
+# ได้ token ใหม่ที่มี ver = token_version ใหม่ (token เก่าถูกเด้งออกแล้ว)
+# คาดหวัง: 200 OK { "success": true, "token": "...", "user": { ... } }
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
   "email": "test@example.com",
-  "otp": "123456"
+  "password": "newsecret456"
 }
-
-### 4. Get Profile
-# ⚠️ ยังไม่มี endpoint นี้ใน backend ตอนนี้ → จะได้ 404
-# JWT payload ปัจจุบันมีแค่ { id, email, name } — ถ้าต้องการหน้า Profile ต้องเพิ่ม route ใหม่
-# คาดหวัง (เมื่อเพิ่ม route แล้ว): 200 OK { "success": true, "user": { "id", "email", "name" } }
-GET {{baseUrl}}/auth/profile
-Authorization: Bearer {{authToken}}
 
 ############################################################
 # PERSONAL DOMAIN

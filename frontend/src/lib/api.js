@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import axios from "axios";
 
 const API_URL = global.__API_URL__ || "http://10.0.2.2:3000";
@@ -33,12 +34,47 @@ http.interceptors.response.use(
   }
 );
 
-// ตัวเก็บ Token สำรองในกรณีที่ Native Storage บนมือถือมีปัญหา
+// ตัวเก็บ Token: SecureStore (encrypted) เป็นหลัก, AsyncStorage เป็น fallback
+// (web/Expo Go บาง environment จะใช้ SecureStore ไม่ได้ → ถอยไป storage เดิม)
 let memoryToken = null;
+
+async function storageGet(key) {
+  try {
+    const v = await SecureStore.getItemAsync(key);
+    if (v) return v;
+  } catch {}
+  try {
+    return await AsyncStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+async function storageSet(key, value) {
+  try {
+    await SecureStore.setItemAsync(key, value);
+    return;
+  } catch {}
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch (err) {
+    console.log("Storage Save Fallback:", err.message);
+  }
+}
+
+async function storageRemove(key) {
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {}
+  try {
+    await AsyncStorage.removeItem(key);
+  } catch {}
+}
 
 export async function getToken() {
   try {
-    const token = await AsyncStorage.getItem("userToken");
+    const token = await storageGet("userToken");
+    if (token) memoryToken = token;
     return token || memoryToken;
   } catch {
     return memoryToken;
@@ -47,17 +83,13 @@ export async function getToken() {
 
 export async function setToken(token) {
   memoryToken = token;
-  try {
-    await AsyncStorage.setItem("userToken", token);
-  } catch (err) {
-    console.log("AsyncStorage Save Fallback:", err.message);
-  }
+  await storageSet("userToken", token);
 }
 
 export async function clearToken() {
   memoryToken = null;
+  await storageRemove("userToken");
   try {
-    await AsyncStorage.removeItem("userToken");
     await AsyncStorage.removeItem("user");
   } catch {}
 }

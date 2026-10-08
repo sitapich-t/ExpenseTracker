@@ -39,7 +39,8 @@
           "cameraPermission": "แอปต้องการขอสิทธิ์ใช้งานกล้องเพื่อถ่ายรูปสแกนใบเสร็จ/สลิป"
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
     ],
     "experiments": {
       "reactCompiler": true

@@ -8,7 +8,7 @@ Two independent subprojects; there is no root `package.json`, so run all command
 ## Commands
 Backend (`cd backend`):
 - `npm run dev` — nodemon hot-reload (default port 3000)
-- `npm test` — placeholder stub that exits 1; real tests live in `tests/` but Jest is **not** installed (add it to run them)
+- `npm test` — jest (installed); auth/security tests: `tests/{jwtUtils,memoryStore,authMiddleware,rateLimitMiddleware}.test.js`
 - Requires `backend/.env` (gitignored): `SUPABASE_URL`, `SUPABASE_KEY`, `MAILTRAP_*`; missing Supabase vars log a startup error
 - `TZ` is forced to `Asia/Bangkok` in `server.js`, so run with cwd = `backend/` or dotenv won't find `.env`
 
@@ -24,5 +24,5 @@ Frontend (`cd frontend`):
 - Group settlement math lives in `utils/` and is dependency-ordered: `allocationUtils` (`distributeSCVAT`, `allocateToMembers`) → `balanceCalculator` (net balance per person) → `debtSimplifier` (`simplifyDebts`, fixes satang residual so sums land exactly on 0). `services/billSplitService.js` composes all three and is what the group screens call.
 - `group_members` has no display-name column, so the frontend derives labels from `user_id`; group transactions do not persist per-member shares, so settlement currently splits equally across all members
 - There is no backend profile-update endpoint; `src/app/edit-profile.js` persists to AsyncStorage only
-- Registration requires email OTP (10-min expiry) before login; `JWT_SECRET` falls back to a hardcoded dev secret
-- Server enforces `TZ=Asia/Bangkok`; `.vscode/settings.json` organizes imports and sorts members on save
+- **Auth (stateless, email-only):** `POST /auth/register/{request-otp,verify-otp,resend-otp}` and `POST /auth/reset-password/{request-otp,verify-otp,confirm}` — OTP via **email** (`services/emailService.js`; dev fallback logs OTP to console). No phone/SMS anywhere. Short-lived JWTs (`registration_token` 10m, `password_reset_token` 10m, `reset_verified_token` 4m single-use) carry the bcrypt-hashed password/OTP and are held only in app memory — no pending rows in DB. Rate limiting is in-memory (`utils/memoryStore.js` + `middlewares/rateLimitMiddleware.js`): 60 s cooldown, 5/day per email, 10/day per IP, 5 failed OTP tries per token. Access tokens carry `ver` = `users.token_version`; password reset bumps it → force logout all devices (`authenticate` rejects flow tokens and tokens without `ver`, so pre-migration tokens die). **Requires migration `backend/sql/add_token_version.sql`** (without it every protected endpoint 500s). Legacy endpoints (`POST /register`, `/verify-otp`) are **deleted**; login is `email` + `password` only.
+- Registration requires email OTP (10-min expiry) before login; `JWT_SECRET` falls back to a hardcoded dev secret- Server enforces `TZ=Asia/Bangkok`; `.vscode/settings.json` organizes imports and sorts members on save

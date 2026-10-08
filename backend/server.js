@@ -39,6 +39,10 @@ app.use(
 
 const PORT = process.env.PORT || 3000;
 
+app.get('/', (req, res) => {
+  res.send('Expense Tracker API is running!');
+});
+
 // Health Check Endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', supabaseConnected: !!supabase });

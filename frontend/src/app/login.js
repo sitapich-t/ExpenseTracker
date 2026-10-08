@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from '@/lib/api';
+import { API_URL, setToken } from '@/lib/api';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -23,7 +23,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-if (!email || !password) {
+    if (!email || !password) {
       Alert.alert('ข้อผิดพลาด', 'กรุณากรอกอีเมลและรหัสผ่าน');
       return;
     }
@@ -35,22 +35,17 @@ if (!email || !password) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
-      
+
       const data = await response.json();
 
       if (response.ok) {
-        await AsyncStorage.setItem('userToken', data.token);
+        await setToken(data.token);
         if (data.user) {
-           await AsyncStorage.setItem('user', JSON.stringify(data.user));
+          await AsyncStorage.setItem('user', JSON.stringify(data.user));
         }
         router.replace('/(main)/dashboard');
-      } else if (response.status === 403) {
-        Alert.alert('ยังไม่ได้ยืนยันตัวตน', data.error || 'กรุณายืนยันรหัส OTP ก่อนเข้าสู่ระบบ', [
-          { text: 'กรอกรหัส OTP', onPress: () => router.push({ pathname: '/verify-otp', params: { email } }) },
-          { text: 'ยกเลิก', style: 'cancel' },
-        ]);
       } else {
         Alert.alert('เข้าสู่ระบบล้มเหลว', data.error || data.message || 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
       }
@@ -104,8 +99,8 @@ if (!email || !password) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity 
-          style={styles.loginButton} 
+        <TouchableOpacity
+          style={styles.loginButton}
           onPress={handleLogin}
           disabled={loading}
         >
@@ -115,6 +110,12 @@ if (!email || !password) {
             <Text style={styles.loginButtonText}>เข้าสู่ระบบ</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.otpContainer}>
+          <TouchableOpacity onPress={() => router.push('/forgot-password')}>
+            <Text style={styles.otpLink}>ลืมรหัสผ่าน?</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.registerContainer}>
           <Text style={styles.registerText}>ยังไม่มีบัญชีใช่ไหม? </Text>

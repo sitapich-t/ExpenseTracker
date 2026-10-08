@@ -12,6 +12,8 @@ export default function RootLayout() {
           <Stack.Screen name="register" />
           <Stack.Screen name="logout" />
           <Stack.Screen name="verify-otp" />
+          <Stack.Screen name="forgot-password" />
+          <Stack.Screen name="reset-password" />
           <Stack.Screen name="(main)" />
           <Stack.Screen name="add-transaction" options={{ presentation: 'modal' }} />
           <Stack.Screen name="scan-receipt" />

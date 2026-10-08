@@ -21,19 +21,91 @@ Response: `{ "status": "ok", "supabaseConnected": true }`
 
 ## Auth — `/api/v1/auth`
 
-| Method | Path                | Auth | Description                                                        |
-|--------|---------------------|------|--------------------------------------------------------------------|
-| POST   | `/register`         | –    | Create account, sends OTP email (10-min expiry)                    |
-| POST   | `/login`            | –    | Login with email/password → returns JWT                            |
-| POST   | `/verify-otp`       | –    | Confirm account with the emailed OTP                                |
+| Method | Path                             | Auth | Description                                                        |
+|--------|----------------------------------|------|--------------------------------------------------------------------|
+| POST   | `/register/request-otp`          | –    | Registration step 1 — checks email free, sends OTP **email**, returns `registration_token` (10 min) |
+| POST   | `/register/verify-otp`           | –    | Registration step 2 — verifies OTP, creates user (verified), returns JWT |
+| POST   | `/register/resend-otp`           | –    | New OTP + refreshed `registration_token` (cooldown still applies)  |
+| POST   | `/reset-password/request-otp`    | –    | Password reset step 1 — sends OTP **email**, returns `password_reset_token` (10 min) |
+| POST   | `/reset-password/verify-otp`     | –    | Password reset step 2 — verifies OTP, returns `reset_verified_token` (4 min, single-use) |
+| POST   | `/reset-password/confirm`        | –    | Password reset step 3 — sets new password, **revokes all sessions** |
+| POST   | `/login`                         | –    | Login with `email` + `password` → returns JWT                      |
 
-### POST `/api/v1/auth/register`
+> **Migration required:** run `backend/sql/add_token_version.sql` in Supabase SQL Editor first
+> (adds `users.token_version`). Without it every protected endpoint returns 500.
+
+**Flow tokens are stateless** — no pending rows in the DB. The short-lived JWT is held by the
+mobile app in memory only; killing the app mid-flow orphans nothing.
+
+### Rate limits (in-memory, per server process)
+
+| Control | Key | Limit |
+|---|---|---|
+| Cooldown between OTP sends | email | 60 s |
+| Daily OTP sends | email | 5/day |
+| Daily OTP sends | IP | 10/day |
+| Failed OTP verifications | per token (`jti`) | 5 then token blocked |
+| Failed OTP verifications | per email | 15/day |
+| `/reset-password/confirm` | IP | 10/hour |
+| All `/auth/*` requests | IP | 60/min |
+
+Exceeding a limit → `429` `{ "success": false, "error": "...", "retry_after": <sec> }` + `Retry-After` header.
+
+### POST `/api/v1/auth/register/request-otp`
 ```json
-{ "name": "สมชาย", "email": "somchai@example.com", "password": "password123" }
+{ "email": "somchai@example.com", "password": "password123", "name": "สมชาย ใจดี" }
 ```
-→ `201` `{ "success": true, "message": "...", "email": "..." }`
+→ `200` `{ "success": true, "message": "ส่งรหัส OTP ไปทางอีเมลแล้ว", "registration_token": "<JWT>", "expires_in": 600 }`
 
-> Note: Mailtrap demo-sender domains may reject sending to non-owner emails. In that case the OTP is logged to the server console (dev fallback) instead — `authController.js`.
+- `400` invalid email, name empty, password < 8
+- `409` `{ "error": "อีเมลนี้ถูกลงทะเบียนแล้ว" }`
+- `429` cooldown/daily limit (`retry_after`)
+- Password is bcrypt-hashed **before** being placed in the token; the OTP is sent via email
+  (dev fallback logs it to the server console — `services/emailService.js`).
+
+### POST `/api/v1/auth/register/verify-otp`
+```json
+{ "registration_token": "<JWT>", "otp": "123456" }
+```
+→ `200` `{ "success": true, "message": "สมัครสมาชิกสำเร็จ", "token": "<JWT 30d>", "user": { "id", "name", "email" } }`
+
+- `400` OTP not 6 digits | `401` wrong OTP (+ `attempts_remaining`) or invalid/expired token
+- `409` email taken meanwhile | `429` token blocked after 5 failed attempts
+- New user is inserted **already verified** (`is_verified: true`, `token_version: 0`).
+
+### POST `/api/v1/auth/register/resend-otp`
+```json
+{ "registration_token": "<JWT>" }
+```
+→ `200` `{ "success": true, "message": "ส่งรหัส OTP ใหม่แล้ว", "registration_token": "<new JWT>", "expires_in": 600 }`
+
+Token is signature-verified (never bare-decoded); cooldown + daily limits apply.
+
+### POST `/api/v1/auth/reset-password/request-otp`
+```json
+{ "email": "somchai@example.com" }
+```
+→ `200` `{ "success": true, "message": "ส่งรหัส OTP ไปทางอีเมลแล้ว", "password_reset_token": "<JWT>", "expires_in": 600 }`
+
+- `404` email not found | `403` account not yet verified | `429` cooldown/daily limit
+
+### POST `/api/v1/auth/reset-password/verify-otp`
+```json
+{ "password_reset_token": "<JWT>", "otp": "123456" }
+```
+→ `200` `{ "success": true, "message": "ยืนยันตัวตนสำเร็จ", "reset_verified_token": "<JWT>", "expires_in": 240 }`
+
+- `401` wrong OTP (+ `attempts_remaining`) / expired | `429` blocked after 5 failed attempts
+
+### POST `/api/v1/auth/reset-password/confirm`
+```json
+{ "reset_verified_token": "<JWT>", "newPassword": "newsecret456" }
+```
+→ `200` `{ "success": true, "message": "เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่" }`
+
+- `400` password < 8 | `401` invalid/expired/already-used token | `404` user gone | `429` IP limit
+- Increments `users.token_version` → **every outstanding access token is rejected**
+  (force logout on all devices).
 
 ### POST `/api/v1/auth/login`
 ```json
@@ -41,10 +113,12 @@ Response: `{ "status": "ok", "supabaseConnected": true }`
 ```
 → `{ "success": true, "token": "<JWT>", "user": {...} }`
 
-### POST `/api/v1/auth/verify-otp`
-```json
-{ "email": "somchai@example.com", "otp": "123456" }
-```
+### Access-token rules (`authenticate` middleware)
+- `type` claim must be `access` (flow tokens are rejected as login tokens)
+- `ver` claim is required and must equal `users.token_version`
+- ⚠️ Tokens issued before this deploy have no `ver` → **all users re-login once** after deploy
+
+> Note: Mailtrap demo-sender domains may reject sending to non-owner emails. In that case the OTP is logged to the server console (dev fallback) instead — `services/emailService.js`.
 
 ---
 
@@ -256,22 +330,41 @@ SC/VAT คิดเป็น **สตางค์จริง** (ไม่มี
 
 ## Test cases (manual)
 
-Preconditions: run `backend/sql/create_group_tables.sql` in Supabase first; server up via `cd backend && npm run dev`.
+Preconditions: run `backend/sql/create_group_tables.sql` and `backend/sql/add_token_version.sql` in Supabase first; server up via `cd backend && npm run dev`.
 
 ### Setup
-- [ ] Register a user (A) and verify OTP → get JWT token A.
-- [ ] Register a second user (B), verify OTP → record its `user.id` (needed for member tests).
+- [ ] Register a user (A) via the stateless flow below → get JWT token A.
+- [ ] Register a second user (B) the same way → record its `user.id` (needed for member tests).
 - [ ] Put token A in `@authToken` of `backend/api-tests.http`.
 
 ### Auth
 | # | Case | Expected |
 |---|------|----------|
-| 1 | `POST /auth/register` with `{name,email,password}` | `201` success; OTP sent (or logged to console fallback) |
-| 2 | `POST /auth/verify-otp` with correct OTP | `200`, returns token |
+| 1 | `POST /auth/register/request-otp` with `{name,email,password}` | `200` + `registration_token`; OTP emailed (console fallback) |
+| 2 | `POST /auth/register/verify-otp` with correct OTP | `200`, returns token |
 | 3 | `POST /auth/login` with correct credentials | `200`, returns token |
 | 4 | `POST /auth/login` wrong password | `400` "อีเมลหรือรหัสผ่านไม่ถูกต้อง" |
-| 5 | `POST /auth/register` existing email | `400` (email already used) |
-| 6 | `POST /auth/verify-otp` wrong/expired OTP | `400` error |
+| 5 | `POST /auth/register/request-otp` existing email | `409` (email already used) |
+| 6 | `POST /auth/register/verify-otp` wrong/expired OTP | `401`/`400` error |
+
+### Registration + password reset (stateless flow, OTP ทางอีเมล)
+| # | Case | Expected |
+|---|------|----------|
+| A1 | `POST /auth/register/request-otp` valid `{email,password,name}` | `200` + `registration_token`; OTP emailed (console fallback) |
+| A2 | same request twice within 60 s | `429` + `retry_after` |
+| A3 | `request-otp` with existing email | `409` "อีเมลนี้ถูกลงทะเบียนแล้ว" |
+| A4 | `request-otp` with malformed email / short password | `400` |
+| A5 | `POST /auth/register/verify-otp` correct OTP | `200`, creates user (already verified), returns JWT with `ver:0` |
+| A6 | `verify-otp` wrong OTP ×5 | `401` with `attempts_remaining` 4→0, then `429` (token blocked) |
+| A7 | `POST /auth/register/resend-otp` with valid token | `200` new `registration_token` (respects 60 s cooldown) |
+| A8 | any flow endpoint with tampered/expired/forged token | `401` |
+| A9 | `POST /auth/reset-password/request-otp` unknown email | `404` |
+| A10 | `request-otp` known email | `200` + `password_reset_token`; OTP emailed (console fallback) |
+| A11 | `POST /auth/reset-password/verify-otp` correct OTP | `200` + `reset_verified_token` (4 min) |
+| A12 | `POST /auth/reset-password/confirm` weak password | `400` |
+| A13 | `confirm` valid | `200`; old access token now `401` on any protected route (force logout); `confirm` reuse of same token → `401` |
+| A14 | `POST /auth/login` with `{email, password}` of the reset account | `200` returns token with new `ver` |
+| A15 | protected route with a flow token (e.g. `registration_token`) as Bearer | `401` |
 
 ### Personal — budgets
 | # | Case | Expected |
