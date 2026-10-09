@@ -8,7 +8,10 @@ const LIMITS = {
   verifyPerToken: 5,
   verifyPerEmailDay: 15,
   confirmPerIpHour: 10,
-  authPerIpMin: 60
+  authPerIpMin: 60,
+  // --- เพิ่มลิมิตสำหรับการล็อกอิน ---
+  loginMaxAttempts: 3,         // ใส่รหัสผ่านผิดได้สูงสุด 3 ครั้ง
+  loginLockoutSec: 15 * 60     // ติด Cooldown 15 นาที (900 วินาที)
 };
 
 function retryAfter(res, seconds, error) {
@@ -31,6 +34,10 @@ function secondsUntilMidnight() {
   return Math.ceil(store.msUntilMidnight() / 1000);
 }
 
+/* ==========================================================================
+   IP-based Limiters
+   ========================================================================== */
+
 function authIpLimiter(req, res, next) {
   const ip = clientIp(req);
   const n = store.incr(`authip:${ip}`, 60 * 1000);
@@ -48,6 +55,76 @@ function confirmIpLimiter(req, res, next) {
   }
   return next();
 }
+
+/* ==========================================================================
+   Login Rate Limiting (ล็อกอินผิดเกินกำหนด)
+   ========================================================================== */
+
+/**
+ * Middleware เช็กก่อนเข้า controller ล็อกอิน
+ * ถ้าติด Cooldown จะบล็อกทันที
+ */
+function loginAttemptLimiter(req, res, next) {
+  const email = emailKey(req.body && req.body.email);
+  if (!email) return next();
+
+  const lockLeft = store.ttlLeft(`login:lock:${email}`);
+  if (lockLeft > 0) {
+    const minutes = Math.ceil(lockLeft / 60);
+    return retryAfter(
+      res,
+      lockLeft,
+      `พยายามเข้าสู่ระบบผิดเกินกำหนด กรุณารอ ${minutes} นาที แล้วลองใหม่อีกครั้ง`
+    );
+  }
+  return next();
+}
+
+/**
+ * เรียกเมื่อผู้ใช้ระบุรหัสผ่านผิด
+ * @returns {number} จำนวนครั้งที่เหลือที่ลองได้
+ */
+function recordFailedLogin(email) {
+  const key = emailKey(email);
+  if (!key) return LIMITS.loginMaxAttempts;
+
+  const ttl = LIMITS.loginLockoutSec * 1000;
+  const n = store.incr(`login:att:${key}`, ttl);
+
+  if (n >= LIMITS.loginMaxAttempts) {
+    // ล็อกบัญชีชั่วคราวเป็นเวลา 15 นาที
+    store.set(`login:lock:${key}`, 1, ttl);
+    // ล้างนับครั้ง เพื่อเริ่มนับใหม่หลังหมด Cooldown
+    store.del(`login:att:${key}`);
+  }
+
+  return Math.max(LIMITS.loginMaxAttempts - n, 0);
+}
+
+/**
+ * คืนค่าจำนวนครั้งการล็อกอินที่เหลือ
+ */
+function loginAttemptsLeft(email) {
+  const key = emailKey(email);
+  if (!key) return LIMITS.loginMaxAttempts;
+  const n = store.get(`login:att:${key}`);
+  return Math.max(LIMITS.loginMaxAttempts - (typeof n === 'number' ? n : 0), 0);
+}
+
+/**
+ * ล้างประวัติเมื่อล็อกอินสำเร็จ
+ */
+function clearLoginAttempts(email) {
+  const key = emailKey(email);
+  if (key) {
+    store.del(`login:att:${key}`);
+    store.del(`login:lock:${key}`);
+  }
+}
+
+/* ==========================================================================
+   OTP Request & Verify Limiters
+   ========================================================================== */
 
 function otpRequestLimiter(purpose, options = {}) {
   const fromToken = !!options.fromToken;
@@ -113,6 +190,10 @@ function clearVerifyAttempts(t) {
   if (t && t.jti) store.del(`att:${t.jti}`);
 }
 
+/* ==========================================================================
+   Token Loaders
+   ========================================================================== */
+
 function loadFlowToken(expectedType) {
   return (req, res, next) => {
     const body = req.body || {};
@@ -139,6 +220,12 @@ module.exports = {
   LIMITS,
   authIpLimiter,
   confirmIpLimiter,
+  // --- Export Login Limiter ---
+  loginAttemptLimiter,
+  recordFailedLogin,
+  loginAttemptsLeft,
+  clearLoginAttempts,
+  // --- Export OTP Limiters ---
   otpRequestLimiter,
   otpVerifyLimiter,
   loadFlowToken,

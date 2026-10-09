@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const { findUserByEmail } = require('../services/userService');
 const { signAccessToken } = require('../utils/jwt');
+const { recordFailedLogin, clearLoginAttempts } = require('../middlewares/limiter');
 
 function generateToken(user) {
   return signAccessToken({
@@ -23,13 +24,17 @@ exports.login = async (req, res) => {
     }
 
     const user = await findUserByEmail(cleanEmail);
+
+    // กรณีไม่พบ User หรือ รหัสผ่านไม่ถูกต้อง
     if (!user) {
-      return res.status(400).json({ success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+      const attemptsLeft = recordFailedLogin(cleanEmail);
+      return sendLoginError(res, attemptsLeft);
     }
 
     const ok = await bcrypt.compare(cleanPassword, user.password_hash);
     if (!ok) {
-      return res.status(400).json({ success: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+      const attemptsLeft = recordFailedLogin(cleanEmail);
+      return sendLoginError(res, attemptsLeft);
     }
 
     if (!user.is_verified) {
@@ -38,6 +43,9 @@ exports.login = async (req, res) => {
         error: 'บัญชีนี้ยังไม่ได้ยืนยันตัวตน กรุณาติดต่อผู้ดูแลระบบ'
       });
     }
+
+    // ล็อกอินสำเร็จ -> ล้างประวัติการใส่รหัสผ่านผิด
+    clearLoginAttempts(cleanEmail);
 
     const token = generateToken(user);
     return res.json({
@@ -51,3 +59,18 @@ exports.login = async (req, res) => {
     return res.status(500).json({ success: false, error: `Server Error: ${err.message}` });
   }
 };
+
+// Helper response สำหรับจัดการข้อความแจ้งเตือนจำนวนครั้งที่เหลือ
+function sendLoginError(res, attemptsLeft) {
+  if (attemptsLeft === 0) {
+    return res.status(429).json({
+      success: false,
+      error: 'พยายามเข้าสู่ระบบผิดเกินกำหนด กรุณารอ 15 นาที แล้วลองใหม่อีกครั้ง'
+    });
+  }
+
+  return res.status(400).json({
+    success: false,
+    error: `อีเมลหรือรหัสผ่านไม่ถูกต้อง (เหลือโอกาสลองอีก ${attemptsLeft} ครั้ง)`
+  });
+}
