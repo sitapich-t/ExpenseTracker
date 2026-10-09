@@ -1,7 +1,7 @@
 const bcrypt = require('bcrypt');
 const { findUserByEmail } = require('../services/userService');
 const { signAccessToken } = require('../utils/jwt');
-const { recordFailedLogin, clearLoginAttempts } = require('../middlewares/limiter');
+const { recordFailedLogin, clearLoginAttempts } = require('../middlewares/rateLimitMiddleware');
 
 function generateToken(user) {
   return signAccessToken({
