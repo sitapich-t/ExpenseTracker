@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } fr
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { API_URL } from '@/lib/api';
 import { setScannedImage } from '@/utils/scannedImageStore';
@@ -12,11 +12,15 @@ export default function ScanReceiptScreen() {
   const router = useRouter();
   const cameraRef = useRef(null);
   const params = useLocalSearchParams();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [loading, setLoading] = useState(false);
+  const [flash, setFlash] = useState(false);
+
   const returnTo = params.returnTo ? String(params.returnTo) : null;
   const groupId = params.groupId ? String(params.groupId) : null;
 
   useEffect(() => {
-    if (!permission) requestPermission();
+    if (!permission?.granted) requestPermission();
   }, [permission, requestPermission]);
 
   const handlePickImage = async () => {
@@ -42,9 +46,7 @@ export default function ScanReceiptScreen() {
       }
     } catch {
       Alert.alert('ข้อผิดพลาด', 'ไม่สามารถถ่ายภาพได้ กรุณาลองใหม่อีกครั้ง');
-        } finally {
-      setLoading(false);
-    }}
+    }
   };
 
   const processOCR = async (imageUri) => {
@@ -82,14 +84,14 @@ export default function ScanReceiptScreen() {
         throw new Error('เซิร์ฟเวอร์ตอบกลับข้อมูลที่ไม่ถูกต้อง');
       }
 
-      // เก็บรูปเป็น base64 data URI ไว้ใน memory (ไม่ใช้ file/content URI ที่โดน
-      // bug ของ Expo Go) แล้วให้หน้า confirm-receipt ดึงมาใช้ตรงๆ ผ่าน getScannedImage()
+      // เก็บรูปเป็น base64 data URI ไว้ใน memory
       setScannedImage(`data:image/jpeg;base64,${base64Image}`);
 
-            const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
+      const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
       const returnToRoute = params.returnTo ? String(params.returnTo) : null;
       const groupIdRoute = params.groupId ? String(params.groupId) : null;
 
+      // กรณีมาจากหน้า Add Group Expense
       if (returnToRoute === 'add-group-expense' && groupIdRoute) {
         router.push({
           pathname: '/add-group-expense',
@@ -108,40 +110,21 @@ export default function ScanReceiptScreen() {
         return;
       }
 
-        router.push({
-          pathname: '/add-group-expense',
-          params: {
-            groupId,
-            ocr_amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
-            ocr_merchant: data.merchant || '',
-            ocr_netAmount: String(data.netTotal ?? data.total ?? ''),
-            ocr_vat: String(data.vat ?? '0'),
-            ocr_serviceCharge: String(data.serviceCharge ?? '0'),
-            ocr_items: JSON.stringify(data.items || []),
-            ocr_date: data.date || '',
-            ocr_parsed: data.parsedText || '',
-          },
-        });
-        return;
-      }
+      // กรณีสแกนทั่วไป ไปยังหน้า Confirm Receipt
+      router.push({
         pathname: '/confirm-receipt',
         params: {
           merchant: data.merchant || '',
-
-          // 1. ปรับการเช็กยอดสุทธิ: ลองหา netTotal / totalAmount ก่อน ถ้าไม่มีค่อยใช้ data.total
           amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
           vat: String(data.vat ?? '0'),
           serviceCharge: String(data.serviceCharge ?? '0'),
-
           date: data.date || '',
           parsedText: data.parsedText || '',
           categoryId: data.categoryId != null ? String(data.categoryId) : '',
           documentType: isSlip ? 'transfer_slip' : 'receipt',
           bankName: data.bankName || '',
           transactionId: data.transactionId || '',
-
-          // 2. ✨ เพิ่มการส่ง lineItems (แปลง Array เป็น JSON String)
-          lineItems: JSON.stringify(data.items || []),        
+          lineItems: JSON.stringify(data.items || []),
         },
       });
     } catch (error) {
@@ -221,7 +204,7 @@ const styles = StyleSheet.create({
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center',
     zIndex: 999,
   },
