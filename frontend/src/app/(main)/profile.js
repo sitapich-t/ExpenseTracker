@@ -134,7 +134,7 @@ export default function ProfileScreen() {
 
                     <View style={styles.settingsGroupCard}>
                         {/* Notifications */}
-                        <TouchableOpacity
+                        {/* <TouchableOpacity
                             style={styles.settingsRow}
                             onPress={() =>
                                 Alert.alert(
@@ -153,10 +153,10 @@ export default function ProfileScreen() {
                             <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
                         </TouchableOpacity>
 
-                        <View style={styles.rowDivider} />
+                        <View style={styles.rowDivider} /> */}
 
                         {/* Dark Mode */}
-                        <View style={styles.settingsRow}>
+                        {/* <View style={styles.settingsRow}>
                             <View style={styles.prefIconBox}>
                                 <Ionicons name="moon-outline" size={20} color="#334155" />
                             </View>
@@ -171,7 +171,7 @@ export default function ProfileScreen() {
                             />
                         </View>
 
-                        <View style={styles.rowDivider} />
+                        <View style={styles.rowDivider} /> */}
 
                         {/* Logout Option */}
                         <TouchableOpacity
