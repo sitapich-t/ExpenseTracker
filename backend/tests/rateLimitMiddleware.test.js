@@ -36,10 +36,10 @@ function mockRes() {
   return res;
 }
 
-function run(middleware, req) {
+async function run(middleware, req) {
   const res = mockRes();
   let nextCalled = false;
-  middleware(req, res, () => {
+  await middleware(req, res, () => {
     nextCalled = true;
   });
   return { res, nextCalled };
@@ -58,14 +58,14 @@ describe('otpRequestLimiter (cooldown + daily ต่อ email/IP)', () => {
 
   const reqBody = { body: { email: 'a@b.c' }, ip: '1.1.1.1' };
 
-  test('ครั้งแรกผ่านปกติ', () => {
-    const { nextCalled } = run(otpRequestLimiter('register'), reqBody);
+  test('ครั้งแรกผ่านปกติ', async () => {
+    const { nextCalled } = await run(otpRequestLimiter('register'), reqBody);
     expect(nextCalled).toBe(true);
   });
 
-  test('cooldown 60 วินาที: ขอซ้ำภายใน cooldown โดน 429 + Retry-After', () => {
-    recordOtpSent('register', { email: 'a@b.c', ip: '1.1.1.1' });
-    const { res, nextCalled } = run(otpRequestLimiter('register'), reqBody);
+  test('cooldown 60 วินาที: ขอซ้ำภายใน cooldown โดน 429 + Retry-After', async () => {
+    await recordOtpSent('register', { email: 'a@b.c', ip: '1.1.1.1' });
+    const { res, nextCalled } = await run(otpRequestLimiter('register'), reqBody);
 
     expect(nextCalled).toBe(false);
     expect(res.statusCode).toBe(429);
@@ -74,9 +74,9 @@ describe('otpRequestLimiter (cooldown + daily ต่อ email/IP)', () => {
     expect(res.body.success).toBe(false);
   });
 
-  test('cooldown คนละ IP แต่ email เดียวก็ยังโดน 429', () => {
-    recordOtpSent('register', { email: 'a@b.c', ip: '1.1.1.1' });
-    const { res, nextCalled } = run(otpRequestLimiter('register'), {
+  test('cooldown คนละ IP แต่ email เดียวก็ยังโดน 429', async () => {
+    await recordOtpSent('register', { email: 'a@b.c', ip: '1.1.1.1' });
+    const { res, nextCalled } = await run(otpRequestLimiter('register'), {
       body: { email: 'a@b.c' },
       ip: '9.9.9.9'
     });
@@ -84,18 +84,18 @@ describe('otpRequestLimiter (cooldown + daily ต่อ email/IP)', () => {
     expect(res.statusCode).toBe(429);
   });
 
-  test('daily limit ต่อ email: เกิน 5 ครั้ง/วัน โดน 429', () => {
+  test('daily limit ต่อ email: เกิน 5 ครั้ง/วัน โดน 429', async () => {
     for (let i = 0; i < LIMITS.emailDaily; i++) store.incrDay('day:register:e:a@b.c');
 
-    const { res, nextCalled } = run(otpRequestLimiter('register'), reqBody);
+    const { res, nextCalled } = await run(otpRequestLimiter('register'), reqBody);
     expect(nextCalled).toBe(false);
     expect(res.statusCode).toBe(429);
   });
 
-  test('daily limit ต่อ IP: เกิน 10 ครั้ง/วัน โดน 429 (คนละ email ก็โดน)', () => {
+  test('daily limit ต่อ IP: เกิน 10 ครั้ง/วัน โดน 429 (คนละ email ก็โดน)', async () => {
     for (let i = 0; i < LIMITS.ipDaily; i++) store.incrDay('day:register:ip:1.1.1.1');
 
-    const { res, nextCalled } = run(otpRequestLimiter('register'), {
+    const { res, nextCalled } = await run(otpRequestLimiter('register'), {
       body: { email: 'x@y.z' },
       ip: '1.1.1.1'
     });
@@ -103,9 +103,9 @@ describe('otpRequestLimiter (cooldown + daily ต่อ email/IP)', () => {
     expect(res.statusCode).toBe(429);
   });
 
-  test('fromToken: cooldown อ่าน email จาก flow token (resend)', () => {
-    recordOtpSent('register', { email: 'a@b.c', ip: '1.1.1.1' });
-    const { res, nextCalled } = run(otpRequestLimiter('register', { fromToken: true }), {
+  test('fromToken: cooldown อ่าน email จาก flow token (resend)', async () => {
+    await recordOtpSent('register', { email: 'a@b.c', ip: '1.1.1.1' });
+    const { res, nextCalled } = await run(otpRequestLimiter('register', { fromToken: true }), {
       body: { registration_token: makeRegisterToken('a@b.c') },
       flowToken: { email: 'a@b.c' },
       ip: '1.1.1.1'
@@ -120,40 +120,40 @@ describe('brute-force protection (verify)', () => {
 
   const t = { jti: 'jti-1', email: 'a@b.c' };
 
-  test('ล้มเหลว 5 ครั้ง → token ถูกบล็อกและ attempts หมด', () => {
+  test('ล้มเหลว 5 ครั้ง → token ถูกบล็อกและ attempts หมด', async () => {
     const results = [];
     for (let i = 0; i < LIMITS.verifyPerToken; i++) {
-      results.push(recordFailedVerify('register', t));
+      results.push(await recordFailedVerify('register', t));
     }
     expect(results).toEqual([4, 3, 2, 1, 0]);
-    expect(attemptsLeft(t)).toBe(0);
+    expect(await attemptsLeft(t)).toBe(0);
 
-    const { res, nextCalled } = run(otpVerifyLimiter('register'), { flowToken: t });
+    const { res, nextCalled } = await run(otpVerifyLimiter('register'), { flowToken: t });
     expect(nextCalled).toBe(false);
     expect(res.statusCode).toBe(429);
   });
 
-  test('ยังไม่ครบจำนวนครั้ง → ผ่านและบอกจำนวนครั้งที่เหลือ', () => {
-    recordFailedVerify('register', t);
-    expect(attemptsLeft(t)).toBe(LIMITS.verifyPerToken - 1);
+  test('ยังไม่ครบจำนวนครั้ง → ผ่านและบอกจำนวนครั้งที่เหลือ', async () => {
+    await recordFailedVerify('register', t);
+    expect(await attemptsLeft(t)).toBe(LIMITS.verifyPerToken - 1);
 
-    const { nextCalled } = run(otpVerifyLimiter('register'), { flowToken: t });
+    const { nextCalled } = await run(otpVerifyLimiter('register'), { flowToken: t });
     expect(nextCalled).toBe(true);
   });
 
-  test('verify สำเร็จ → clearVerifyAttempts รีเซ็ตตัวนับของ token', () => {
-    recordFailedVerify('register', t);
-    recordFailedVerify('register', t);
-    clearVerifyAttempts(t);
-    expect(attemptsLeft(t)).toBe(LIMITS.verifyPerToken);
+  test('verify สำเร็จ → clearVerifyAttempts รีเซ็ตตัวนับของ token', async () => {
+    await recordFailedVerify('register', t);
+    await recordFailedVerify('register', t);
+    await clearVerifyAttempts(t);
+    expect(await attemptsLeft(t)).toBe(LIMITS.verifyPerToken);
   });
 
-  test('daily verify limit ต่อ email: เกิน 15 ครั้ง/วัน → 429 แม้ token ใหม่', () => {
+  test('daily verify limit ต่อ email: เกิน 15 ครั้ง/วัน → 429 แม้ token ใหม่', async () => {
     for (let i = 0; i < LIMITS.verifyPerEmailDay; i++) {
       store.incrDay('vday:register:e:a@b.c');
     }
     const fresh = { jti: 'jti-2', email: 'a@b.c' };
-    const { res, nextCalled } = run(otpVerifyLimiter('register'), { flowToken: fresh });
+    const { res, nextCalled } = await run(otpVerifyLimiter('register'), { flowToken: fresh });
     expect(nextCalled).toBe(false);
     expect(res.statusCode).toBe(429);
   });
@@ -162,31 +162,31 @@ describe('brute-force protection (verify)', () => {
 describe('loadFlowToken (verify JWT ก่อนเสมอ ห้าม decode เปล่า ๆ)', () => {
   beforeEach(() => store.clearAll());
 
-  test('token ถูกต้อง → req.flowToken ถูกตั้งค่าและ next ถูกเรียก', () => {
+  test('token ถูกต้อง → req.flowToken ถูกตั้งค่าและ next ถูกเรียก', async () => {
     const req = { body: { registration_token: makeRegisterToken() } };
-    const { res, nextCalled } = run(loadFlowToken('register_otp'), req);
+    const { res, nextCalled } = await run(loadFlowToken('register_otp'), req);
 
     expect(nextCalled).toBe(true);
     expect(req.flowToken.email).toBe('a@b.c');
     expect(res.statusCode).toBe(200);
   });
 
-  test('ไม่มี token → 400', () => {
-    const { res, nextCalled } = run(loadFlowToken('register_otp'), { body: {} });
+  test('ไม่มี token → 400', async () => {
+    const { res, nextCalled } = await run(loadFlowToken('register_otp'), { body: {} });
     expect(nextCalled).toBe(false);
     expect(res.statusCode).toBe(400);
   });
 
-  test('token ผิด type → 401', () => {
+  test('token ผิด type → 401', async () => {
     const token = signFlowToken('reset_otp', { userId: 'u1' }, TTL.reset_otp);
-    const { res, nextCalled } = run(loadFlowToken('register_otp'), {
+    const { res, nextCalled } = await run(loadFlowToken('register_otp'), {
       body: { registration_token: token }
     });
     expect(nextCalled).toBe(false);
     expect(res.statusCode).toBe(401);
   });
 
-  test('token หมดอายุ → 401 พร้อมข้อความขอ OTP ใหม่', () => {
+  test('token หมดอายุ → 401 พร้อมข้อความขอ OTP ใหม่', async () => {
     const jwt = require('jsonwebtoken');
     const { JWT_SECRET } = require('../utils/jwt');
     const expired = jwt.sign(
@@ -194,7 +194,7 @@ describe('loadFlowToken (verify JWT ก่อนเสมอ ห้าม decode
       JWT_SECRET,
       { expiresIn: -10 }
     );
-    const { res, nextCalled } = run(loadFlowToken('register_otp'), {
+    const { res, nextCalled } = await run(loadFlowToken('register_otp'), {
       body: { registration_token: expired }
     });
     expect(nextCalled).toBe(false);

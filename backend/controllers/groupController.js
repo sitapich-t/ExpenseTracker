@@ -1,10 +1,43 @@
-const supabase = require('../config/supabase');
 const { v4: uuidv4 } = require('uuid');
 const transactionService = require('../services/transactionService');
+const ocrService = require('../services/ocrService');
+const { classifyCategory } = require('../services/categoryService');
 const { distributeSCVAT } = require('../utils/allocationUtils');
 const { validateSplit } = require('../utils/splitMethod');
 const { calculateSettlement } = require('../utils/settlementCalculator');
 const { slipPathOf, removeSlip } = require('../middlewares/uploadMiddleware');
+const { groups, members, transactions } = require('../repositories/groupRepository');
+
+// อ่านข้อมูลจากรูปสลิป/ใบเสร็จด้วย OCR (รูปแบบเดียวกับ personal scan-receipt)
+// ถ้าอ่านไม่ได้ไม่ทำให้ flow ล้มเหลว — คืน null แล้วหน้าจอยังเก็บรูปสลิปได้ตามเดิม
+async function readSlipOcr(file) {
+  if (!file) return null;
+  try {
+    const result = await ocrService.scanReceipt({ file });
+    const { categoryId, confidence } = classifyCategory(
+      result.merchant || '',
+      result.parsedText || ''
+    );
+    return {
+      merchant: result.merchant || '',
+      total: result.total || 0,
+      netAmount: result.netAmount ?? result.total ?? 0,
+      vat: result.vat || 0,
+      serviceCharge: result.serviceCharge || 0,
+      date: result.date || null,
+      items: result.items || [],
+      documentType: result.documentType || 'receipt',
+      bankName: result.bankName || null,
+      transactionId: result.transactionId || null,
+      parsedText: result.parsedText || '',
+      categoryId,
+      categoryConfidence: confidence,
+    };
+  } catch (err) {
+    console.error('⚠️ OCR สลิปกลุ่มล้มเหลว:', err.message);
+    return null;
+  }
+}
 
 // ==========================================
 // Groups Controllers (feature/group-management)
@@ -19,10 +52,7 @@ exports.getMyGroups = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
 
     // 1) กลุ่มที่ฉันเป็นสมาชิก
-    const { data: memberships, error: mErr } = await supabase
-      .from('group_members')
-      .select('group_id, groups (*)')
-      .eq('user_id', userId);
+    const { data: memberships, error: mErr } = await members.listMembershipsByUser(userId);
 
     if (mErr) throw mErr;
 
@@ -34,19 +64,12 @@ exports.getMyGroups = async (req, res) => {
     const groupIds = groups.map((g) => g.id);
 
     // 2) สมาชิกทั้งหมด (เอาชื่อจริงมาด้วย)
-    const { data: memberRows, error: memErr } = await supabase
-      .from('group_members')
-      .select('group_id, user_id, users (id, name, email)')
-      .in('group_id', groupIds);
+    const { data: memberRows, error: memErr } = await members.listMembershipsByGroupIds(groupIds);
 
     if (memErr) throw memErr;
 
     // 3) บิล/ธุรกรรมของทุกกลุ่ม
-    const { data: txRows, error: txErr } = await supabase
-      .from('group_transactions')
-      .select('*')
-      .in('group_id', groupIds)
-      .order('created_at', { ascending: false });
+    const { data: txRows, error: txErr } = await transactions.listByGroupIds(groupIds);
 
     if (txErr) throw txErr;
 
@@ -115,11 +138,7 @@ const genInviteCode = (prefix = 'GR') =>
 const genUniqueInviteCode = async () => {
   for (let i = 0; i < 8; i += 1) {
     const code = genInviteCode();
-    const { data } = await supabase
-      .from('groups')
-      .select('id')
-      .eq('invite_code', code)
-      .maybeSingle();
+    const { data } = await groups.inviteCodeExists(code);
     if (!data) return code;
   }
   return `${genInviteCode()}${Date.now().toString(36).slice(-2).toUpperCase()}`;
@@ -165,12 +184,7 @@ const missingColumnOf = (err) => {
 
 // เป็นสมาชิกของกลุ่มนี้หรือไม่ — ใช้กันคนนอกกลุ่มอ่าน/เขียนบิลของกลุ่ม
 const isGroupMember = async (groupId, userId) => {
-  const { data, error } = await supabase
-    .from('group_members')
-    .select('id')
-    .eq('group_id', groupId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const { data, error } = await members.memberExists(groupId, userId);
 
   if (error) throw error;
   return Boolean(data);
@@ -179,10 +193,7 @@ const isGroupMember = async (groupId, userId) => {
 // รายชื่อสมาชิกทั้งหมดของกลุ่ม (user_id) — ใช้เป็นค่า default ตอนหารเท่ากัน
 // และใช้ตรวจว่า split_data ที่ส่งมาอ้างเฉพาะสมาชิกจริง
 const getGroupMemberIds = async (groupId) => {
-  const { data, error } = await supabase
-    .from('group_members')
-    .select('user_id')
-    .eq('group_id', groupId);
+  const { data, error } = await members.listMemberIds(groupId);
 
   if (error) throw error;
   return (data || []).map((m) => String(m.user_id));
@@ -263,7 +274,7 @@ exports.createGroup = async (req, res) => {
     let data = null;
     let error = null;
 
-    ({ data, error } = await supabase.from('groups').insert([newGroup]).select());
+    ({ data, error } = await groups.insert(newGroup));
 
     if (error && isMissingColumn(error) && newGroup.invite_code) {
       console.warn(
@@ -272,7 +283,7 @@ exports.createGroup = async (req, res) => {
       );
       markInviteCodeUnavailable();
       delete newGroup.invite_code;
-      ({ data, error } = await supabase.from('groups').insert([newGroup]).select());
+      ({ data, error } = await groups.insert(newGroup));
     }
 
     if (error) throw error;
@@ -282,14 +293,12 @@ exports.createGroup = async (req, res) => {
     const createdGroup = data[0];
 
     // ให้ผู้สร้างกลุ่มเป็นสมาชิกคนแรกด้วย (มิฉะนั้น members กับ members_count ไม่ตรงกัน)
-    const { error: memberError } = await supabase
-      .from('group_members')
-      .insert([{
-        id: uuidv4(),
-        group_id: createdGroup.id,
-        user_id: userId,
-        joined_at: new Date().toISOString(),
-      }]);
+    const { error: memberError } = await members.insertMember({
+      id: uuidv4(),
+      group_id: createdGroup.id,
+      user_id: userId,
+      joined_at: new Date().toISOString(),
+    });
 
     if (memberError) throw memberError;
 
@@ -306,33 +315,19 @@ exports.deleteGroup = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
     const { id } = req.params;
 
-    const { data: group } = await supabase
-      .from('groups')
-      .select('id')
-      .eq('id', id)
-      .eq('created_by', userId)
-      .maybeSingle();
+    const { data: group } = await groups.findOwned(id, userId);
 
     if (!group) {
       return res.status(404).json({ success: false, error: 'ไม่พบกลุ่มหรือคุณไม่มีสิทธิ์ลบกลุ่มนี้' });
     }
 
-    const { error: membersError } = await supabase
-      .from('group_members')
-      .delete()
-      .eq('group_id', id);
+    const { error: membersError } = await members.deleteMembersByGroup(id);
     if (membersError) throw membersError;
 
-    const { error: txError } = await supabase
-      .from('group_transactions')
-      .delete()
-      .eq('group_id', id);
+    const { error: txError } = await transactions.deleteByGroup(id);
     if (txError) throw txError;
 
-    const { error } = await supabase
-      .from('groups')
-      .delete()
-      .eq('id', id);
+    const { error } = await groups.deleteById(id);
     if (error) throw error;
 
     return res.json({ success: true, message: 'ลบกลุ่มสำเร็จ' });
@@ -356,11 +351,7 @@ exports.getGroupTransactions = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const { data, error } = await supabase
-      .from('group_transactions')
-      .select('*')
-      .eq('group_id', id)
-      .order('created_at', { ascending: false });
+    const { data, error } = await transactions.listByGroup(id);
 
     if (error) throw error;
     return res.json({ success: true, transactions: data || [] });
@@ -385,10 +376,7 @@ exports.getGroupSettlement = async (req, res) => {
 
     const memberIds = await getGroupMemberIds(id);
 
-    const { data, error } = await supabase
-      .from('group_transactions')
-      .select('id, title, type, subtotal, amount, sc_amount, vat_amount, paid_by, split_data, transaction_date')
-      .eq('group_id', id);
+    const { data, error } = await transactions.listForSettlement(id);
 
     if (error) throw error;
 
@@ -430,10 +418,16 @@ exports.uploadGroupSlip = async (req, res) => {
       return res.status(400).json({ success: false, error: 'กรุณาแนบไฟล์รูปสลิป (field: slip)' });
     }
 
+    // อ่านข้อมูลจากสลิปอัตโนมัติ เช่น bankName, transactionId, total (เหมือน scan-receipt)
+    const ocr = await readSlipOcr(req.file);
+
     return res.json({
       success: true,
       slip_url: slipPathOf(req.file),
-      message: 'อัปโหลดสลิปสำเร็จ',
+      ocr,
+      message: ocr
+        ? 'อัปโหลดสลิปและอ่านข้อมูลสำเร็จ'
+        : 'อัปโหลดสลิปสำเร็จ (ไม่สามารถอ่านข้อมูลอัตโนมัติได้)',
     });
   } catch (err) {
     if (req.file) removeSlip(slipPathOf(req.file));
@@ -466,6 +460,9 @@ exports.createGroupTransaction = async (req, res) => {
     // ถ้าอัปโหลดรูปมากับ request นี้ ให้ใช้รูปนั้น (ชนะ slip_url ที่ส่งมา)
     const uploadedSlip = slipPathOf(req.file);
     const finalSlipUrl = uploadedSlip || slip_url || null;
+
+    // อ่านข้อมูลจากสลิปอัตโนมัติ (ไฟล์เดียวกับที่แนบ) — ไม่บล็อกการบันทึกถ้าอ่านไม่ได้
+    const ocr = req.file ? await readSlipOcr(req.file) : null;
 
     const scRate = Math.max(0, parseFloat(sc_rate) || 0);
     const vatRate = Math.max(0, parseFloat(vat_rate) || 0);
@@ -558,11 +555,7 @@ exports.createGroupTransaction = async (req, res) => {
     let saveError = null;
 
     for (let attempt = 0; attempt <= 12; attempt += 1) {
-      const result = await supabase
-        .from('group_transactions')
-        .insert([payload])
-        .select()
-        .single();
+      const result = await transactions.insertTransaction(payload, { single: true });
 
       saved = result.data;
       saveError = result.error;
@@ -589,20 +582,10 @@ exports.createGroupTransaction = async (req, res) => {
       );
     }
 
-    // อัปเดตยอดรวมของกลุ่ม (รายรับลบ รายจ่ายบวก)
-    const { data: group } = await supabase
-      .from('groups')
-      .select('total_spend')
-      .eq('id', id)
-      .single();
-
+    // อัปเดตยอดรวมของกลุ่มแบบ atomic ผ่าน RPC (กัน race condition ตอนหลายคนเพิ่มบิลพร้อมกัน)
     const delta = newTransaction.type === 'income' ? -summary.grandTotal : summary.grandTotal;
-    const newTotalSpend = Number(group?.total_spend || 0) + delta;
 
-    const { error: groupError } = await supabase
-      .from('groups')
-      .update({ total_spend: newTotalSpend, amount: newTotalSpend })
-      .eq('id', id);
+    const { error: groupError } = await groups.updateSpend(id, delta);
 
     if (groupError) console.error('❌ Update group total_spend error:', groupError);
 
@@ -616,6 +599,7 @@ exports.createGroupTransaction = async (req, res) => {
       split_saved: !degraded,
       dropped_fields: droppedFields,
       slip_url: finalSlipUrl,
+      ocr,
       transaction: saved,
     });
   } catch (err) {
@@ -634,10 +618,7 @@ exports.getGroupMembers = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('group_members')
-      .select('*')
-      .eq('group_id', id);
+    const { data, error } = await members.listMembers(id);
 
     if (error) throw error;
     return res.json({ success: true, members: data || [] });
@@ -651,10 +632,20 @@ exports.getGroupMembers = async (req, res) => {
 exports.addGroupMember = async (req, res) => {
   try {
     const { id } = req.params;
+    const requesterId = req.user.id || req.user.user_id;
     const { user_id } = req.body || {};
 
     if (!user_id) {
       return res.status(400).json({ success: false, error: 'กรุณาระบุ user_id ของสมาชิก' });
+    }
+
+    // เฉพาะเจ้าของกลุ่มหรือสมาชิกปัจจุบันเท่านั้นที่เชิญสมาชิกใหม่ได้
+    const [owned, requesterIsMember] = await Promise.all([
+      groups.findOwned(id, requesterId),
+      isGroupMember(id, requesterId),
+    ]);
+    if (!owned && !requesterIsMember) {
+      return res.status(403).json({ success: false, error: 'เฉพาะเจ้าของกลุ่มหรือสมาชิกเท่านั้นที่เชิญสมาชิกใหม่ได้' });
     }
 
     const newMember = {
@@ -665,37 +656,21 @@ exports.addGroupMember = async (req, res) => {
     };
 
     // เช็คว่าเป็นสมาชิกอยู่แล้วหรือยัง
-    const { data: existingMember } = await supabase
-      .from('group_members')
-      .select('id')
-      .eq('group_id', id)
-      .eq('user_id', user_id)
-      .maybeSingle();
+    const { data: existingMember } = await members.memberExists(id, user_id);
 
     if (existingMember) {
       return res.status(400).json({ success: false, error: 'ผู้ใช้นี้เป็นสมาชิกกลุ่มอยู่แล้ว' });
     }
 
-    const { data, error } = await supabase
-      .from('group_members')
-      .insert([newMember])
-      .select()
-      .single();
+    const { data, error } = await members.insertMember(newMember, { select: '*', single: true });
 
     if (error) throw error;
 
     // อัปเดตจำนวนสมาชิกให้ตรงกับข้อมูลจริง
-    const { data: group } = await supabase
-      .from('groups')
-      .select('members_count')
-      .eq('id', id)
-      .single();
+    const { data: group } = await groups.findMembersCount(id);
 
     const currentCount = group?.members_count || 1;
-    const { error: countError } = await supabase
-      .from('groups')
-      .update({ members_count: currentCount + 1 })
-      .eq('id', id);
+    const { error: countError } = await groups.updateById(id, { members_count: currentCount + 1 });
 
     if (countError) throw countError;
 
@@ -721,11 +696,10 @@ exports.getGroupByInviteCode = async (req, res) => {
       });
     }
 
-    const { data: group, error } = await supabase
-      .from('groups')
-      .select('id, name, category, members_count, icon, icon_bg, icon_color, invite_code')
-      .eq('invite_code', code)
-      .maybeSingle();
+    const { data: group, error } = await groups.findByInviteCode(
+      code,
+      'id, name, category, members_count, icon, icon_bg, icon_color, invite_code'
+    );
 
     if (error) {
       if (isMissingColumn(error)) {
@@ -745,12 +719,7 @@ exports.getGroupByInviteCode = async (req, res) => {
     markInviteCodeAvailable();
 
     const userId = req.user.id || req.user.user_id;
-    const { data: already } = await supabase
-      .from('group_members')
-      .select('id')
-      .eq('group_id', group.id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: already } = await members.memberExists(group.id, userId);
 
     return res.json({
       success: true,
@@ -774,45 +743,32 @@ exports.joinGroup = async (req, res) => {
       return res.status(400).json({ success: false, error: 'กรุณาระบุ group_id' });
     }
 
-    const { data: group } = await supabase
-      .from('groups')
-      .select('id, name')
-      .eq('id', group_id)
-      .maybeSingle();
+    const { data: group } = await groups.findById(group_id, 'id, name');
 
     if (!group) {
       return res.status(404).json({ success: false, error: 'ไม่พบกลุ่มนี้' });
     }
 
-    const { data: existing } = await supabase
-      .from('group_members')
-      .select('id')
-      .eq('group_id', group_id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: existing } = await members.memberExists(group_id, userId);
 
     if (existing) {
       return res.status(400).json({ success: false, error: 'คุณเป็นสมาชิกของกลุ่มนี้อยู่แล้ว' });
     }
 
-    const { error: insErr } = await supabase.from('group_members').insert([{
+    const { error: insErr } = await members.insertMember({
       id: uuidv4(),
       group_id,
       user_id: userId,
       joined_at: new Date().toISOString(),
-    }]);
+    });
     if (insErr) throw insErr;
 
     // อัปเดตจำนวนสมาชิกให้ตรงกับข้อมูลจริง
-    const { data: members } = await supabase
-      .from('group_members')
-      .select('id')
-      .eq('group_id', group_id);
+    const { data: memberRows } = await members.listMembers(group_id, 'id');
 
-    const { error: countErr } = await supabase
-      .from('groups')
-      .update({ members_count: members?.length || 1 })
-      .eq('id', group_id);
+    const { error: countErr } = await groups.updateById(group_id, {
+      members_count: memberRows?.length || 1,
+    });
     if (countErr) throw countErr;
 
     return res.json({ success: true, message: `เข้าร่วมกลุ่ม "${group.name}" สำเร็จ`, group });
@@ -838,23 +794,13 @@ exports.updateGroupStatus = async (req, res) => {
     }
 
     // ต้องเป็นสมาชิกของกลุ่มนี้เท่านั้น
-    const { data: membership } = await supabase
-      .from('group_members')
-      .select('id')
-      .eq('group_id', id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: membership } = await members.memberExists(id, userId);
 
     if (!membership) {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const { data, error } = await supabase
-      .from('groups')
-      .update({ status_type })
-      .eq('id', id)
-      .select()
-      .single();
+    const { data, error } = await groups.updateById(id, { status_type }, { select: '*', single: true });
 
     if (error) throw error;
 

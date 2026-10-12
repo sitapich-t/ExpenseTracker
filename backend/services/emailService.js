@@ -1,15 +1,15 @@
 const nodemailer = require('nodemailer');
 
-const GMAIL_USER = process.env.GMAIL_USER || 'sitapich@gmail.com';
-const GMAIL_PASS = process.env.GMAIL_PASS || 'hdfi owka mitt rfva';
+const GMAIL_USER = process.env.GMAIL_USER;
+const GMAIL_PASS = process.env.GMAIL_PASS;
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: GMAIL_USER,
-    pass: GMAIL_PASS
-  }
-});
+const transporter =
+  GMAIL_USER && GMAIL_PASS
+    ? nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: GMAIL_USER, pass: GMAIL_PASS }
+      })
+    : null;
 
 const TITLES = {
   register: 'ยืนยันการสมัครสมาชิก',
@@ -17,6 +17,11 @@ const TITLES = {
 };
 
 async function sendOtpEmail(toEmail, otpCode, purpose = 'register') {
+  if (!transporter) {
+    console.warn('⚠️ ไม่พบ GMAIL_USER/GMAIL_PASS — ข้ามการส่งอีเมลจริง');
+    console.log(`🔑 OTP สำหรับใช้ยืนยันตัวตน (dev fallback): ${otpCode}`);
+    return { ok: true, dev: true };
+  }
   try {
     await transporter.sendMail({
       from: `"Expense Tracker" <${GMAIL_USER}>`,

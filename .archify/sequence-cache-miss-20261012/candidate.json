@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Request: Redis Cache Miss",
+    "subtitle": "Browser → API → Redis → PostgreSQL → fill cache",
+    "output": ".archify/sequence-cache-miss-20261012/cache-miss.html",
+    "viewBox": [760, 490],
+    "column_fit": "spread",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "browser", "type": "frontend", "label": "Browser", "sublabel": "frontend client" },
+    { "id": "api", "type": "backend", "label": "API", "sublabel": "request handler" },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "cache" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "source of truth" }
+  ],
+  "segments": [
+    { "from": 150, "to": 230, "label": "Cache lookup" },
+    { "from": 240, "to": 298, "label": "DB fallback" },
+    { "from": 308, "to": 350, "label": "Fill cache + respond" }
+  ],
+  "messages": [
+    { "id": "request", "from": "browser", "to": "api", "y": 160, "label": "GET /data", "variant": "emphasis" },
+    { "id": "cache-read", "from": "api", "to": "redis", "y": 190, "label": "GET data:key", "variant": "default" },
+    { "id": "cache-miss", "from": "redis", "to": "api", "y": 218, "label": "miss", "variant": "return" },
+    { "id": "db-query", "from": "api", "to": "postgres", "y": 255, "label": "SELECT data", "variant": "emphasis" },
+    { "id": "db-rows", "from": "postgres", "to": "api", "y": 283, "label": "rows", "variant": "return" },
+    { "id": "cache-set", "from": "api", "to": "redis", "y": 315, "label": "SET data:key TTL", "variant": "dashed" },
+    { "id": "response", "from": "api", "to": "browser", "y": 340, "label": "200 JSON", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "api", "from": 160, "to": 346, "type": "backend" },
+    { "participant": "redis", "from": 185, "to": 224, "type": "database" },
+    { "participant": "postgres", "from": 250, "to": 289, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Happy path",
+      "items": [
+        "Browser calls the API with GET /data",
+        "API reads Redis first — fast in-memory lookup",
+        "On a hit, Redis returns the value and PostgreSQL is never touched"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Cache miss behaviour",
+      "items": [
+        "A miss is a quiet return arrow, not an error",
+        "Only on a miss does the API query PostgreSQL (source of truth)",
+        "The DB result is written back into Redis with a TTL to serve the next request"
+      ]
+    }
+  ]
+}

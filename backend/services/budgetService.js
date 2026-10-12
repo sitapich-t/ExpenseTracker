@@ -3,7 +3,8 @@
 // และเช็คว่าข้าม threshold (WARNING/OVER) หรือยัง
 // ==========================================
 
-const supabase = require('../config/supabase');
+const budgetRepository = require('../repositories/budgetRepository');
+const transactionRepository = require('../repositories/transactionRepository');
 
 const THRESHOLDS = {
   WARNING: 0.8, // 80%
@@ -20,42 +21,14 @@ function getBudgetLevel(percentUsed) {
 // - ถ้ามี categoryId → เอาทั้งงบเฉพาะหมวดนั้น และงบรวม (category_id เป็น null)
 // - ถ้าไม่มี categoryId → กระทบแค่งบรวมเท่านั้น
 async function getRelevantBudgets({ userId, month, year, categoryId }) {
-  let query = supabase
-    .from('personal_budgets')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('month', month)
-    .eq('year', year);
-
-  if (categoryId !== null && categoryId !== undefined) {
-    query = query.or(`category_id.eq.${categoryId},category_id.is.null`);
-  } else {
-    query = query.is('category_id', null);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await budgetRepository.listRelevant({ userId, month, year, categoryId });
   if (error) throw error;
   return data || [];
 }
 
 // รวมยอด "expense" เท่านั้น ภายในเดือน/ปีของ budget นั้น
 async function sumSpentForBudget(budget) {
-  const startDate = new Date(budget.year, budget.month - 1, 1).toISOString();
-  const endDate = new Date(budget.year, budget.month, 0, 23, 59, 59).toISOString();
-
-  let query = supabase
-    .from('personal_transactions')
-    .select('amount')
-    .eq('user_id', budget.user_id)
-    .eq('type', 'expense')
-    .gte('transaction_date', startDate)
-    .lte('transaction_date', endDate);
-
-  if (budget.category_id !== null) {
-    query = query.eq('category_id', budget.category_id);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await transactionRepository.sumExpensesByBudget(budget);
   if (error) throw error;
   return (data || []).reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 }
@@ -70,10 +43,10 @@ async function checkSingleBudget(budget) {
 
   // แจ้งเตือนเฉพาะตอน "ข้าม" ระดับใหม่ (กัน spam ทุกครั้งที่มี transaction)
   if (currentLevel !== 'NORMAL' && currentLevel !== previousLevel) {
-    await supabase
-      .from('personal_budgets')
-      .update({ last_notified_level: currentLevel, notified_at: new Date().toISOString() })
-      .eq('id', budget.id);
+    await budgetRepository.updateNotification(budget.id, {
+      last_notified_level: currentLevel,
+      notified_at: new Date().toISOString(),
+    });
 
     return {
       budgetId: budget.id,
@@ -89,10 +62,7 @@ async function checkSingleBudget(budget) {
 
   // กลับมาต่ำกว่า threshold แล้ว (เช่น ลบ/แก้ transaction) → reset สถานะ ไม่ต้องแจ้งเตือนซ้ำ
   if (currentLevel === 'NORMAL' && previousLevel !== 'NORMAL') {
-    await supabase
-      .from('personal_budgets')
-      .update({ last_notified_level: 'NORMAL' })
-      .eq('id', budget.id);
+    await budgetRepository.updateNotification(budget.id, { last_notified_level: 'NORMAL' });
   }
 
   return null;
@@ -112,11 +82,7 @@ exports.checkBudgetsAfterTransaction = async ({ userId, categoryId, transactionD
 // เรียกหลัง setBudget/updateBudget — เช็คงบก้อนที่เพิ่งตั้ง/แก้เอง
 // (เผื่อผู้ใช้ลดวงเงินลงจนต่ำกว่ายอดที่ใช้ไปแล้ว ทำให้เกิน threshold ทันทีโดยไม่มี transaction ใหม่)
 exports.checkSingleBudgetById = async (budgetId) => {
-  const { data: budget, error } = await supabase
-    .from('personal_budgets')
-    .select('*')
-    .eq('id', budgetId)
-    .single();
+  const { data: budget, error } = await budgetRepository.findById(budgetId);
 
   if (error) throw error;
   return checkSingleBudget(budget);

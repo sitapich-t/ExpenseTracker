@@ -97,6 +97,19 @@ const slipUpload = (req, res, next) => {
   return next();
 };
 
+/** อัปโหลดรูปใบเสร็จสำหรับสแกน OCR (field: receipt) */
+const uploadReceipt = makeUploader('receipt');
+
+/**
+ * ใช้กับ POST /personal/transactions/scan-receipt
+ * รองรับ 2 รูปแบบ: multipart (field "receipt") และ JSON base64 (field "image")
+ * ถ้าเป็น JSON ให้ผ่านเลย ไม่ต้องแตะ multer
+ */
+const scanUpload = (req, res, next) => {
+  if (req.is('multipart/form-data')) return uploadReceipt(req, res, next);
+  return next();
+};
+
 /** คืน URL สัมพัทธ์ของไฟล์ที่เพิ่งบันทึก (เก็บลง DB ได้เลย ไม่ผูกกับ host) */
 const slipPathOf = (file) => (file ? `/uploads/slips/${file.filename}` : null);
 
@@ -117,6 +130,7 @@ module.exports = {
   ALLOWED_TYPES,
   ensureDir,
   slipUpload,
+  scanUpload,
   slipPathOf,
   removeSlip,
 };
