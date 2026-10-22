@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: '#F1F5F9',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   headerActions: {
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   },
   summaryFooterRow: {
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
   receiveStatusPill: {
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
   },
   settleCtaBtn: {
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#EDE9FE',
     borderRadius: 16,
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
   },
   billSectionHeader: {
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 8,
     marginBottom: 12,
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#5B21B6',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#5B21B6',
     shadowOffset: { width: 0, height: 4 },
