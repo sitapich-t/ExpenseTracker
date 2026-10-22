@@ -40,24 +40,50 @@ export default function GroupDetailScreen() {
   });
 
   const groupName = group?.name || params.groupName || 'กลุ่มของฉัน';
-  const members = group?.members || [];
-  const bills = group?.bills || [];
   const [note, setNote] = useState('');
 
-  // Dynamic calculations:
-  const totalAmount = bills.reduce((sum, b) => {
-    return sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0);
+  // 1. รายการบิลและสมาชิก
+  const bills = group?.bills || group?.transactions || [];
+  const members = group?.members || [];
+
+  // ฟังก์ชันคำนวณยอดสุทธิของแต่ละบิลโดยรวม SC และ VAT ด้วย
+  const calculateBillGrandTotal = (b) => {
+    const base = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0).replace(/,/g, ''));
+    const sc = typeof b.sc_amount === 'number' ? b.sc_amount : parseFloat(String(b.sc_amount || 0));
+    const vat = typeof b.vat_amount === 'number' ? b.vat_amount : parseFloat(String(b.vat_amount || 0));
+    
+    return base + (isNaN(sc) ? 0 : sc) + (isNaN(vat) ? 0 : vat);
+  };
+
+  // 2. ยอดรวมบิลทั้งกลุ่ม (รวม SC/VAT)
+  const totalAmount = bills.reduce((sum, b) => sum + calculateBillGrandTotal(b), 0);
+
+  // 3. ID ของผู้ใช้ปัจจุบัน
+  const myId = String(me?.id || me?.user_id || '').toLowerCase();
+
+  // 4. คำนวณยอดที่ "เราสำรองจ่ายไปก่อน" (รวม SC/VAT)
+  const userPaid = bills
+    .filter((b) => {
+      if (!myId) return false;
+      const payerId = String(b.paid_by || b.created_by || b.payer || '').toLowerCase();
+      return payerId === myId;
+    })
+    .reduce((sum, b) => sum + calculateBillGrandTotal(b), 0);
+
+  // 5. คำนวณส่วนหารที่ "เราต้องรับผิดชอบ" (ใช้ยอดจาก splits ถ้ามี หรือ fallback หารเท่าแบบรวม SC/VAT)
+  const userShare = bills.reduce((sum, b) => {
+    if (Array.isArray(b.splits) && b.splits.length > 0) {
+      const mySplit = b.splits.find((s) => String(s.user_id).toLowerCase() === myId);
+      return sum + (mySplit ? parseFloat(String(mySplit.amount || 0)) : 0);
+    }
+    
+    const grandTotal = calculateBillGrandTotal(b);
+    const memberCount = members.length || 1;
+    return sum + (grandTotal / memberCount);
   }, 0);
 
-  const n = members.length || 1;
-  const perPerson = Math.round((totalAmount / n) * 100) / 100;
-
-  // เทียบด้วย id ของฉันจริง ไม่ใช่ชื่อ (ชื่อซ้ำกันได้)
-  const userPaid = bills
-    .filter((b) => me?.id && String(b.payer) === String(me.id))
-    .reduce((sum, b) => sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0), 0);
-
-  const netBalance = userPaid - perPerson;
+  // 6. ยอดสุทธิของเรา (+ ยอดรอรับ / - ยอดติดจ่าย)
+  const netBalance = userPaid - userShare;
 
   if (!group && !refreshed) {
     return (
@@ -87,116 +113,124 @@ export default function GroupDetailScreen() {
   }
 
   return (
-    <>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#1E293B" />
+    <SafeAreaView style={styles.safeArea}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#1E293B" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>{groupName}</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={styles.bellButton}
+            onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
+          >
+            <Ionicons name="notifications-outline" size={20} color="#1E293B" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{groupName}</Text>
-          <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.bellButton}
-              onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
-            >
-              <Ionicons name="notifications-outline" size={20} color="#1E293B" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.bellButton}
-              onPress={() =>
-                router.push({
-                  pathname: '/group-qrcode',
-                  params: { id: groupId, name: groupName, code: group?.invite_code },
-                })
-              }
-            >
-              <Ionicons name="qr-code-outline" size={20} color="#1E293B" />
-            </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.bellButton}
+            onPress={() =>
+              router.push({
+                pathname: '/group-qrcode',
+                params: { id: groupId, name: groupName, code: group?.invite_code },
+              })
+            }
+          >
+            <Ionicons name="qr-code-outline" size={20} color="#1E293B" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Purple Summary Card */}
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>ยอดสรุปในกลุ่มนี้</Text>
+          <Text style={styles.summaryAmount}>
+            {totalAmount === 0
+              ? '0.00'
+              : Math.abs(netBalance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
+          
+          <View style={styles.summaryFooterRow}>
+            <View style={styles.receiveStatusPill}>
+              <View style={[styles.greenDot, { backgroundColor: group?.settled ? '#60A5FA' : netBalance >= 0 ? '#10B981' : '#F97316' }]} />
+              <Text style={styles.receiveStatusText}>
+                {Boolean(group?.settled)
+                  ? 'เคลียร์บิลเรียบร้อยแล้ว'
+                  : totalAmount === 0
+                  ? 'ยังไม่มีค่าใช้จ่าย'
+                  : netBalance > 0.01
+                  ? 'คุณจะได้รับเงินสุทธิ'
+                  : netBalance < -0.01
+                  ? 'คุณมียอดค้างจ่าย'
+                  : 'ยอดเงินสมดุลแล้ว'}
+              </Text>
+            </View>
+            <Text style={styles.groupTotalText}>
+              ยอดรวมกลุ่ม {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
           </View>
         </View>
 
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+        {/* Settle Bill Banner CTA */}
+        <TouchableOpacity 
+          style={styles.settleCtaBtn}
+          onPress={() => router.push({ pathname: '/settle-group', params: { groupId, groupName } })}
+          activeOpacity={0.85}
         >
-          {/* Purple Summary Card */}
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>ยอดสรุปในกลุ่มนี้</Text>
-            <Text style={styles.summaryAmount}>
-              {group?.settled || totalAmount === 0
-                ? '0.00'
-                : Math.abs(netBalance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-            
-            <View style={styles.summaryFooterRow}>
-              <View style={styles.receiveStatusPill}>
-                <View style={[styles.greenDot, { backgroundColor: group?.settled ? '#60A5FA' : netBalance >= 0 ? '#10B981' : '#F97316' }]} />
-                <Text style={styles.receiveStatusText}>
-                  {group?.settled
-                    ? 'เคลียร์บิลเรียบร้อยแล้ว'
-                    : totalAmount === 0
-                    ? 'ยังไม่มีค่าใช้จ่าย'
-                    : netBalance >= 0
-                    ? 'คุณจะได้รับเงินสุทธิ'
-                    : 'คุณมียอดค้างจ่าย'}
-                </Text>
-              </View>
-              <Text style={styles.groupTotalText}>
-                ยอดรวมกลุ่ม {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
+          <View style={styles.settleCtaLeft}>
+            <Ionicons name="calculator-outline" size={22} color="#6D28D9" />
+            <View style={{ marginLeft: 10 }}>
+              <Text style={styles.settleCtaTitle}>เคลียร์บิลและทวงเงิน</Text>
+              <Text style={styles.settleCtaSub}>คำนวณยอดสุทธิ & ส่งแจ้งเตือนทวงเงิน</Text>
             </View>
           </View>
+          <Ionicons name="chevron-forward" size={20} color="#6D28D9" />
+        </TouchableOpacity>
 
-          {/* Settle Bill Banner CTA */}
-          <TouchableOpacity 
-            style={styles.settleCtaBtn}
-            onPress={() => router.push({ pathname: '/settle-group', params: { groupId, groupName } })}
-            activeOpacity={0.85}
-          >
-            <View style={styles.settleCtaLeft}>
-              <Ionicons name="calculator-outline" size={22} color="#6D28D9" />
-              <View style={{ marginLeft: 10 }}>
-                <Text style={styles.settleCtaTitle}>เคลียร์บิลและทวงเงิน</Text>
-                <Text style={styles.settleCtaSub}>คำนวณยอดสุทธิ & ส่งแจ้งเตือนทวงเงิน</Text>
-              </View>
+        {/* Section 1: สมาชิกกลุ่ม */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>สมาชิกกลุ่ม ({members.length} คน)</Text>
+        </View>
+
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.membersRow}
+        >
+          {members.map((m) => (
+            <View key={m.id} style={styles.memberChip}>
+              <View style={[styles.memberDot, { backgroundColor: m.color }]} />
+              <Text style={styles.memberName}>{m.name}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#6D28D9" />
-          </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-          {/* Section 1: สมาชิกกลุ่ม */}
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>สมาชิกกลุ่ม ({members.length} คน)</Text>
-          </View>
+        {/* Section 2: รายการบิลกลุ่ม */}
+        <View style={styles.billSectionHeader}>
+          <Text style={styles.sectionTitle}>รายการบิลกลุ่ม</Text>
+          <Text style={styles.totalBillSub}>
+            ยอดรวม {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
+        </View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.membersRow}
-          >
-            {members.map((m) => (
-              <View key={m.id} style={styles.memberChip}>
-                <View style={[styles.memberDot, { backgroundColor: m.color }]} />
-                <Text style={styles.memberName}>{m.name}</Text>
-              </View>
-            ))}
-          </ScrollView>
-
-          {/* Section 2: รายการบิลกลุ่ม */}
-          <View style={styles.billSectionHeader}>
-            <Text style={styles.sectionTitle}>รายการบิลกลุ่ม</Text>
-            <Text style={styles.totalBillSub}>
-              ยอดรวม {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {/* Bill List */}
+        {bills.length === 0 ? (
+          <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+            <Text style={{ color: '#94A3B8', fontSize: 13 }}>
+              ยังไม่มีรายการบิลในกลุ่มนี้ แตะปุ่ม + เพื่อเพิ่มบิล
             </Text>
           </View>
+        ) : (
+          bills.map((bill) => {
+            const payerId = bill.paid_by || bill.created_by || bill.payer;
+            const payerMember = members.find((m) => String(m.id) === String(payerId));
+            const payerName = payerMember ? payerMember.name : (bill.merchant || 'ไม่ระบุ');
 
-          {/* Bill List */}
-          {bills.length === 0 ? (
-            <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-              <Text style={{ color: '#94A3B8', fontSize: 13 }}>ยังไม่มีรายการบิลในกลุ่มนี้ แตะปุ่ม + เพื่อเพิ่มบิล</Text>
-            </View>
-          ) : (
-            bills.map((bill) => (
+            return (
               <View key={bill.id} style={styles.billCard}>
                 <View style={styles.billIconBox}>
                   <Ionicons name="cart-outline" size={20} color="#1E293B" />
@@ -204,37 +238,39 @@ export default function GroupDetailScreen() {
 
                 <View style={styles.billInfoCol}>
                   <Text style={styles.billTitle}>{bill.title}</Text>
-                  <Text style={styles.billSub}>ผู้จ่าย: {bill.payer} • {bill.splitText || 'แชร์ทุกคน'}</Text>
+                  <Text style={styles.billSub}>
+                    ผู้จ่าย: {payerName} • {bill.splitText || 'แชร์ทุกคน'}
+                  </Text>
                 </View>
 
                 <Text style={styles.billAmount}>{bill.amount}</Text>
               </View>
-            ))
-          )}
+            );
+          })
+        )}
 
-          {/* Section 3: Note (Optional) */}
-          <View style={styles.noteSection}>
-            <Text style={styles.noteLabel}>Note (Optional)</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="เช่น โน้ตสำหรับกลุ่มนี้..."
-              placeholderTextColor="#94A3B8"
-              value={note}
-              onChangeText={setNote}
-            />
-          </View>
-        </ScrollView>
+        {/* Section 3: Note (Optional) */}
+        <View style={styles.noteSection}>
+          <Text style={styles.noteLabel}>Note (Optional)</Text>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="เช่น โน้ตสำหรับกลุ่มนี้..."
+            placeholderTextColor="#94A3B8"
+            value={note}
+            onChangeText={setNote}
+          />
+        </View>
+      </ScrollView>
 
-        {/* Floating Add Expense (+) Button */}
-        <TouchableOpacity 
-          style={styles.fabButton}
-            onPress={() => router.push({ pathname: '/add-group-expense', params: { groupId, groupName } })}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add" size={28} color="#FFFFFF" />
-        </TouchableOpacity>
-      </SafeAreaView>
-    </>
+      {/* Floating Add Expense (+) Button */}
+      <TouchableOpacity 
+        style={styles.fabButton}
+        onPress={() => router.push({ pathname: '/add-group-expense', params: { groupId, groupName } })}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
+    </SafeAreaView>
   );
 }
 
@@ -245,7 +281,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -269,7 +305,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center',
   },
   headerActions: {
@@ -303,7 +339,7 @@ const styles = StyleSheet.create({
   },
   summaryFooterRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify: 'space-between',
     alignItems: 'center',
   },
   receiveStatusPill: {
@@ -329,7 +365,7 @@ const styles = StyleSheet.create({
   },
   settleCtaBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify: 'space-between',
     alignItems: 'center',
     backgroundColor: '#EDE9FE',
     borderRadius: 16,
@@ -389,7 +425,7 @@ const styles = StyleSheet.create({
   },
   billSectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify: 'space-between',
     alignItems: 'center',
     marginTop: 8,
     marginBottom: 12,
@@ -417,7 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
@@ -465,7 +501,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: '#5B21B6',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center',
     shadowColor: '#5B21B6',
     shadowOffset: { width: 0, height: 4 },

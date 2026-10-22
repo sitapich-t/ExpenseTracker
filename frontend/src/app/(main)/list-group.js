@@ -30,8 +30,17 @@ export default function GroupListScreen() {
 
     // เทียบด้วย id ของฉันจริง ไม่ใช่ชื่อ (ชื่อซ้ำกันได้)
     const userPaid = (g.bills || [])
-      .filter((b) => me?.id && String(b.payer) === String(me.id))
-      .reduce((sum, b) => sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0), 0);
+      .filter((b) => {
+        if (!me?.id) return false;
+        // ใช้ paid_by ตาม Backend Controller ล่าสุด
+        const payerId = String(b.paid_by || b.created_by || b.payer || '');
+        const myId = String(me.id);
+        return payerId === myId;
+      })
+      .reduce((sum, b) => {
+        const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0).replace(/,/g, ''));
+        return sum + (isNaN(amt) ? 0 : amt);
+      }, 0);
 
     const net = userPaid - perPerson;
 
