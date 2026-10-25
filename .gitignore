@@ -12,4 +12,4 @@ build/
 *.log
 
 .DS_Store
-Thumbs.db
+Thumbs.dbbackend/tests/fixtures/slips/
