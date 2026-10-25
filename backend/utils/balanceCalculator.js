@@ -46,6 +46,15 @@ function calculateGroupBalances(bills) {
     // ยกเว้นคนที่จ่ายเงินจริง (paidBy) ซึ่งจ่ายแทนทุกคนไปก่อน
     for (const [memberId, share] of Object.entries(members)) {
       ensure(memberId);
+      for (const [memberId, share] of Object.entries(members)) {
+        ensure(memberId);
+
+        if (!share || !Number.isFinite(share.total)) {
+          throw new Error(
+            `bill "${billId}": total ของสมาชิก "${memberId}" ไม่ถูกต้อง`
+          );
+        }
+      }
       const shareSatang = toSatang(share.total);
 
       if (memberId === paidBy) {
