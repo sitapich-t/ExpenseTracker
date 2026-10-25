@@ -15,6 +15,38 @@
 const { toSatang, toBaht, distributeAmount, distributeSCVAT } = require('../utils/allocationUtils');
 const { simplifyDebts } = require('../utils/debtSimplifier');
 
+const VAT_BASES = ['itemPlusSC', 'itemOnly'];
+
+/**
+ * ตรวจ input ของ splitBillForGroup ก่อนคำนวณ (ทุกคนที่เรียก service ได้รับการป้องกัน)
+ * ข้อสมมติ: items เป็น array ที่ไม่ว่างแล้ว (ตรวจก่อนเรียกฟังก์ชันนี้)
+ * การตัดสินใจ: ราคาติดลบ/ราคาเป็นข้อความ/ชื่อซ้ำใน sharedBy ถือเป็นข้อผิดพลาด
+ */
+function assertValidSplitInput(items, scRate, vatRate, groupMembers, vatBase) {
+  const isRate = (r) => typeof r === 'number' && Number.isFinite(r) && r >= 0 && r <= 1;
+  if (!isRate(scRate) || !isRate(vatRate)) {
+    throw new Error('scRate และ vatRate ต้องเป็นตัวเลขระหว่าง 0 ถึง 1');
+  }
+  if (!VAT_BASES.includes(vatBase)) {
+    throw new Error(`vatBase ต้องเป็น ${VAT_BASES.join(' หรือ ')}`);
+  }
+  if (!Array.isArray(groupMembers)) {
+    throw new Error('groupMembers ต้องเป็น array');
+  }
+  const seen = new Set();
+  items.forEach((it, i) => {
+    if (!it || typeof it !== 'object') throw new Error(`items[${i}] ไม่ถูกต้อง`);
+    if (seen.has(it.id)) throw new Error(`item id=${it.id} ซ้ำ`);
+    seen.add(it.id);
+    if (typeof it.price !== 'number' || !Number.isFinite(it.price) || it.price < 0) {
+      throw new Error(`item id=${it.id} ราคาต้องเป็นตัวเลขที่ไม่ติดลบ`);
+    }
+    if (Array.isArray(it.sharedBy) && new Set(it.sharedBy).size !== it.sharedBy.length) {
+      throw new Error(`item id=${it.id} มีชื่อซ้ำใน sharedBy`);
+    }
+  });
+}
+
 /**
  * หารบิลของกลุ่ม: กระจาย SC/VAT ต่อ item แล้วคำนวณ net balance ของแต่ละคน
  *
@@ -44,6 +76,8 @@ function splitBillForGroup(items, scRate = 0, vatRate = 0, options = {}) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('items ต้องเป็น array ที่มีอย่างน้อย 1 รายการ');
   }
+
+  assertValidSplitInput(items, scRate, vatRate, groupMembers, vatBase);
 
   // 1) กระจาย SC/VAT ต่อ item ด้วย core algorithm เดิม
   const basePricing = items.map((it) => ({ id: it.id, price: it.price }));
@@ -125,6 +159,25 @@ function splitBillForGroup(items, scRate = 0, vatRate = 0, options = {}) {
  * @returns {Array<{from: string, to: string, amount: number}>}
  */
 function settleGroupBalances(balances) {
+  if (!Array.isArray(balances)) {
+    throw new Error('balances ต้องเป็น array');
+  }
+  let sumSatang = 0;
+  for (const b of balances) {
+    if (
+      !b ||
+      typeof b.person !== 'string' ||
+      b.person === '' ||
+      typeof b.amount !== 'number' ||
+      !Number.isFinite(b.amount)
+    ) {
+      throw new Error('balances แต่ละรายการต้องมี person (ข้อความ) และ amount (ตัวเลข)');
+    }
+    sumSatang += toSatang(b.amount);
+  }
+  if (sumSatang !== 0) {
+    throw new Error(`ผลรวม balances ต้องเป็นศูนย์ (คลาด ${sumSatang} สตางค์)`);
+  }
   return simplifyDebts(balances);
 }
 
