@@ -237,7 +237,7 @@ function extractReceiptTotalAmount(rawText) {
 function extractRecipientFromSlip(rawText) {
   if (!rawText) return '';
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-
+  const BANK_LABEL = /^(?:ธนาคาร\s*)?(?:KBank|KBANK|K\+|SCB|BBL|Krungthai|KTB|TTB|BAY|Krungsri|GSB|กสิกร(?:ไทย)?|ไทยพาณิชย์|กรุงเทพ|กรุงไทย|กรุงศรี(?:อยุธยา)?|ออมสิน|ออบสิน|ทีทีบี)$/i;
   // กรณี SCB/Kept ที่มีคำว่า TO / To
   const toIndex = lines.findIndex(l => /^TO$/i.test(l));
   if (toIndex !== -1 && toIndex + 1 < lines.length) {
@@ -270,6 +270,10 @@ function extractRecipientFromSlip(rawText) {
       if (/^(ไปยัง|To|ถึง)$/i.test(line) || /^ไป\S{1,3}$/.test(line)) continue;
       // ขยะจากไอคอน/กราฟิก
       if (letterCount(line) < 4 || /^[=+\-*._]+$/.test(line)) continue;
+
+      if (BANK_LABEL.test(line)) continue; // ข้ามป้ายชื่อธนาคาร
+      // บรรทัดที่สองต้องมีตัวอักษรไทยจึงถือเป็นส่วนต่อของชื่อ (กันคำขยะ เช่น "Jana")
+      if (recipientLines.length === 1 && !/[ก-๙]/.test(line)) continue;
 
       recipientLines.push(line);
       if (recipientLines.length >= 2) break;
@@ -362,7 +366,8 @@ function extractMerchant(text) {
 // 🔢 7. สกัด Transaction ID / Ref ID
 // ==========================================
 function extractTransactionId(text) {
-  const match = text.match(/(?:Transaction\s*ID|Ref(?:erence)?\s*ID|เลขที่รายการ|รห[ัี]สอ้างอิง)[\s:]*([A-Za-z0-9]+)/i);
+  // รองรับป้าย "Transaction ID", "Trans ID", "Tran ID" (ใบเสร็จบางร้านใช้ตัวย่อ)
+  const match = text.match(/(?:Tran(?:s|saction)?\s*ID|Ref(?:erence)?\s*ID|เลขที่รายการ|รห[ัี]สอ้างอิง)[\s:]*([A-Za-z0-9]+)/i);
   if (match) return match[1];
 
   // fallback: ป้ายกำกับถูก OCR อ่านเพี้ยน (เช่น "หนมายเลขอางอง") จึงจับจากรูปแบบของตัวเลขแทน
@@ -472,8 +477,10 @@ function extractTotal(text, { fixBahtSymbol = false } = {}) {
         for (const v of values) count.set(v, (count.get(v) || 0) + 1);
         const top = Math.max(...count.values());
         if (top >= 2) return values.find((v) => count.get(v) === top);
+        // ใบเสร็จ: ไม่มีคีย์เวิร์ดยอดรวมและไม่มีค่าซ้ำ = ไม่เดา (คืน 0 ให้แอปส่งตรวจ)
+        return 0;
       }
-      return values[0]; // บนสลิป Amount มักมาก่อน Fee
+      return values[0]; // สลิป: Amount มักมาก่อน Fee
     }
   }
 
@@ -740,10 +747,15 @@ function extractDate(text) {
   // แก้ OCR อ่านเดือนไทยแบบย่อผิดบ่อย เช่น "ก.ุย." ที่จริงคือ "ก.ย." (มีสระ ุ แทรกผิดระหว่างจุด)
   text = text.replace(/([ก-๙])\.\s*ุ?\s*([ก-๙])\./g, '$1.$2.');
 
-  // OCR อ่านเดือนไทยย่อเป็นตัวละติน เช่น "n.w." = ก.พ., "a.n." = ต.ค.
+  // เดือนไทยย่อที่ OCR ทำจุดหาย/สระแทรก: "กุย." -> "ก.ย."
+  text = text.replace(/ก[ุู]?ย\.(?=\s*\d)/g, 'ก.ย.');
+  // วันที่ตัวเลขที่สแลชตัวที่สองหาย: "31/122020" -> "31/12/2020"
+  text = text.replace(/(?<!\d)(\d{1,2})([/\-.])(\d{2})(\d{4})(?!\d)/g, '$1$2$3$2$4');
+
+  // OCR อ่านเดือนไทยย่อเป็นตัวละติน เช่น "n.w." = ก.พ., "a.n." = ต.ค., "N.A." = ก.ค.
   // แยกตามตำแหน่ง เพราะ n เป็น ก ในตัวแรก แต่เป็น ค ในตัวที่สอง
   const FIRST = { n: 'ก', a: 'ต' };
-  const SECOND = { w: 'พ', n: 'ค' };
+  const SECOND = { w: 'พ', n: 'ค', a: 'ค' };
   text = text.replace(/(\d{1,2})\s+([A-Za-z])\.([A-Za-z])\.\s*(\d{4})/g, (m, d, a, b, y) => {
     const tok = `${FIRST[a.toLowerCase()] || a}.${SECOND[b.toLowerCase()] || b}.`;
     return monthsTh[tok] !== undefined ? `${d} ${tok} ${y}` : m;
@@ -820,7 +832,7 @@ function parseText(ocrText, { verbose = false } = {}) {
   const parsedText = rawText;
 
   const { documentType, paymentMethod } = detectDocumentTypeAndPaymentMethod(rawText);
-  
+
   let total = 0;
   let merchant = '';
   let items = [];
@@ -867,6 +879,34 @@ function parseText(ocrText, { verbose = false } = {}) {
 }
 
 // ==========================================
+// 🔄 อ่านครั้งแรก ถ้า confidence ต่ำ ลองหมุน 90/270 องศาแล้วเลือกผลที่ดีที่สุด
+// คืน usedInput = ภาพที่ใช้อ่านจริง (ภาพต้นฉบับ หรือ Buffer ที่หมุนแล้ว)
+// ==========================================
+async function ocrAutoRotate(input, options) {
+  let usedInput = input;
+  let best = await runOcr(input, options);
+  if ((best?.confidence ?? 0) >= 65) return { best, usedInput };
+
+  const base = await sharp(input).rotate().toBuffer(); // ใช้ EXIF orientation ก่อน
+  for (const angle of [90, 270]) {
+    const rotated = await sharp(base).rotate(angle).toBuffer();
+    const r = await runOcr(rotated, options);
+    if (r && r.confidence > (best?.confidence ?? 0)) {
+      best = r;
+      usedInput = rotated;
+    }
+  }
+  return { best, usedInput };
+}
+
+// ยอดสำรองจาก E2 ต้องมีตัวเลขรูปแบบ X.XX ในข้อความจริง (กันกรณี ฿107.35 ถูกอ่านเป็น 8107)
+function hasDecimalAmount(text, value) {
+  for (const m of text.matchAll(/(\d{1,3}(?:,\d{3})+|\d+)\.\d{2}(?!\d)/g)) {
+    if (Math.abs(parseFloat(m[0].replace(/,/g, '')) - value) < 0.005) return true;
+  }
+  return false;
+}
+// ==========================================
 // ---------- Main Export Function ----------
 // ==========================================
 exports.scanReceipt = async ({ file, image, options } = {}) => {
@@ -887,10 +927,12 @@ exports.scanReceipt = async ({ file, image, options } = {}) => {
 
   let ocrText = '';
   let confidence = null;
+  let usedInput = inputImage; // ภาพที่ใช้อ่านจริง (อาจถูกหมุนแล้ว)
   try {
-    const best = await runOcr(inputImage, options);
-    ocrText = best?.text || '';
-    confidence = best?.confidence ?? null;
+    const rotated = await ocrAutoRotate(inputImage, options);
+    usedInput = rotated.usedInput;
+    ocrText = rotated.best?.text || '';
+    confidence = rotated.best?.confidence ?? null;
     console.log('📊 OCR confidence (best PSM):', confidence);
   } catch (err) {
     console.error('❌ Tesseract OCR error:', err.message);
@@ -903,11 +945,44 @@ exports.scanReceipt = async ({ file, image, options } = {}) => {
 
   const result = parseText(ocrText, { verbose: true });
 
+  // แพตช์ E2: อ่านยอดรวมไม่ได้ -> อ่านซ้ำด้วย preprocess แบบ gray เป็นยอดสำรอง (และบังคับส่งตรวจ)
+  // ใช้ภาพที่หมุนแล้ว (usedInput) และทำเฉพาะเมื่อยอดหลักอ่านไม่ได้ จึงไม่เพิ่มเวลาให้ใบที่อ่านได้
+  let fallbackUsed = false;
+  if (!(result.total > 0)) {
+    try {
+      const alt = await runOcr(usedInput, { ...(options || {}), preprocess: 'gray' });
+      const altText = alt?.text || '';
+      const altResult = parseText(altText);
+      if (altResult.total > 0 && hasDecimalAmount(altText, altResult.total)) {
+        result.total = altResult.total;
+        result.netAmount = altResult.netAmount;
+        fallbackUsed = true;
+      }
+    } catch (_) {
+    }
+  }
+
   console.log('=== RAW OCR TEXT ===');
   console.log(result.parsedText);
   console.log('====================');
 
-  return { ...result, ocrConfidence: confidence };
+  // ธงส่งตรวจ: ให้แอปบังคับผู้ใช้ยืนยัน/กรอกเองเมื่อมีเหตุผลข้อใดข้อหนึ่ง
+  const reviewReasons = [];
+  if (!(result.total > 0)) reviewReasons.push('total_missing');
+  if (fallbackUsed) reviewReasons.push('total_from_fallback');
+  if (confidence !== null && confidence < 75) reviewReasons.push('low_confidence');
+  if (result.date) {
+    const t = new Date(result.date).getTime();
+    const now = Date.now();
+    if (t > now + 86400000 || t < now - 400 * 86400000) reviewReasons.push('date_out_of_range');
+  }
+
+  return {
+    ...result,
+    ocrConfidence: confidence,
+    needsReview: reviewReasons.length > 0,
+    reviewReasons,
+  };
 };
 
 // export ไว้สำหรับทดสอบ / ใช้ซ้ำ

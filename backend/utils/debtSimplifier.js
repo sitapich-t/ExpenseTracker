@@ -1,108 +1,78 @@
 /**
  * debtSimplifier.js
- * -----------------
- * Core algorithm สำหรับลดจำนวนธุรกรรมการโอนเงินให้น้อยที่สุด (Debt Simplification)
- * ระยะที่ 1: ใช้ Greedy Algorithm (จับคู่ผู้เป็นหนี้มากสุด กับ ผู้ควรได้รับเงินคืนมากสุด)
+ * ลดจำนวนธุรกรรมการโอนเงินระหว่างสมาชิกในกลุ่มให้เหลือน้อยที่สุด (Debt Simplification)
  *
- * หมายเหตุ: การหาคำตอบที่ optimal ที่สุด (จำนวนธุรกรรมน้อยที่สุดเท่าที่เป็นไปได้)
- * เป็นปัญหา NP-hard (คล้าย subset-sum) การใช้ Greedy จะได้คำตอบที่ดีมากในทางปฏิบัติ
- * แต่ไม่การันตี optimal 100% — หากต้องการ optimal จริง ให้พิจารณาทำใน Phase ถัดไป
- * (เช่น backtracking / ILP) เมื่อจำนวนคนในกลุ่มไม่มากเกินไป
+ * แนวคิด: greedy matching — ในแต่ละรอบ จับคู่ "ลูกหนี้ที่ติดมากสุด" กับ
+ * "เจ้าหนี้ที่ควรได้รับคืนมากสุด" แล้วโอนเท่าที่น้อยกว่าของทั้งคู่ ทำซ้ำจนหมด
+ * ผลลัพธ์: จำนวนธุรกรรมสูงสุดคือ (จำนวนคน - 1) เสมอ
  */
 
-const DEFAULT_TOLERANCE = 0.01; // บาท
+const DEFAULT_TOLERANCE = 0.01;
 
-/** แปลงบาท -> สตางค์ (integer) เพื่อเลี่ยงปัญหา floating point */
-function toSatang(baht) {
-  return Math.round(baht * 100);
+/** ปัดเศษทศนิยม 2 ตำแหน่ง กันปัญหา floating point สะสมจากการบวกลบต่อเนื่อง */
+function round2(num) {
+  return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
 /**
- * ลดจำนวนธุรกรรมการโอนเงินระหว่างสมาชิกในกลุ่ม
- *
  * @param {Array<{person: string, amount: number}>} balances
- *        - person: ชื่อ/id ของสมาชิก
- *        - amount: ยอดสุทธิ (บาท) โดย
- *            amount > 0  หมายถึง "ควรได้รับเงินคืน" (เป็นเจ้าหนี้)
- *            amount < 0  หมายถึง "ต้องจ่ายเงิน" (เป็นลูกหนี้)
- * @param {Object} [options]
- * @param {number} [options.tolerance=0.01] - ค่าความคลาดเคลื่อนที่ยอมรับได้ (บาท)
- *        สำหรับตรวจสอบว่าผลรวม balances ทั้งหมดควรเท่ากับ 0
+ *   amount > 0 -> เป็นเจ้าหนี้ ควรได้รับเงินคืนเท่านี้
+ *   amount < 0 -> เป็นลูกหนี้ ติดหนี้เท่านี้
+ * @param {number} [tolerance=0.01] ค่าความคลาดเคลื่อนที่ยอมรับได้จาก floating point
  * @returns {Array<{from: string, to: string, amount: number}>} รายการธุรกรรมที่ต้องโอน
+ * @throws {Error} ถ้าผลรวม balances ไม่เท่ากับ 0 (เกิน tolerance)
  */
-function simplifyDebts(balances, options = {}) {
-  const { tolerance = DEFAULT_TOLERANCE } = options;
-
-  if (!Array.isArray(balances) || balances.length === 0) {
-    return [];
+function simplifyDebts(balances, tolerance = DEFAULT_TOLERANCE) {
+  if (!Array.isArray(balances)) {
+    throw new TypeError('balances ต้องเป็น array');
   }
+  if (balances.length === 0) return [];
 
-  // 1) ตรวจสอบว่าผลรวม balance ทั้งหมดใกล้เคียง 0 (หนี้ต้องสมดุลกันเสมอ)
-  const sumBaht = balances.reduce((s, b) => s + b.amount, 0);
-  if (Math.abs(sumBaht) > tolerance) {
+  const total = balances.reduce((sum, b) => {
+    if (typeof b.amount !== 'number' || Number.isNaN(b.amount)) {
+      throw new TypeError(`amount ของ ${b.person} ต้องเป็นตัวเลข`);
+    }
+    return sum + b.amount;
+  }, 0);
+
+  if (Math.abs(total) > tolerance) {
     throw new Error(
-      `ผลรวม balances ต้องเท่ากับ 0 (คลาดเคลื่อนได้ไม่เกิน ${tolerance} บาท) ` +
-        `แต่พบผลรวม = ${sumBaht}`
+      `ผลรวม balances ต้องเท่ากับ 0 (คลาดเคลื่อนได้ไม่เกิน ${tolerance}) แต่พบผลรวม = ${round2(total)}`
     );
   }
 
-  // 2) แปลงเป็นหน่วยสตางค์ (integer) และตัดคนที่ยอดใกล้ 0 ทิ้ง
-  let people = balances
-    .map((b) => ({ person: b.person, amount: toSatang(b.amount) }))
-    .filter((p) => Math.abs(p.amount) >= 1);
-  // 2.1) แก้ residual จากการปัดเศษแยกทีละคน (Math.round ต่อคน อาจทำให้
-  //      ผลรวมสตางค์คลาดเคลื่อน ±1..n satang แม้ระดับบาทจะสมดุลตาม tolerance แล้ว)
-  //      เติม/หักส่วนต่างนี้กับคนที่มียอดสูงสุด เพื่อให้ผลรวมสตางค์ = 0 เป๊ะ
-  //      ก่อนเข้า greedy matching — ป้องกันสตางค์ตกหล่นเงียบๆ ท้ายลูป
-  const residual = people.reduce((s, p) => s + p.amount, 0);
-  if (residual !== 0 && people.length > 0) {
-    const target = people.reduce((max, p) =>
-      Math.abs(p.amount) > Math.abs(max.amount) ? p : max
-    );
-    target.amount -= residual;
+  // แยกเจ้าหนี้ / ลูกหนี้ ตัดคนที่ balance ~0 ทิ้ง แล้วเรียงจากมากไปน้อย
+  const creditors = [];
+  const debtors = [];
+  for (const b of balances) {
+    const amt = round2(b.amount);
+    if (amt > tolerance) creditors.push({ person: b.person, amount: amt });
+    else if (amt < -tolerance) debtors.push({ person: b.person, amount: -amt });
   }
-
-  people = people.filter((p) => Math.abs(p.amount) >= 1);
+  creditors.sort((a, b) => b.amount - a.amount);
+  debtors.sort((a, b) => b.amount - a.amount);
 
   const transactions = [];
+  let i = 0; // pointer ของ debtors
+  let j = 0; // pointer ของ creditors
 
+  while (i < debtors.length && j < creditors.length) {
+    const debtor = debtors[i];
+    const creditor = creditors[j];
+    const payAmount = round2(Math.min(debtor.amount, creditor.amount));
 
-  // 3) วนจับคู่ "เจ้าหนี้มากสุด" กับ "ลูกหนี้มากสุด" ทีละรอบ จนกว่าจะหมด
-  //    (O(n) ต่อรอบในการหาค่ามากสุด, O(n) รอบ รวม O(n^2) ซึ่งเพียงพอสำหรับ Phase 1
-  //    ถ้ากลุ่มมีสมาชิกจำนวนมาก ค่อยเปลี่ยนไปใช้ max-heap เพื่อลดเป็น O(n log n))
-  while (true) {
-    let maxCreditor = null;
-    let maxDebtor = null;
-
-    for (const p of people) {
-      if (p.amount > 0 && (!maxCreditor || p.amount > maxCreditor.amount)) {
-        maxCreditor = p;
-      }
-      if (p.amount < 0 && (!maxDebtor || p.amount < maxDebtor.amount)) {
-        maxDebtor = p;
-      }
+    if (payAmount > tolerance) {
+      transactions.push({ from: debtor.person, to: creditor.person, amount: payAmount });
     }
 
-    if (!maxCreditor || !maxDebtor) break; // ไม่มีใครค้างจ่าย/ค้างรับแล้ว
+    debtor.amount = round2(debtor.amount - payAmount);
+    creditor.amount = round2(creditor.amount - payAmount);
 
-    const settleAmount = Math.min(maxCreditor.amount, -maxDebtor.amount);
-
-    transactions.push({
-      from: maxDebtor.person,
-      to: maxCreditor.person,
-      amount: settleAmount / 100, // แปลงกลับเป็นบาท
-    });
-
-    maxCreditor.amount -= settleAmount;
-    maxDebtor.amount += settleAmount;
-
-    // ตัดคนที่ยอดหมดแล้วออก (เหลือ < 1 สตางค์)
-    people = people.filter((p) => Math.abs(p.amount) >= 1);
+    if (debtor.amount <= tolerance) i++;
+    if (creditor.amount <= tolerance) j++;
   }
 
   return transactions;
 }
 
-module.exports = {
-  simplifyDebts,
-};
+module.exports = { simplifyDebts };

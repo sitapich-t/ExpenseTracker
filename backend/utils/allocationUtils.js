@@ -1,193 +1,107 @@
 /**
  * allocationUtils.js
- * -------------------
- * Core algorithm สำหรับกระจาย Service Charge (SC) และ VAT ไปยังแต่ละ item
- * ใช้ Largest Remainder Method เพื่อให้ผลรวมหลังปัดเศษ "ตรงเป๊ะ" กับยอดรวมจริง
+ * กระจายจำนวนเงิน (SC / VAT) ให้สมาชิกหรือรายการสินค้าตามสัดส่วนน้ำหนัก
+ * โดยรับประกันว่าผลรวมหลังกระจายตรงกับยอดตั้งต้นเป๊ะ (ไม่มีเศษสตางค์หาย/เกิน)
  *
- * หลักการ: คำนวณทุกอย่างเป็นหน่วยสตางค์ (integer) เพื่อเลี่ยงปัญหา floating point
- * แล้วค่อยแปลงกลับเป็นบาทตอนส่งผลลัพธ์
+ * ใช้ Largest Remainder Method (Hare-Niemeyer):
+ * 1) หาส่วนแบ่งตามสัดส่วนแบบทศนิยม แล้วปัดลง (floor) ทุกตัวก่อน
+ * 2) ผลรวมที่ขาดไปจากยอดตั้งต้น (เศษ) จะถูกแจกให้ทีละ 1 หน่วย
+ *    ไปยังรายการที่มีเศษทศนิยมมากที่สุดก่อน จนกว่าจะครบ
  */
-
-/** แปลงบาท -> สตางค์ (integer) */
-function toSatang(baht) {
-  return Math.round(baht * 100);
-}
-
-/** แปลงสตางค์ -> บาท */
-function toBaht(satang) {
-  return satang / 100;
-}
 
 /**
- * กระจายจำนวนเงิน (หน่วยสตางค์, integer) ไปตามสัดส่วนน้ำหนัก (weights)
- * โดยรับประกันว่าผลรวมของค่าที่กระจายแล้ว เท่ากับ totalSatang เป๊ะ
- *
- * @param {number} totalSatang - ยอดรวมที่ต้องกระจาย (หน่วยสตางค์, integer)
- * @param {number[]} weights - น้ำหนักของแต่ละรายการ (เช่น ราคาแต่ละ item)
- * @returns {number[]} จำนวนสตางค์ที่แต่ละรายการได้รับ (integer array)
+ * กระจายจำนวนเต็ม (หน่วยเล็กสุด เช่น สตางค์) ตามสัดส่วนน้ำหนัก
+ * @param {number} totalAmount จำนวนเงินรวมที่ต้องกระจาย (ควรเป็นจำนวนเต็ม)
+ * @param {number[]} weights น้ำหนักของแต่ละรายการ (>= 0)
+ * @returns {number[]} จำนวนเงินของแต่ละรายการ ผลรวม = totalAmount เป๊ะ
  */
-function distributeAmount(totalSatang, weights) {
+function distributeAmount(totalAmount, weights) {
+  if (!Array.isArray(weights) || weights.length === 0) return [];
+
   const n = weights.length;
-  if (n === 0) return [];
+  let sumWeights = weights.reduce((s, w) => s + w, 0);
 
-  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  // น้ำหนักทุกตัวเป็น 0 -> กระจายเท่า ๆ กันแทนที่จะหารด้วย 0
+  const effectiveWeights = sumWeights === 0 ? weights.map(() => 1) : weights;
+  sumWeights = sumWeights === 0 ? n : sumWeights;
 
-  // ถ้าน้ำหนักรวมเป็น 0 (เช่นทุก item ราคา 0) ให้กระจายเท่า ๆ กัน
-  if (totalWeight === 0) {
-    return distributeAmount(totalSatang, weights.map(() => 1));
-  }
+  const rawShares = effectiveWeights.map((w) => (totalAmount * w) / sumWeights);
+  const floors = rawShares.map((s) => Math.floor(s));
+  let remainder = totalAmount - floors.reduce((s, v) => s + v, 0);
 
-  // คำนวณสัดส่วนแบบ float ก่อน แล้วแยกเป็นส่วนเต็ม (floor) + เศษ (remainder)
-  const raw = weights.map((w) => (totalSatang * w) / totalWeight);
-  const floored = raw.map((r) => Math.floor(r));
-  const remainders = raw.map((r, i) => ({ index: i, remainder: r - floored[i] }));
+  // เรียงตามเศษทศนิยมมากไปน้อย (เท่ากันให้ index น้อยกว่าได้ก่อน) เพื่อแจกส่วนเกิน
+  const order = rawShares
+    .map((s, idx) => ({ idx, frac: s - Math.floor(s) }))
+    .sort((a, b) => b.frac - a.frac || a.idx - b.idx);
 
-  let allocated = floored.reduce((s, v) => s + v, 0);
-  let diff = totalSatang - allocated; // ส่วนต่างที่ยังต้องแจกเพิ่ม (เป็นจำนวนเต็มบวก)
-
-  // เรียง remainder จากมากไปน้อย แล้วแจกทีละ 1 หน่วยให้ตัวที่ remainder เยอะสุดก่อน
-  remainders.sort((a, b) => b.remainder - a.remainder);
-
-  const result = [...floored];
-  for (let i = 0; i < diff; i++) {
-    const idx = remainders[i % n].index;
-    result[idx] += 1;
+  const result = [...floors];
+  for (let k = 0; k < order.length && remainder > 0; k++) {
+    result[order[k].idx] += 1;
+    remainder -= 1;
   }
 
   return result;
 }
 
-/**
- * กระจาย SC และ VAT ไปยังแต่ละ item ตามสัดส่วนราคา
- *
- * @param {Array<{id: string|number, price: number}>} items - รายการสินค้า (ราคาหน่วยบาท)
- * @param {number} scRate - อัตรา Service Charge เช่น 0.10 = 10%
- * @param {number} vatRate - อัตรา VAT เช่น 0.07 = 7%
- * @param {Object} [options]
- * @param {'itemPlusSC'|'itemOnly'} [options.vatBase='itemPlusSC'] - ฐานคำนวณ VAT
- *        'itemPlusSC' = คิด VAT จาก (ราคา + SC) แบบมาตรฐานไทย
- *        'itemOnly'   = คิด VAT จากราคาสินค้าอย่างเดียว (ไม่รวม SC)
- * @returns {{items: Array, summary: Object}}
- */
-function distributeSCVAT(items, scRate = 0, vatRate = 0, options = {}) {
-  const { vatBase = 'itemPlusSC' } = options;
+const SATANG_PER_BAHT = 100;
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const toSatang = (baht) => Math.round(baht * SATANG_PER_BAHT);
+const toBaht = (satang) => round2(satang / SATANG_PER_BAHT);
 
+/**
+ * กระจาย Service Charge (SC) และ VAT ให้แต่ละรายการ/สมาชิก ตามสัดส่วนราคา
+ * คำนวณเป็นหน่วยสตางค์ภายใน (ผ่าน distributeAmount) เพื่อไม่ให้ผลรวมคลาดเคลื่อนจาก floating point
+ *
+ * @param {Array<{id: any, price: number}>} items รายการ (ราคาหน่วยบาท)
+ * @param {number} scRate อัตรา Service Charge เช่น 0.1 = 10%
+ * @param {number} vatRate อัตรา VAT เช่น 0.07 = 7%
+ * @param {{vatBase?: 'itemPlusSC' | 'itemOnly'}} [options]
+ *   vatBase 'itemPlusSC' (ค่าเริ่มต้น) = คิด VAT จาก (ราคา + SC)
+ *   vatBase 'itemOnly' = คิด VAT จากราคาสินค้าอย่างเดียว ไม่รวม SC
+ * @returns {{items: Array, summary: {totalPrice:number, totalSC:number, totalVAT:number, grandTotal:number}}}
+ */
+function distributeSCVAT(items, scRate, vatRate, options = {}) {
   if (!Array.isArray(items) || items.length === 0) {
-    throw new Error('items ต้องเป็น array ที่มีอย่างน้อย 1 รายการ');
+    throw new Error('items ต้องมีอย่างน้อย 1 รายการ');
   }
+  const vatBase = options.vatBase || 'itemPlusSC';
 
-  const priceSatang = items.map((it) => toSatang(it.price));
-  const totalPriceSatang = priceSatang.reduce((s, v) => s + v, 0);
+  const priceSatangs = items.map((it) => toSatang(it.price));
+  const totalPriceSatang = priceSatangs.reduce((s, v) => s + v, 0);
 
-  // 1) คำนวณ SC รวม แล้วกระจายตามสัดส่วนราคา
+  // 1) กระจาย SC ตามสัดส่วนราคาของแต่ละรายการ
   const totalSCSatang = Math.round(totalPriceSatang * scRate);
-  const scPerItem = distributeAmount(totalSCSatang, priceSatang);
+  const scAllocations = distributeAmount(totalSCSatang, priceSatangs);
 
-  // 2) กำหนดฐานคำนวณ VAT ต่อ item ตาม option
-  const vatBaseSatang = priceSatang.map((price, i) =>
-    vatBase === 'itemPlusSC' ? price + scPerItem[i] : price
+  // 2) หาฐานคำนวณ VAT ต่อรายการ ตาม vatBase ที่เลือก แล้วกระจาย VAT ตามฐานนั้น
+  const vatBases = priceSatangs.map((p, idx) =>
+    vatBase === 'itemOnly' ? p : p + scAllocations[idx]
   );
-  const totalVATBaseSatang = vatBaseSatang.reduce((s, v) => s + v, 0);
-
-  // 3) คำนวณ VAT รวม แล้วกระจายตามฐานที่เลือก
+  const totalVATBaseSatang = vatBases.reduce((s, v) => s + v, 0);
   const totalVATSatang = Math.round(totalVATBaseSatang * vatRate);
-  const vatPerItem = distributeAmount(totalVATSatang, vatBaseSatang);
+  const vatAllocations = distributeAmount(totalVATSatang, vatBases);
 
-  // 4) ประกอบผลลัพธ์ต่อ item
-  const resultItems = items.map((it, i) => ({
-    id: it.id,
-    price: toBaht(priceSatang[i]),
-    sc: toBaht(scPerItem[i]),
-    vat: toBaht(vatPerItem[i]),
-    total: toBaht(priceSatang[i] + scPerItem[i] + vatPerItem[i]),
-  }));
+  const resultItems = items.map((it, idx) => {
+    const scSatang = scAllocations[idx];
+    const vatSatang = vatAllocations[idx];
+    const totalSatang = priceSatangs[idx] + scSatang + vatSatang;
+    return {
+      ...it,
+      price: round2(it.price),
+      sc: toBaht(scSatang),
+      vat: toBaht(vatSatang),
+      total: toBaht(totalSatang),
+    };
+  });
 
-  const grandTotalSatang =
-    totalPriceSatang + totalSCSatang + totalVATSatang;
-
-  return {
-    items: resultItems,
-    summary: {
-      totalPrice: toBaht(totalPriceSatang),
-      totalSC: toBaht(totalSCSatang),
-      totalVAT: toBaht(totalVATSatang),
-      grandTotal: toBaht(grandTotalSatang),
-    },
+  const summary = {
+    totalPrice: toBaht(totalPriceSatang),
+    totalSC: toBaht(totalSCSatang),
+    totalVAT: toBaht(totalVATSatang),
+    grandTotal: toBaht(totalPriceSatang + totalSCSatang + totalVATSatang),
   };
+
+  return { items: resultItems, summary };
 }
 
-/**
- * กระจาย SC/VAT (ที่คำนวณระดับ item แล้ว) ต่อไปยังสมาชิกแต่ละคน
- * รองรับกรณี item หนึ่งมีหลายคนแชร์ร่วมกัน (เช่น กับข้าวจานกลาง)
- *
- * @param {Array<{id, price}>} items
- * @param {Object<string, string[]>} itemAssignments
- * @param {number} scRate
- * @param {number} vatRate
- * @param {Object} [options]
- * @returns {{members: Object, summary: Object, itemBreakdown: Array}}
- */
-function allocateToMembers(items, itemAssignments, scRate = 0, vatRate = 0, options = {}) {
-  const { items: itemResults, summary } = distributeSCVAT(items, scRate, vatRate, options);
-
-  const memberIds = [...new Set(Object.values(itemAssignments).flat())];
-  const memberTotalsSatang = Object.fromEntries(
-    memberIds.map((id) => [id, { price: 0, sc: 0, vat: 0 }])
-  );
-
-  const itemBreakdown = [];
-
-  for (const itemResult of itemResults) {
-    const assignedMembers = itemAssignments[itemResult.id];
-
-    if (!assignedMembers || assignedMembers.length === 0) {
-      throw new Error(
-        `item id="${itemResult.id}" ไม่มีสมาชิกถูก assign ไว้ (itemAssignments ขาดรายการนี้)`
-      );
-    }
-
-    const equalWeights = assignedMembers.map(() => 1);
-
-    const priceSplit = distributeAmount(toSatang(itemResult.price), equalWeights);
-    const scSplit = distributeAmount(toSatang(itemResult.sc), equalWeights);
-    const vatSplit = distributeAmount(toSatang(itemResult.vat), equalWeights);
-
-    const perMember = {};
-    assignedMembers.forEach((memberId, i) => {
-      memberTotalsSatang[memberId].price += priceSplit[i];
-      memberTotalsSatang[memberId].sc += scSplit[i];
-      memberTotalsSatang[memberId].vat += vatSplit[i];
-      perMember[memberId] = {
-        price: toBaht(priceSplit[i]),
-        sc: toBaht(scSplit[i]),
-        vat: toBaht(vatSplit[i]),
-      };
-    });
-
-    itemBreakdown.push({ itemId: itemResult.id, sharedBy: assignedMembers, perMember });
-  }
-
-  const members = Object.fromEntries(
-    Object.entries(memberTotalsSatang).map(([id, t]) => [
-      id,
-      {
-        price: toBaht(t.price),
-        sc: toBaht(t.sc),
-        vat: toBaht(t.vat),
-        total: toBaht(t.price + t.sc + t.vat),
-      },
-    ])
-  );
-
-  return { members, summary, itemBreakdown };
-}
-
-
-
-module.exports = {
-  toSatang,
-  toBaht,
-  distributeAmount,
-  distributeSCVAT,
-  allocateToMembers,
-};
+module.exports = { distributeAmount, distributeSCVAT, toSatang, toBaht };
