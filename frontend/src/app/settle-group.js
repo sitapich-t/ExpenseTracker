@@ -103,33 +103,37 @@ export default function GroupSettleScreen() {
         return;
       }
 
-      // ยอดคงเหลือต่อคน: จ่ายบิลได้ = บวก, ต้องจ่าย = ลบ
-      const balance = {};
+      // ยอดคงเหลือต่อคน หน่วยสตางค์ (จำนวนเต็ม): จ่ายบิลได้ = บวก, ต้องจ่าย = ลบ
+      const balanceSatang = {};
       members.forEach((m) => {
-        balance[String(m.id)] = 0;
+        balanceSatang[String(m.id)] = 0;
       });
 
       bills.forEach((b) => {
-        const total = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
-        if (total <= 0) return;
+        const totalSatang = Math.round(
+          (parseFloat(String(b.amount).replace(/,/g, '')) || 0) * 100
+        );
+        if (totalSatang <= 0) return;
 
         const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
           ? b.splitData.memberIds.map(String)
           : members.map((m) => String(m.id));
 
         const n = sharedIds.length || 1;
-        const per = Math.round((total / n) * 100) / 100;
+        const base = Math.floor(totalSatang / n);
+        const remainder = totalSatang - base * n; // เศษสตางค์ที่ต้องแจก
         const payer = String(b.payer ?? b.paidBy ?? '');
 
-        if (payer in balance) balance[payer] += total;
-        sharedIds.forEach((sid) => {
-          if (sid in balance) balance[sid] -= per;
+        if (payer in balanceSatang) balanceSatang[payer] += totalSatang;
+        sharedIds.forEach((sid, i) => {
+          const share = base + (i < remainder ? 1 : 0); // คน i ตัวแรกได้เศษคนละ 1 สตางค์
+          if (sid in balanceSatang) balanceSatang[sid] -= share;
         });
       });
 
-      const payload = Object.entries(balance).map(([person, amount]) => ({
+      const payload = Object.entries(balanceSatang).map(([person, satang]) => ({
         person,
-        amount: Math.round(amount * 100) / 100,
+        amount: satang / 100,
       }));
 
       try {
