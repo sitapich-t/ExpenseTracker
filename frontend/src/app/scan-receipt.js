@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { API_URL } from '@/lib/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL, getToken } from '@/lib/api';
 import { setScannedImage } from '@/utils/scannedImageStore';
 
 export default function ScanReceiptScreen() {
@@ -16,8 +16,7 @@ export default function ScanReceiptScreen() {
   const [loading, setLoading] = useState(false);
   const [flash, setFlash] = useState(false);
 
-  const returnTo = params.returnTo ? String(params.returnTo) : null;
-  const groupId = params.groupId ? String(params.groupId) : null;
+  // ใช้จาก params ตอน push แทนตัวแปรที่ไม่ได้ใช้งาน
 
   useEffect(() => {
     if (!permission?.granted) requestPermission();
@@ -52,18 +51,24 @@ export default function ScanReceiptScreen() {
   const processOCR = async (imageUri) => {
     setLoading(true);
     try {
-      const base64Image = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      let token = await getToken();
+      if (!token) token = (await AsyncStorage.getItem('userToken')) || (await AsyncStorage.getItem('token'));
+      if (!token) {
+        throw new Error('กรุณาเข้าสู่ระบบก่อนใช้สแกนใบเสร็จ');
+      }
+
+      const formData = new FormData();
+      const filename = imageUri.split('/').pop() || 'receipt.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      formData.append('receipt', { uri: imageUri, name: filename, type });
 
       const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          image: base64Image,
-        }),
+        body: formData,
       });
 
       const resultText = await response.text();
@@ -84,8 +89,8 @@ export default function ScanReceiptScreen() {
         throw new Error('เซิร์ฟเวอร์ตอบกลับข้อมูลที่ไม่ถูกต้อง');
       }
 
-      // เก็บรูปเป็น base64 data URI ไว้ใน memory
-      setScannedImage(`data:image/jpeg;base64,${base64Image}`);
+      // เก็บรูปไว้ใน memory สำหรับหน้า confirm
+      setScannedImage(imageUri);
 
       const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
       const returnToRoute = params.returnTo ? String(params.returnTo) : null;

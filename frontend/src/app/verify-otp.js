@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import api, { setToken } from '@/lib/api';
 import { getFlow, setFlow, clearFlow } from '@/lib/authFlow';
+import { digitsOnly } from '@/lib/inputSanitize';
 
 export default function VerifyOtpScreen() {
   const router = useRouter();
@@ -151,7 +152,7 @@ export default function VerifyOtpScreen() {
             keyboardType="number-pad"
             maxLength={6}
             value={otp}
-            onChangeText={(text) => setOtp(text.replace(/[^0-9]/g, ''))}
+            onChangeText={(text) => setOtp(digitsOnly(text))}
             autoFocus
             caretHidden={false}
           />

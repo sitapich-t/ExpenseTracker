@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SHADOWS } from '@/lib/theme';
 import { useGroup } from './context/GroupContext';
 
@@ -26,7 +27,7 @@ const EMPTY = [];
 export default function GroupSettleScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { settleGroup, getGroup, refresh, fetchSettlement } = useGroup();
+  const { settleGroup, getGroup, refresh, fetchSettlement, me } = useGroup();
 
   const groupId = params.groupId;
   const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
@@ -55,6 +56,7 @@ export default function GroupSettleScreen() {
   const [balances, setBalances] = useState([]);
   // บิลที่คำนวณไม่ได้ — ต้องโชว์ผู้ใช้ ไม่เงียบทิ้ง
   const [skippedBills, setSkippedBills] = useState([]);
+  const [confirmedReceipts, setConfirmedReceipts] = useState({});
 
   // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่กลับมาหน้านี้ (เผื่อเพิ่งเพิ่มบิล/สมาชิก)
   useFocusEffect(
@@ -121,6 +123,8 @@ export default function GroupSettleScreen() {
             id: `s_${i + 1}`,
             from: nameOf(t.from),
             to: nameOf(t.to),
+            fromId: t.from,
+            toId: t.to,
             amount: baht(t.amount),
           }))
         );
@@ -140,6 +144,32 @@ export default function GroupSettleScreen() {
       cancelled = true;
     };
   }, [groupId, bills, nameOf, fetchSettlement]);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(`received_confirm_${groupId}`).then((raw) => {
+      if (!active || !raw) return;
+      try {
+        setConfirmedReceipts(JSON.parse(raw));
+      } catch {
+        setConfirmedReceipts({});
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [groupId]);
+
+  const confirmReceipt = useCallback(
+    async (debt) => {
+      const key = `${String(debt.from)}|${String(debt.to)}|${String(debt.amount)}`;
+      const next = { ...confirmedReceipts, [key]: true };
+      setConfirmedReceipts(next);
+      await AsyncStorage.setItem(`received_confirm_${groupId}`, JSON.stringify(next));
+      Alert.alert('ยืนยันเรียบร้อย', `คุณยืนยันว่าได้รับเงินจาก ${debt.from} แล้ว`);
+    },
+    [confirmedReceipts, groupId]
+  );
 
   const handleSendReminder = (debt) => {
     setRemindedList((prev) => [...prev, debt.id]);
@@ -343,6 +373,13 @@ export default function GroupSettleScreen() {
                 ) : (
                 simplifiedDebts.map((item) => {
                   const isReminded = remindedList.includes(item.id);
+                  const key = `${String(item.fromId || item.from)}|${String(item.toId || item.to)}|${String(item.amount)}`;
+                  const received = confirmedReceipts[key];
+                  const myId = String(me?.id || me?.user_id || '').toLowerCase();
+                  const myName = String(me?.name || '').toLowerCase();
+                  const isReceiver =
+                    String(item.toId || '').toLowerCase() === myId ||
+                    String(item.to || '').toLowerCase() === myName;
                   return (
                     <View key={item.id} style={styles.settleRowCard}>
                       {/* Left info box */}
@@ -360,18 +397,31 @@ export default function GroupSettleScreen() {
                         <Text style={styles.settleAmount}>฿{item.amount}</Text>
                       </View>
 
-                      {/* Red Bell Button for ทวงเงิน */}
-                      <TouchableOpacity
-                        style={[styles.bellBtn, isReminded && styles.bellBtnReminded]}
-                        onPress={() => handleSendReminder(item)}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons
-                          name={isReminded ? 'checkmark' : 'notifications'}
-                          size={20}
-                          color="#FFFFFF"
-                        />
-                      </TouchableOpacity>
+                      {received ? (
+                        <View style={[styles.bellBtn, { backgroundColor: '#10B981' }]}>
+                          <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                        </View>
+                      ) : isReceiver ? (
+                        <TouchableOpacity
+                          style={styles.bellBtn}
+                          onPress={() => confirmReceipt(item)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.bellBtn, isReminded && styles.bellBtnReminded]}
+                          onPress={() => handleSendReminder(item)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons
+                            name={isReminded ? 'checkmark' : 'notifications'}
+                            size={20}
+                            color="#FFFFFF"
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   );
                 })

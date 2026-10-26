@@ -23,7 +23,8 @@ export default function RootLayout() {
           {/* กลุ่ม */}
           <Stack.Screen name="create-group" />
           <Stack.Screen name="detail-group" />
-          <Stack.Screen name="add-group-expense" />
+            <Stack.Screen name="add-group-expense" />
+            <Stack.Screen name="edit-group-bill" />
           <Stack.Screen name="settle-group" />
           <Stack.Screen name="join-group" />
           <Stack.Screen name="group-qrcode" />

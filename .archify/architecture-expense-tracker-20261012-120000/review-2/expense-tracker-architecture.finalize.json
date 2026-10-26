@@ -3,18 +3,18 @@
   "ok": true,
   "command": "finalize",
   "status": "pass",
-  "type": "sequence",
+  "type": "architecture",
   "quality": "showcase",
-  "startedAt": "2026-10-12T04:34:26.705Z",
+  "startedAt": "2026-10-12T08:04:16.455Z",
   "specification": {
-    "path": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\candidate.json",
-    "sha256": "438154685f10228204c2f37de7c7bda1f4e8eca910b51e3219b3c9b95841b834",
-    "bytes": 2574
+    "path": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\candidate.json",
+    "sha256": "5187cc5b05cd2df59e91e4924c63e5b8fb734464a767544310de22bbd0ca5c91",
+    "bytes": 7433
   },
   "artifact": {
-    "path": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
-    "sha256": "d3766915a362a3531e1fd0b041f2f19d94562c962182d8f6314d698ba8110454",
-    "bytes": 752179
+    "path": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
+    "sha256": "804c33030772110dbf31c0dc339bc1b9bc31c2476ea72c313da804adaafdb2dc",
+    "bytes": 770472
   },
   "stages": {
     "validate": {
@@ -26,11 +26,13 @@
         "E:\\Node\\node.exe",
         "C:\\Users\\sitap\\.agents\\skills\\archify\\bin\\archify.mjs",
         "deliver",
-        "sequence",
-        "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\candidate.json",
-        "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
+        "architecture",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\candidate.json",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
         "--quality",
         "showcase",
+        "--repo-root",
+        "E:\\expense-tracker",
         "--json"
       ],
       "receipt": {
@@ -38,8 +40,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "438154685f10228204c2f37de7c7bda1f4e8eca910b51e3219b3c9b95841b834",
-          "bytes": 2574
+          "sha256": "5187cc5b05cd2df59e91e4924c63e5b8fb734464a767544310de22bbd0ca5c91",
+          "bytes": 7433
         },
         "validation": {
           "checksPassed": 9,
@@ -54,33 +56,35 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 737,
+      "durationMs": 957,
       "command": [
         "E:\\Node\\node.exe",
         "C:\\Users\\sitap\\.agents\\skills\\archify\\bin\\archify.mjs",
         "deliver",
-        "sequence",
-        "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\candidate.json",
-        "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
+        "architecture",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\candidate.json",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
         "--quality",
         "showcase",
+        "--repo-root",
+        "E:\\expense-tracker",
         "--json"
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "4ddea95e-4ac3-472f-8d5e-718dca05d84c",
+        "receiptId": "059c53e4-602c-404b-b823-82c962bf986d",
         "ok": true,
         "command": "deliver",
-        "type": "sequence",
-        "input": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\candidate.json",
-        "output": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
+        "type": "architecture",
+        "input": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\candidate.json",
+        "output": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
         "specification": {
-          "sha256": "438154685f10228204c2f37de7c7bda1f4e8eca910b51e3219b3c9b95841b834",
-          "bytes": 2574
+          "sha256": "5187cc5b05cd2df59e91e4924c63e5b8fb734464a767544310de22bbd0ca5c91",
+          "bytes": 7433
         },
         "artifact": {
-          "sha256": "d3766915a362a3531e1fd0b041f2f19d94562c962182d8f6314d698ba8110454",
-          "bytes": 752179
+          "sha256": "804c33030772110dbf31c0dc339bc1b9bc31c2476ea72c313da804adaafdb2dc",
+          "bytes": 770472
         },
         "validation": {
           "checksPassed": 9,
@@ -89,6 +93,12 @@
           "compositionStatus": "pass",
           "errors": 0,
           "warnings": 0
+        },
+        "evidence": {
+          "verified": true,
+          "repository": "https://github.com/sitapich-t/ExpenseTracker",
+          "revision": "42789233e5b656d15e457229d14a865d3d89997f",
+          "references": 14
         },
         "update": {
           "status": "unavailable",
@@ -106,20 +116,20 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 140,
+      "durationMs": 166,
       "command": [
         "E:\\Node\\node.exe",
         "C:\\Users\\sitap\\.agents\\skills\\archify\\bin\\archify.mjs",
         "check",
-        "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
         "--require-provenance"
       ],
       "receipt": {
         "ok": true,
-        "file": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
+        "file": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
         "artifact": {
-          "sha256": "d3766915a362a3531e1fd0b041f2f19d94562c962182d8f6314d698ba8110454",
-          "bytes": 752179
+          "sha256": "804c33030772110dbf31c0dc339bc1b9bc31c2476ea72c313da804adaafdb2dc",
+          "bytes": 770472
         },
         "checks": [
           {
@@ -186,16 +196,16 @@
             "containerBorderRuns": 0,
             "labelRouteClearanceIssues": 0,
             "labelCanvasOverflowIssues": 0,
-            "minLabelRouteClearance": 8,
+            "minLabelRouteClearance": 47.4,
             "desktopReadabilityIssues": 0,
             "viewportHeightIssues": 0,
-            "minProjectedNodeTextPx": 7,
-            "maxBends": 0,
-            "routesOverSuggestedBends": 0,
-            "maxStretch": 1,
-            "routesOverSuggestedStretch": 0,
-            "minSegmentPx": 94,
-            "minInteriorSegmentPx": null,
+            "minProjectedNodeTextPx": 6.002432432432433,
+            "maxBends": 4,
+            "routesOverSuggestedBends": 1,
+            "maxStretch": 1.364,
+            "routesOverSuggestedStretch": 1,
+            "minSegmentPx": 16,
+            "minInteriorSegmentPx": 16,
             "shortSegmentCount": 0,
             "shortEndpointSegmentCount": 0,
             "shortInteriorSegmentCount": 0,
@@ -209,59 +219,71 @@
           },
           "routeReview": {
             "crossings": [],
-            "detours": []
+            "detours": [
+              {
+                "relationship": {
+                  "id": "protected-route-check",
+                  "from": "express-api",
+                  "to": "auth-guard",
+                  "label": "protected route",
+                  "collectionIndex": 2,
+                  "artifactIndex": 3
+                },
+                "bends": 4,
+                "stretch": 1.364
+              }
+            ]
           },
           "leadingSpace": {
-            "measured": false,
+            "measured": true,
+            "emptyTopPx": 7,
+            "emptyTopRatio": 0.01,
+            "occupiedTop": 7,
+            "viewBoxTop": 0,
+            "canvasHeight": 711,
+            "typicalNodeHeight": 68,
             "reviewSuggested": false
           },
-          "sequenceColumnSpace": {
-            "measured": true,
-            "columnFit": "fixed",
-            "participantCount": 4,
-            "occupiedRight": 429,
-            "viewBoxLeft": 0,
-            "canvasWidth": 760,
-            "emptyRightPx": 331,
-            "emptyRightRatio": 0.436,
-            "typicalParticipantWidth": 86,
-            "reviewSuggested": true
-          },
           "desktopReadability": {
-            "budgetBasis": "legacy-930",
+            "budgetBasis": "recognized-declared-wide",
             "readerContract": "declared-wide-v1",
-            "availableDiagramWidth": 930,
-            "actualBudgetPx": 930,
-            "limit": "legacy",
-            "requestedTargetPx": null,
-            "requestedTargetMet": null,
+            "availableDiagramWidth": 1346,
+            "actualBudgetPx": 1346,
+            "actualReaderWidth": 1376,
+            "desiredReaderWidth": 1510,
+            "viewportCap": 1376,
+            "limit": "viewport-cap",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": false,
             "hardFloorPx": 6,
             "hardFloorMet": true,
             "minimumOwner": {
               "kind": "node",
-              "id": "browser"
+              "id": "rate-store"
             },
-            "minimumSourceTextPx": 7,
-            "minimumProjectedTextPx": 7,
-            "semanticTextCount": 15
+            "minimumSourceTextPx": 6.6,
+            "minimumProjectedTextPx": 6.002432432432433,
+            "semanticTextCount": 32
           },
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "4ddea95e-4ac3-472f-8d5e-718dca05d84c"
+        "deliveryReceiptId": "059c53e4-602c-404b-b823-82c962bf986d"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 1193,
+      "durationMs": 1103,
       "command": [
         "E:\\Node\\node.exe",
         "C:\\Users\\sitap\\.agents\\skills\\archify\\bin\\archify.mjs",
         "browser-check",
-        "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
         "--json",
-        "--require-provenance"
+        "--require-provenance",
+        "--out-dir",
+        "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\review-2"
       ],
       "execution": "in-process",
       "receipt": {
@@ -272,11 +294,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "4ddea95e-4ac3-472f-8d5e-718dca05d84c",
+        "deliveryReceiptId": "059c53e4-602c-404b-b823-82c962bf986d",
         "artifact": {
-          "path": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.html",
-          "sha256": "d3766915a362a3531e1fd0b041f2f19d94562c962182d8f6314d698ba8110454",
-          "bytes": 752179
+          "path": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
+          "sha256": "804c33030772110dbf31c0dc339bc1b9bc31c2476ea72c313da804adaafdb2dc",
+          "bytes": 770472
         },
         "state": {
           "detail": "read",
@@ -305,27 +327,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1147,
-              "diagramWidth": 1117,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
               "pageComposition": {
                 "bodyPaddingPx": 12,
                 "headerPx": 78,
                 "diagramChromePx": 78,
-                "svgPx": 720,
+                "svgPx": 647,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.002432432432433,
+              "minimumProjectedNonEdgeTextPx": 6.002432432432433,
+              "minimumProjectedEdgeTextPx": 7.275675675675676,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -355,27 +377,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1200,
-              "diagramWidth": 1170,
+              "readerWidth": 1536,
+              "diagramWidth": 1506,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 86,
                 "diagramChromePx": 84,
-                "svgPx": 754,
+                "svgPx": 723,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -405,27 +427,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1324,
-              "diagramWidth": 1294,
+              "readerWidth": 1767,
+              "diagramWidth": 1737,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 86,
                 "diagramChromePx": 84,
                 "svgPx": 834,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -455,27 +477,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1688,
-              "diagramWidth": 1638,
+              "readerWidth": 1920,
+              "diagramWidth": 1870,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 94,
                 "diagramChromePx": 94,
-                "svgPx": 1056,
+                "svgPx": 898,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -558,27 +580,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1147,
-              "diagramWidth": 1117,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
               "pageComposition": {
                 "bodyPaddingPx": 12,
                 "headerPx": 78,
                 "diagramChromePx": 78,
-                "svgPx": 720,
+                "svgPx": 647,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.002432432432433,
+              "minimumProjectedNonEdgeTextPx": 6.002432432432433,
+              "minimumProjectedEdgeTextPx": 7.275675675675676,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -608,27 +630,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1200,
-              "diagramWidth": 1170,
+              "readerWidth": 1536,
+              "diagramWidth": 1506,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 86,
                 "diagramChromePx": 84,
-                "svgPx": 754,
+                "svgPx": 723,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -658,27 +680,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1324,
-              "diagramWidth": 1294,
+              "readerWidth": 1767,
+              "diagramWidth": 1737,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 86,
                 "diagramChromePx": 84,
                 "svgPx": 834,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -708,27 +730,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1688,
-              "diagramWidth": 1638,
+              "readerWidth": 1920,
+              "diagramWidth": 1870,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 94,
                 "diagramChromePx": 94,
-                "svgPx": 1056,
+                "svgPx": 898,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -763,27 +785,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1147,
-              "diagramWidth": 1117,
+              "readerWidth": 1376,
+              "diagramWidth": 1346,
               "pageComposition": {
                 "bodyPaddingPx": 12,
                 "headerPx": 78,
                 "diagramChromePx": 78,
-                "svgPx": 720,
+                "svgPx": 647,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.002432432432433,
+              "minimumProjectedNonEdgeTextPx": 6.002432432432433,
+              "minimumProjectedEdgeTextPx": 7.275675675675676,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -813,27 +835,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1200,
-              "diagramWidth": 1170,
+              "readerWidth": 1536,
+              "diagramWidth": 1506,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 86,
                 "diagramChromePx": 84,
-                "svgPx": 754,
+                "svgPx": 723,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -863,27 +885,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1324,
-              "diagramWidth": 1294,
+              "readerWidth": 1767,
+              "diagramWidth": 1737,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 86,
                 "diagramChromePx": 84,
                 "svgPx": 834,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -913,27 +935,27 @@
               "overflowDisposition": "contained",
               "readerLayout": "adaptive",
               "readerOverflow": null,
-              "readerFit": null,
+              "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1688,
-              "diagramWidth": 1638,
+              "readerWidth": 1920,
+              "diagramWidth": 1870,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 94,
                 "diagramChromePx": 94,
-                "svgPx": 1056,
+                "svgPx": 898,
                 "cardsPx": 0,
-                "viewBoxHeight": 490
+                "viewBoxHeight": 711
               },
-              "viewBoxWidth": 760,
-              "minimumProjectedNodeTextPx": 7,
-              "minimumProjectedNonEdgeTextPx": 7,
-              "minimumProjectedEdgeTextPx": 11,
-              "minimumProjectedNodeText": "frontend client",
+              "viewBoxWidth": 1480,
+              "minimumProjectedNodeTextPx": 6.6,
+              "minimumProjectedNonEdgeTextPx": 6.6,
+              "minimumProjectedEdgeTextPx": 8,
+              "minimumProjectedNodeText": "Redis when configured; memory fallback",
               "minimumProjectedNodeTextDetail": "context",
               "minimumProjectedNodeTextOwner": {
                 "kind": "node",
-                "id": "browser"
+                "id": "rate-store"
               },
               "minimumRequiredNodeTextPx": 6,
               "readabilityOk": true,
@@ -957,7 +979,8 @@
           "contactSheet": null
         },
         "sidecars": {
-          "receipt": "cache-miss.browser-check.json",
+          "directory": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\review-2",
+          "receipt": "expense-tracker-architecture.browser-check.json",
           "files": []
         }
       }
@@ -965,13 +988,13 @@
   },
   "diagnostics": [],
   "evidence": {
-    "receipt": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.finalize.json",
-    "summaryReceipt": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.finalize-summary.json",
-    "browserCheckReceipt": "E:\\expense-tracker\\.archify\\sequence-cache-miss-20261012\\cache-miss.browser-check.json"
+    "receipt": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\review-2\\expense-tracker-architecture.finalize.json",
+    "summaryReceipt": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\review-2\\expense-tracker-architecture.finalize-summary.json",
+    "browserCheckReceipt": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\review-2\\expense-tracker-architecture.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-10-12T04:34:29.173Z",
-  "durationMs": 2468,
+  "finishedAt": "2026-10-12T08:04:19.104Z",
+  "durationMs": 2649,
   "update": {
     "status": "current",
     "installedVersion": "3.0.1",

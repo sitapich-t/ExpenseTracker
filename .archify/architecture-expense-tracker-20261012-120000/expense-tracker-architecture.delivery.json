@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "059c53e4-602c-404b-b823-82c962bf986d",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\candidate.json",
+  "output": "E:\\expense-tracker\\.archify\\architecture-expense-tracker-20261012-120000\\expense-tracker-architecture.html",
+  "specification": {
+    "sha256": "5187cc5b05cd2df59e91e4924c63e5b8fb734464a767544310de22bbd0ca5c91",
+    "bytes": 7433
+  },
+  "artifact": {
+    "sha256": "804c33030772110dbf31c0dc339bc1b9bc31c2476ea72c313da804adaafdb2dc",
+    "bytes": 770472
+  }
+}

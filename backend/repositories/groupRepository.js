@@ -137,6 +137,25 @@ const transactions = {
     return query;
   },
 
+  async findByIdInGroup(groupId, transactionId) {
+    return supabase
+      .from('group_transactions')
+      .select('id, type, subtotal, amount, sc_amount, vat_amount, split_data')
+      .eq('group_id', groupId)
+      .eq('id', transactionId)
+      .maybeSingle();
+  },
+
+  async updateSplitData(groupId, transactionId, splitData) {
+    return supabase
+      .from('group_transactions')
+      .update({ split_data: splitData })
+      .eq('group_id', groupId)
+      .eq('id', transactionId)
+      .select()
+      .single();
+  },
+
   async deleteByGroup(groupId) {
     return supabase.from('group_transactions').delete().eq('group_id', groupId);
   },

@@ -259,7 +259,8 @@ exports.createGroup = async (req, res) => {
       created_by: userId,
       members_count: 1,
       total_spend: 0,
-      status_type: 'settled',
+      // กลุ่มใหม่ยังเพิ่มบิลได้ จึงต้องเริ่มต้นเป็น pending ไม่ใช่ settled
+      status_type: 'pending',
       amount: 0,
       icon,
       icon_bg: iconBg,
@@ -455,6 +456,13 @@ exports.createGroupTransaction = async (req, res) => {
     // บิลของกลุ่ม: เฉพาะสมาชิกเท่านั้นที่เพิ่มได้
     if (!(await isGroupMember(id, userId))) {
       return early(res, 403, 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้');
+    }
+
+    const { data: group, error: groupLookupError } = await groups.findById(id, 'status_type');
+    if (groupLookupError) throw groupLookupError;
+    if (!group) return early(res, 404, 'ไม่พบกลุ่มนี้');
+    if (group.status_type === 'settled') {
+      return early(res, 409, 'กลุ่มนี้เคลียร์บิลแล้ว ไม่สามารถเพิ่มรายการใหม่ได้');
     }
 
     // ถ้าอัปโหลดรูปมากับ request นี้ ให้ใช้รูปนั้น (ชนะ slip_url ที่ส่งมา)
@@ -807,6 +815,46 @@ exports.updateGroupStatus = async (req, res) => {
     return res.json({ success: true, message: 'อัปเดตสถานะกลุ่มสำเร็จ', group: data });
   } catch (err) {
     console.error('❌ Update group status error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// แก้เฉพาะวิธีหารบิล: ยอดเงินเดิมและคนจ่ายไม่เปลี่ยน จึงไม่กระทบ total_spend
+exports.updateGroupTransactionSplit = async (req, res) => {
+  try {
+    const { id, transactionId } = req.params;
+    const userId = req.user.id || req.user.user_id;
+    if (!(await isGroupMember(id, userId))) return early(res, 403, 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้');
+
+    const { data: tx, error } = await transactions.findByIdInGroup(id, transactionId);
+    if (error) throw error;
+    if (!tx) return early(res, 404, 'ไม่พบบิลนี้ในกลุ่ม');
+    if (tx.type === 'income') return early(res, 400, 'ไม่สามารถหารบิลรายรับได้');
+
+    const split = req.body?.split_data;
+    if (!split || typeof split !== 'object' || Array.isArray(split)) {
+      return early(res, 400, 'split_data ต้องเป็น object');
+    }
+    const memberIds = await getGroupMemberIds(id);
+    const check = validateSplit(split, {
+      subtotal: tx.subtotal ?? tx.amount,
+      scAmount: tx.sc_amount,
+      vatAmount: tx.vat_amount,
+      memberIds,
+    });
+    if (!check.ok) return early(res, 400, `วิธีหารบิลไม่ถูกต้อง: ${check.error}`);
+    const allowed = new Set(memberIds.map(String));
+    if (check.result.participants.some((memberId) => !allowed.has(String(memberId)))) {
+      return early(res, 400, 'สมาชิกที่ระบุใน split_data ไม่ได้อยู่ในกลุ่มนี้');
+    }
+    const updated = await transactions.updateSplitData(id, transactionId, split);
+    if (updated.error) throw updated.error;
+    // เปลี่ยนสัดส่วนแล้ว ยอดสะสางเดิมใช้ไม่ได้อีกต่อไป ต้องเปิดกลุ่มกลับมารอเคลียร์ใหม่
+    const statusUpdate = await groups.updateById(id, { status_type: 'pending' });
+    if (statusUpdate.error) throw statusUpdate.error;
+    return res.json({ success: true, transaction: updated.data });
+  } catch (err) {
+    console.error('Update group transaction split error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };

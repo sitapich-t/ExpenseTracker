@@ -244,6 +244,13 @@ export function GroupProvider({ children }) {
     [authHeaders]
   );
 
+  const updateGroupBillSplit = useCallback(async (groupId, billId, splitData) => {
+    const headers = await authHeaders();
+    const res = await http.patch(`/groups/${groupId}/transactions/${billId}/split`, { split_data: splitData }, headers);
+    if (!res.data?.success) throw new Error(res.data?.error || 'แก้ไขวิธีหารบิลไม่สำเร็จ');
+    await refresh();
+  }, [authHeaders, refresh]);
+
   // ปิดหนี้กลุ่ม -> เปลี่ยน status_type จริงใน DB
   const settleGroup = useCallback(    async (groupId) => {
       const headers = await authHeaders();
@@ -283,6 +290,7 @@ export function GroupProvider({ children }) {
         addGroup,
         addGroupBill,
         fetchSettlement,
+        updateGroupBillSplit,
         settleGroup,
         removeGroup,
       }}

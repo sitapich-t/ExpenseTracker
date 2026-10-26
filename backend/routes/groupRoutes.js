@@ -247,6 +247,9 @@ router.get('/:id/transactions', authenticate, groupController.getGroupTransactio
  */
 router.post('/:id/transactions', authenticate, slipUpload, groupController.createGroupTransaction);
 
+// แก้สัดส่วนของบิลที่มีอยู่ เพื่อแก้ยอดเคลียร์บิลโดยไม่เปลี่ยนยอดรวมกลุ่ม
+router.patch('/:id/transactions/:transactionId/split', authenticate, groupController.updateGroupTransactionSplit);
+
 /**
  * @openapi
  * /api/v1/groups/{id}/slips:

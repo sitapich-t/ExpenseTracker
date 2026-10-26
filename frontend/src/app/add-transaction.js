@@ -18,6 +18,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { API_URL, getToken, clearToken, http } from '@/lib/api';
 import { COLORS, SPACING, RADIUS, CATEGORIES_LIST, getCategoryInfo, THAI_MONTHS } from '@/lib/theme';
+import { decimalOnly } from '@/lib/inputSanitize';
 
 // หมวดหมู่ใน theme เป็น string แต่ตาราง categories (Supabase) ใช้ category_id เป็นตัวเลข 1-9
 const CATEGORY_ID_MAP = {
@@ -316,7 +317,7 @@ export default function AddTransactionScreen() {
               <TextInput
                 style={[styles.amountInput, { color: isIncome ? '#16A34A' : '#EF4444' }]}
                 value={amount}
-                onChangeText={setAmount}
+                onChangeText={(value) => setAmount(decimalOnly(value))}
                 keyboardType="decimal-pad"
                 placeholder={isIncome ? "1,500.00" : "1,000.00"}
                 placeholderTextColor={isIncome ? 'rgba(22, 163, 74, 0.4)' : 'rgba(239, 68, 68, 0.4)'}

@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Expense Tracker Runtime Architecture",
+    "subtitle": "Protected receipt scan and personal transaction flow",
+    "output": ".archify/architecture-expense-tracker-20261012-120000/expense-tracker-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/sitapich-t/ExpenseTracker.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "42789233e5b656d15e457229d14a865d3d89997f"
+    }
+  },
+  "components": [
+    {
+      "id": "mobile-app",
+      "type": "frontend",
+      "label": "Expo Mobile App",
+      "sublabel": "React Native + expo-router",
+      "pos": [42, 275],
+      "size": [152, 68],
+      "sources": [{ "path": "frontend/package.json", "line": 1, "end_line": 55 }]
+    },
+    {
+      "id": "token-storage",
+      "type": "security",
+      "label": "Token Storage",
+      "sublabel": "SecureStore; AsyncStorage fallback",
+      "pos": [42, 125],
+      "size": [152, 68],
+      "sources": [{ "path": "frontend/src/lib/api.js", "line": 37, "end_line": 95 }]
+    },
+    {
+      "id": "express-api",
+      "type": "backend",
+      "label": "Express 5 API",
+      "sublabel": "REST /api/v1, CORS, 50 MB body limit",
+      "pos": [340, 275],
+      "size": [172, 68],
+      "sources": [{ "path": "backend/server.js", "line": 61, "end_line": 116 }]
+    },
+    {
+      "id": "auth-guard",
+      "type": "security",
+      "label": "JWT Auth Guard",
+      "sublabel": "validates token type and version",
+      "pos": [340, 125],
+      "size": [160, 68],
+      "sources": [{ "path": "backend/middlewares/authMiddleware.js", "line": 6, "end_line": 43 }]
+    },
+    {
+      "id": "personal-domain",
+      "type": "backend",
+      "label": "Personal Domain",
+      "sublabel": "transactions, budgets, receipt scan",
+      "pos": [690, 275],
+      "size": [160, 68],
+      "sources": [
+        { "path": "backend/routes/personalRoutes.js", "line": 150, "end_line": 245 },
+        { "path": "backend/controllers/personalController.js", "line": 205, "end_line": 252 }
+      ]
+    },
+    {
+      "id": "supabase",
+      "type": "database",
+      "label": "Supabase",
+      "sublabel": "users, transactions, groups, budgets",
+      "pos": [1030, 275],
+      "size": [160, 68],
+      "sources": [
+        { "path": "backend/config/supabase.js", "line": 13, "end_line": 24 },
+        { "path": "backend/repositories/transactionRepository.js", "line": 11, "end_line": 60 }
+      ]
+    },
+    {
+      "id": "receipt-ocr",
+      "type": "backend",
+      "label": "Receipt OCR Service",
+      "sublabel": "Tesseract Thai/English parse",
+      "pos": [690, 435],
+      "size": [160, 68],
+      "sources": [
+        { "path": "backend/controllers/personalController.js", "line": 336, "end_line": 364 },
+        { "path": "backend/services/ocrEngine.js", "line": 22, "end_line": 35 }
+      ]
+    },
+    {
+      "id": "slip-files",
+      "type": "database",
+      "label": "Local Slip Files",
+      "sublabel": "Multer-managed uploads/slips",
+      "pos": [690, 555],
+      "size": [160, 68],
+      "sources": [{ "path": "backend/middlewares/uploadMiddleware.js", "line": 20, "end_line": 47 }]
+    },
+    {
+      "id": "rate-store",
+      "type": "database",
+      "label": "Rate-limit Store",
+      "sublabel": "Redis when configured; memory fallback",
+      "pos": [530, 35],
+      "size": [160, 68],
+      "sources": [{ "path": "backend/utils/store/index.js", "line": 1, "end_line": 24 }]
+    },
+    {
+      "id": "email-provider",
+      "type": "external",
+      "label": "Gmail SMTP",
+      "sublabel": "OTP delivery when credentials exist",
+      "pos": [1280, 125],
+      "size": [160, 68],
+      "sources": [{ "path": "backend/services/emailService.js", "line": 1, "end_line": 45 }]
+    },
+    {
+      "id": "anthropic",
+      "type": "external",
+      "label": "Anthropic API",
+      "sublabel": "Optional low-confidence item repair",
+      "pos": [1280, 435],
+      "size": [160, 68],
+      "sources": [{ "path": "backend/services/aiFallback.js", "line": 22, "end_line": 33 }]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "User-controlled device",
+      "wraps": ["mobile-app", "token-storage"],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "Application-owned backend trust boundary",
+      "wraps": ["express-api", "auth-guard", "personal-domain", "receipt-ocr", "slip-files", "rate-store"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "id": "store-access-token",
+      "from": "mobile-app",
+      "to": "token-storage",
+      "label": "stores access token",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "protected-api-request",
+      "from": "mobile-app",
+      "to": "express-api",
+      "label": "HTTPS REST + Bearer JWT",
+      "variant": "emphasis"
+    },
+    {
+      "id": "protected-route-check",
+      "from": "express-api",
+      "to": "auth-guard",
+      "label": "protected route",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "session-version-read",
+      "from": "auth-guard",
+      "to": "supabase",
+      "label": "read token version",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "dispatch-personal-domain",
+      "from": "express-api",
+      "to": "personal-domain",
+      "label": "dispatch personal route",
+      "variant": "emphasis"
+    },
+    {
+      "id": "persist-transaction",
+      "from": "personal-domain",
+      "to": "supabase",
+      "label": "repository query / write",
+      "variant": "emphasis"
+    },
+    {
+      "id": "scan-receipt",
+      "from": "personal-domain",
+      "to": "receipt-ocr",
+      "label": "scan receipt image",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "optional-ai-repair",
+      "from": "receipt-ocr",
+      "to": "anthropic",
+      "label": "optional item repair",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Primary Path",
+      "items": [
+        "Mobile client sends a Bearer-token request to the Express API.",
+        "JWT middleware verifies signature, access-token type, and the current user token_version.",
+        "The personal controller validates a transaction and writes through its Supabase repository."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Receipt Scan",
+      "items": [
+        "Receipt scan accepts multipart receipt images or JSON base64 and returns parsed values; it does not create a transaction.",
+        "OCR uses a reusable Tesseract worker for Thai and English. Anthropic repair is enabled only when configured and the result needs it.",
+        "Slip uploads are MIME-whitelisted, size-limited to 8 MB, randomly named, and served only from uploads/slips."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Authentication And Limits",
+      "items": [
+        "Public auth routes apply IP and OTP rate limit middleware; state is Redis-backed only when REDIS_URL is configured.",
+        "OTP email uses Gmail SMTP when credentials are present; otherwise the development fallback logs the code.",
+        "CORS allows configured origins only; default development origins are localhost:5173 and localhost:8081."
+      ]
+    }
+  ]
+}

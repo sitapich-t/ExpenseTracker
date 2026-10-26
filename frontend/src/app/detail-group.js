@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ const useFocusRefresh = (fn) => {
 export default function GroupDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { getGroup, me, refresh } = useGroup();
+  const { getGroup, me, refresh, fetchSettlement } = useGroup();
 
   const groupId = params.groupId;
   const group = getGroup(groupId);
@@ -55,35 +55,49 @@ export default function GroupDetailScreen() {
     return base + (isNaN(sc) ? 0 : sc) + (isNaN(vat) ? 0 : vat);
   };
 
+  const splitLabel = (bill) => {
+    const method = String(bill.splitData?.method || 'equal').toLowerCase();
+    return ({ equal: 'หารเท่ากัน', percent: 'หารตามเปอร์เซ็นต์', item: 'หารตามรายการ', amount: 'หารตามยอด' })[method] || 'หารเท่ากัน';
+  };
+
+  const splitParticipants = (bill) => {
+    const split = bill.splitData || {};
+    const method = String(split.method || 'equal').toLowerCase();
+    let ids = [];
+    if (method === 'equal') ids = split.memberIds || members.map((member) => member.id);
+    if (method === 'percent') ids = Object.keys(split.shares || {});
+    if (method === 'amount') ids = Object.keys(split.amounts || {});
+    if (method === 'item') ids = [...new Set((split.items || []).flatMap((item) => item.sharedBy || []))];
+    return ids.map((id) => members.find((member) => String(member.id) === String(id))?.name || 'สมาชิก').join(', ') || 'ไม่ระบุ';
+  };
+
   // 2. ยอดรวมบิลทั้งกลุ่ม (รวม SC/VAT)
   const totalAmount = bills.reduce((sum, b) => sum + calculateBillGrandTotal(b), 0);
 
   // 3. ID ของผู้ใช้ปัจจุบัน
   const myId = String(me?.id || me?.user_id || '').toLowerCase();
 
-  // 4. คำนวณยอดที่ "เราสำรองจ่ายไปก่อน" (รวม SC/VAT)
-  const userPaid = bills
-    .filter((b) => {
-      if (!myId) return false;
-      const payerId = String(b.paid_by || b.created_by || b.payer || '').toLowerCase();
-      return payerId === myId;
-    })
-    .reduce((sum, b) => sum + calculateBillGrandTotal(b), 0);
+  // ยอดสรุปต้องใช้ผลเดียวกับหน้าเคลียร์บิล เพราะแต่ละบิลอาจหารแบบ %/ตามรายการ/ตามยอดได้
+  const [settlement, setSettlement] = useState({ groupId: null, amount: 0, error: false });
+  const settlementLoading = settlement.groupId !== groupId;
 
-  // 5. คำนวณส่วนหารที่ "เราต้องรับผิดชอบ" (ใช้ยอดจาก splits ถ้ามี หรือ fallback หารเท่าแบบรวม SC/VAT)
-  const userShare = bills.reduce((sum, b) => {
-    if (Array.isArray(b.splits) && b.splits.length > 0) {
-      const mySplit = b.splits.find((s) => String(s.user_id).toLowerCase() === myId);
-      return sum + (mySplit ? parseFloat(String(mySplit.amount || 0)) : 0);
-    }
-    
-    const grandTotal = calculateBillGrandTotal(b);
-    const memberCount = members.length || 1;
-    return sum + (grandTotal / memberCount);
-  }, 0);
+  useEffect(() => {
+    let active = true;
 
-  // 6. ยอดสุทธิของเรา (+ ยอดรอรับ / - ยอดติดจ่าย)
-  const netBalance = userPaid - userShare;
+    fetchSettlement(groupId)
+      .then(({ balances }) => {
+        if (!active) return;
+        const mine = balances.find((balance) => String(balance.person).toLowerCase() === myId);
+        setSettlement({ groupId, amount: Number(mine?.amount) || 0, error: false });
+      })
+      .catch(() => {
+        if (active) setSettlement({ groupId, amount: 0, error: true });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [groupId, myId, fetchSettlement]);
 
   if (!group && !refreshed) {
     return (
@@ -147,24 +161,32 @@ export default function GroupDetailScreen() {
       >
         {/* Purple Summary Card */}
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>ยอดสรุปในกลุ่มนี้</Text>
-          <Text style={styles.summaryAmount}>
-            {totalAmount === 0
-              ? '0.00'
-              : Math.abs(netBalance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <Text style={styles.summaryLabel}>ยอดสรุปในกลุ่มนี้</Text>
+            <Text style={styles.summaryAmount}>
+              {settlementLoading
+                ? '...'
+                : settlement.error
+                ? '-'
+                : totalAmount === 0
+                ? '0.00'
+                : Math.abs(settlement.amount).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           
           <View style={styles.summaryFooterRow}>
             <View style={styles.receiveStatusPill}>
-              <View style={[styles.greenDot, { backgroundColor: group?.settled ? '#60A5FA' : netBalance >= 0 ? '#10B981' : '#F97316' }]} />
+              <View style={[styles.greenDot, { backgroundColor: group?.settled ? '#60A5FA' : settlement.amount >= 0 ? '#10B981' : '#F97316' }]} />
               <Text style={styles.receiveStatusText}>
                 {Boolean(group?.settled)
                   ? 'เคลียร์บิลเรียบร้อยแล้ว'
+                  : settlementLoading
+                  ? 'กำลังคำนวณยอดสุทธิ'
+                  : settlement.error
+                  ? 'ไม่สามารถคำนวณยอดสุทธิ'
                   : totalAmount === 0
                   ? 'ยังไม่มีค่าใช้จ่าย'
-                  : netBalance > 0.01
+                  : settlement.amount > 0.01
                   ? 'คุณจะได้รับเงินสุทธิ'
-                  : netBalance < -0.01
+                  : settlement.amount < -0.01
                   ? 'คุณมียอดค้างจ่าย'
                   : 'ยอดเงินสมดุลแล้ว'}
               </Text>
@@ -231,20 +253,25 @@ export default function GroupDetailScreen() {
             const payerName = payerMember ? payerMember.name : (bill.merchant || 'ไม่ระบุ');
 
             return (
-              <View key={bill.id} style={styles.billCard}>
+              <TouchableOpacity
+                key={bill.id}
+                style={styles.billCard}
+                onPress={() => router.push({ pathname: '/edit-group-bill', params: { groupId, billId: bill.id, groupName } })}
+                activeOpacity={0.75}
+              >
                 <View style={styles.billIconBox}>
                   <Ionicons name="cart-outline" size={20} color="#1E293B" />
                 </View>
 
                 <View style={styles.billInfoCol}>
                   <Text style={styles.billTitle}>{bill.title}</Text>
-                  <Text style={styles.billSub}>
-                    ผู้จ่าย: {payerName} • {bill.splitText || 'แชร์ทุกคน'}
+                  <Text style={styles.billSub} numberOfLines={2}>
+                    ผู้จ่าย: {payerName} • {splitLabel(bill)}{`\n`}ร่วมจ่าย: {splitParticipants(bill)}
                   </Text>
                 </View>
 
                 <Text style={styles.billAmount}>{bill.amount}</Text>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -262,14 +289,16 @@ export default function GroupDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Floating Add Expense (+) Button */}
-      <TouchableOpacity 
-        style={styles.fabButton}
-        onPress={() => router.push({ pathname: '/add-group-expense', params: { groupId, groupName } })}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={28} color="#FFFFFF" />
-      </TouchableOpacity>
+      {/* ปิดกลุ่มที่เคลียร์แล้วเพื่อไม่ให้ยอดสะสางเปลี่ยนหลังยืนยัน */}
+      {!group?.settled && (
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={() => router.push({ pathname: '/add-group-expense', params: { groupId, groupName } })}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }

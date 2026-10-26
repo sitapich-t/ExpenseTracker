@@ -15,6 +15,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getToken, http } from '@/lib/api';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS, THAI_MONTHS } from '@/lib/theme';
+import { decimalOnly } from '@/lib/inputSanitize';
 
 // id ต้องตรงกับตาราง categories (Supabase) — ชื่อไทยใช้แค่แสดงผลบนจอ
 const DEFAULT_CATEGORIES = [
@@ -269,7 +270,7 @@ export default function BudgetScreen() {
               <TextInput
                 style={styles.budgetInput}
                 value={totalBudget}
-                onChangeText={setTotalBudget}
+                onChangeText={(value) => setTotalBudget(decimalOnly(value))}
                 keyboardType="numeric"
                 placeholder="0.00"
                 placeholderTextColor="#C4C4CC"
@@ -312,7 +313,7 @@ export default function BudgetScreen() {
                       <TextInput
                         style={styles.catInput}
                         value={cat.amount}
-                        onChangeText={(val) => updateCategoryAmount(cat.id, val)}
+                        onChangeText={(val) => updateCategoryAmount(cat.id, decimalOnly(val))}
                         keyboardType="numeric"
                         placeholder="0"
                         placeholderTextColor="#C4C4CC"
