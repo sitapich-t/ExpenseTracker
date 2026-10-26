@@ -16,3 +16,4 @@ Thumbs.db
 backend/tests/fixtures/slips/
 backend/final-result.txt
 backend/tests/ocr_eval_report_*.json
+backend/coverage/
