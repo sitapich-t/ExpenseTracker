@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -57,21 +58,56 @@ export default function ScanReceiptScreen() {
         throw new Error('กรุณาเข้าสู่ระบบก่อนใช้สแกนใบเสร็จ');
       }
 
-      const formData = new FormData();
       const filename = imageUri.split('/').pop() || 'receipt.jpg';
       const match = /\.(\w+)$/.exec(filename);
       const type = match ? `image/${match[1]}` : 'image/jpeg';
-      formData.append('receipt', { uri: imageUri, name: filename, type });
 
-      const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      let response;
+      try {
+        if (FileSystem.uploadAsync) {
+          response = await FileSystem.uploadAsync(
+            `${API_URL}/api/v1/personal/transactions/scan-receipt`,
+            imageUri,
+            {
+              httpMethod: 'POST',
+              uploadType: 'multipart',
+              fieldName: 'receipt',
+              mimeType: type,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+              },
+              parameters: {},
+            }
+          );
+        } else {
+          const formData = new FormData();
+          formData.append('receipt', {
+            uri: imageUri,
+            name: filename,
+            type,
+          });
+          response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+            },
+            body: formData,
+          });
+        }
+      } catch (uploadErr) {
+        throw uploadErr;
+      }
 
-      const resultText = await response.text();
+      let resultText = '';
+      if (response.bodyString) {
+        resultText = response.bodyString;
+      } else if (typeof response.text === 'function') {
+        resultText = await response.text();
+      } else {
+        resultText = JSON.stringify(response);
+      }
 
       let data;
       try {
@@ -80,8 +116,12 @@ export default function ScanReceiptScreen() {
         data = null;
       }
 
-      if (!response.ok) {
-        const backendMessage = data?.message || data?.error || `HTTP ${response.status}`;
+      const status = response.status ?? response.statusCode;
+      if (status && !/^[2]/.test(String(status))) {
+        const backendMessage = data?.message || data?.error || `HTTP ${status}`;
+        throw new Error(backendMessage);
+      } else if (response.ok === false) {
+        const backendMessage = data?.message || data?.error || 'Request failed';
         throw new Error(backendMessage);
       }
 
