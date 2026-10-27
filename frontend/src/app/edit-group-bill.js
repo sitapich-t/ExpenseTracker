@@ -36,7 +36,7 @@ export default function EditGroupBillScreen() {
     const sum = Object.values(map).reduce((acc, value) => acc + value, 0);
     const expected = method === 'percent' ? 100 : total;
     if (Math.abs(sum - expected) > 0.01) return { error: method === 'percent' ? 'ผลรวมเปอร์เซ็นต์ต้องเท่ากับ 100' : `ผลรวมยอดต้องเท่ากับ ฿${total.toFixed(2)}` };
-    return { data: { method, [method === 'percent' ? 'shares' : 'amounts']: map } };
+    return { data: { method, memberIds: selected, [method === 'percent' ? 'shares' : 'amounts']: map } };
   };
 
   const save = async () => {

@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
   },
   itemsHeader: {
     flexDirection: 'row',
-    justify: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
   },
