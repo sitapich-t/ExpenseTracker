@@ -25,6 +25,7 @@ import {
   memberColor,
   parseAmount,
 } from '@/lib/groups';
+import { decimalOnly } from '@/lib/inputSanitize';
 import { useGroup } from './context/GroupContext';
 
 // expo-router ส่ง param เป็น string เสมอ (ถ้าเป็น array ให้เอาตัวแรก)
@@ -513,7 +514,7 @@ export default function AddGroupExpenseScreen() {
               placeholder="0.00"
               placeholderTextColor="#94A3B8"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(value) => setAmount(decimalOnly(value))}
               keyboardType="numeric"
             />
           </View>
@@ -568,7 +569,7 @@ export default function AddGroupExpenseScreen() {
                     <TextInput
                       style={styles.rateInput}
                       value={serviceChargeRate}
-                      onChangeText={setServiceChargeRate}
+                      onChangeText={(value) => setServiceChargeRate(decimalOnly(value))}
                       keyboardType="numeric"
                       placeholder="10"
                       placeholderTextColor="#94A3B8"
@@ -583,7 +584,7 @@ export default function AddGroupExpenseScreen() {
                     <TextInput
                       style={styles.rateInput}
                       value={vatRate}
-                      onChangeText={setVatRate}
+                      onChangeText={(value) => setVatRate(decimalOnly(value))}
                       keyboardType="numeric"
                       placeholder="7"
                       placeholderTextColor="#94A3B8"
@@ -725,7 +726,7 @@ export default function AddGroupExpenseScreen() {
                         <TextInput
                           style={styles.smallInput}
                           value={shares[id] ?? ''}
-                          onChangeText={(v) => setShares((p) => ({ ...p, [id]: v }))}
+                          onChangeText={(v) => setShares((p) => ({ ...p, [id]: decimalOnly(v) }))}
                           keyboardType="decimal-pad"
                           placeholder="0"
                           placeholderTextColor="#94A3B8"
@@ -759,7 +760,7 @@ export default function AddGroupExpenseScreen() {
                         <TextInput
                           style={styles.smallInput}
                           value={amounts[id] ?? ''}
-                          onChangeText={(v) => setAmounts((p) => ({ ...p, [id]: v }))}
+                          onChangeText={(v) => setAmounts((p) => ({ ...p, [id]: decimalOnly(v) }))}
                           keyboardType="decimal-pad"
                           placeholder="0.00"
                           placeholderTextColor="#94A3B8"
@@ -793,7 +794,7 @@ export default function AddGroupExpenseScreen() {
                           style={styles.itemPriceInput}
                           value={it.price}
                           onChangeText={(v) =>
-                            setItems((p) => p.map((x, i) => (i === idx ? { ...x, price: v } : x)))
+                            setItems((p) => p.map((x, i) => (i === idx ? { ...x, price: decimalOnly(v) } : x)))
                           }
                           keyboardType="decimal-pad"
                           placeholder="0.00"

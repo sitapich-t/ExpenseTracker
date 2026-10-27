@@ -1,10 +1,11 @@
-const supabase = require('../config/supabase');
 const { v4: uuidv4 } = require('uuid');
 const transactionService = require('../services/transactionService');
 const ocrService = require('../services/ocrService');
 const budgetService = require('../services/budgetService'); // ← เพิ่มใหม่
 const { classifyCategory } = require('../services/categoryService');
 const analyticsService = require('../services/analyticsService');
+const budgetRepository = require('../repositories/budgetRepository');
+const transactionRepository = require('../repositories/transactionRepository');
 
 // ==========================================
 // Budgets Controllers
@@ -15,15 +16,7 @@ exports.getBudgets = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
     const { month, year } = req.query;
 
-    let query = supabase
-      .from('personal_budgets')
-      .select('*, categories(id, name, icon_type)')
-      .eq('user_id', userId);
-
-    if (month) query = query.eq('month', parseInt(month));
-    if (year) query = query.eq('year', parseInt(year));
-
-    const { data, error } = await query.order('id', { ascending: true });
+    const { data, error } = await budgetRepository.listByUser(userId, { month, year });
 
     if (error) throw error;
     return res.json({ success: true, budgets: data || [] });
@@ -45,20 +38,11 @@ exports.setBudget = async (req, res) => {
       });
     }
 
-    let checkQuery = supabase
-      .from('personal_budgets')
-      .select('id, monthly_limit') // ← ต้องดึง monthly_limit เดิมมาด้วย เพื่อเทียบว่าค่าเปลี่ยนจริงไหม
-      .eq('user_id', userId)
-      .eq('month', parseInt(month))
-      .eq('year', parseInt(year));
-
-    if (category_id) {
-      checkQuery = checkQuery.eq('category_id', parseInt(category_id));
-    } else {
-      checkQuery = checkQuery.is('category_id', null);
-    }
-
-    const { data: existing } = await checkQuery.maybeSingle();
+    const { data: existing } = await budgetRepository.findExistingForUpsert(userId, {
+      month,
+      year,
+      categoryId,
+    });
 
     let resultData;
 
@@ -73,12 +57,7 @@ exports.setBudget = async (req, res) => {
         updatePayload.last_notified_level = 'NORMAL';
       }
 
-      const { data, error } = await supabase
-        .from('personal_budgets')
-        .update(updatePayload)
-        .eq('id', existing.id)
-        .select('*, categories(id, name, icon_type)')
-        .single();
+      const { data, error } = await budgetRepository.updateById(existing.id, updatePayload);
 
       if (error) throw error;
       resultData = data;
@@ -91,11 +70,7 @@ exports.setBudget = async (req, res) => {
         year: parseInt(year)
       };
 
-      const { data, error } = await supabase
-        .from('personal_budgets')
-        .insert([newBudget])
-        .select('*, categories(id, name, icon_type)')
-        .single();
+      const { data, error } = await budgetRepository.insert(newBudget);
 
       if (error) throw error;
       resultData = data;
@@ -132,12 +107,7 @@ exports.updateBudget = async (req, res) => {
     }
 
     // ดึงค่าปัจจุบันก่อน เพื่อเทียบว่า monthly_limit เปลี่ยนค่าจริงไหม (กันแจ้งเตือนซ้ำถ้ากดบันทึกค่าเดิม)
-    const { data: currentBudget } = await supabase
-      .from('personal_budgets')
-      .select('monthly_limit')
-      .eq('id', parseInt(id))
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: currentBudget } = await budgetRepository.findLimitById(id, userId);
 
     // สร้าง object เฉพาะ field ที่ถูกส่งมา เพื่อไม่ให้ field ที่หายไปถูกเขียนทับ
     const updates = {};
@@ -154,13 +124,7 @@ exports.updateBudget = async (req, res) => {
       updates.category_id = category_id === null || category_id === '' ? null : parseInt(category_id);
     }
 
-    const { data, error } = await supabase
-      .from('personal_budgets')
-      .update(updates)
-      .eq('id', parseInt(id))
-      .eq('user_id', userId)
-      .select('*, categories(id, name, icon_type)')
-      .single();
+    const { data, error } = await budgetRepository.updateById(parseInt(id), updates, userId);
 
     if (error) throw error;
 
@@ -183,11 +147,7 @@ exports.deleteBudget = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
     const { id } = req.params;
 
-    const { error } = await supabase
-      .from('personal_budgets')
-      .delete()
-      .eq('id', parseInt(id))
-      .eq('user_id', userId);
+    const { error } = await budgetRepository.deleteById(parseInt(id), userId);
 
     if (error) throw error;
 
@@ -207,21 +167,12 @@ exports.getTransactions = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
     const { month, year, category_id, type } = req.query;
 
-    let query = supabase
-      .from('personal_transactions')
-      .select('*, categories(id, name, icon_type)')
-      .eq('user_id', userId);
-
-    if (type) query = query.eq('type', type);
-    if (category_id) query = query.eq('category_id', parseInt(category_id));
-
-    if (month && year) {
-      const startDate = new Date(year, month - 1, 1).toISOString();
-      const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
-      query = query.gte('transaction_date', startDate).lte('transaction_date', endDate);
-    }
-
-    const { data, error } = await query.order('transaction_date', { ascending: false });
+    const { data, error } = await transactionRepository.listByUser(userId, {
+      type,
+      categoryId: category_id,
+      month: month ? parseInt(month) : undefined,
+      year: year ? parseInt(year) : undefined,
+    });
 
     if (error) throw error;
     return res.json({ success: true, transactions: data || [] });
@@ -236,12 +187,7 @@ exports.getTransactionById = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
     const { id } = req.params;
 
-    const { data, error } = await supabase
-      .from('personal_transactions')
-      .select('*, categories(id, name, icon_type)')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data, error } = await transactionRepository.findById(id, userId);
 
     if (error) throw error;
 
@@ -280,11 +226,7 @@ exports.createTransaction = async (req, res) => {
       net_amount: netAmount !== undefined ? transactionService.parseAmount(netAmount) : transactionService.parseAmount(amount),
     };
 
-    const { data, error } = await supabase
-      .from('personal_transactions')
-      .insert([newTransaction])
-      .select('*, categories(id, name, icon_type)')
-      .single();
+    const { data, error } = await transactionRepository.insert(newTransaction);
 
     if (error) throw error;
 
@@ -328,13 +270,7 @@ exports.updateTransaction = async (req, res) => {
     if (category_id !== undefined) updateData.category_id = transactionService.parseCategoryId(category_id);
     if (transaction_date !== undefined) updateData.transaction_date = transactionService.resolveDate(transaction_date);
 
-    const { data, error } = await supabase
-      .from('personal_transactions')
-      .update(updateData)
-      .eq('id', id)
-      .eq('user_id', userId)
-      .select('*, categories(id, name, icon_type)')
-      .single();
+    const { data, error } = await transactionRepository.updateById(id, userId, updateData);
 
     if (error) throw error;
 
@@ -371,18 +307,9 @@ exports.deleteTransaction = async (req, res) => {
 
     // ดึงข้อมูลก่อนลบ เพื่อรู้ category/date สำหรับเช็ค budget อีกครั้งหลังลบ
     // (ยอดลดลง อาจทำให้กลับมาต่ำกว่า threshold และต้อง reset สถานะแจ้งเตือน)
-    const { data: existing } = await supabase
-      .from('personal_transactions')
-      .select('category_id, transaction_date, type')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .maybeSingle();
+    const { data: existing } = await transactionRepository.findMetaById(id, userId);
 
-    const { error } = await supabase
-      .from('personal_transactions')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
+    const { error } = await transactionRepository.deleteById(id, userId);
 
     if (error) throw error;
 
@@ -453,16 +380,8 @@ exports.getAnalytics = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
     const { from, to } = req.query;
 
-    let query = supabase
-      .from('personal_transactions')
-      .select('transaction_date, amount, type, categories(id, name, icon_type)')
-      .eq('user_id', userId);
+    const { data, error } = await transactionRepository.listForAnalytics(userId, { from, to });
 
-    // กรองที่ DB ตามเวลาไทย (UTC+7)
-    if (from) query = query.gte('transaction_date', new Date(`${from}T00:00:00+07:00`).toISOString());
-    if (to) query = query.lte('transaction_date', new Date(`${to}T23:59:59.999+07:00`).toISOString());
-
-    const { data, error } = await query.order('transaction_date', { ascending: true });
     if (error) throw error;
 
     return res.json({

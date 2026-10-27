@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getToken, http } from '@/lib/api';
+import { digitsOnly } from '@/lib/inputSanitize';
 import { useGroup } from './context/GroupContext';
 
 export default function JoinGroupScreen() {
@@ -135,7 +136,7 @@ export default function JoinGroupScreen() {
             placeholderTextColor="#94A3B8"
             value={inviteCode}
             onChangeText={(t) => {
-              setInviteCode(t);
+              setInviteCode(digitsOnly(t));
               setFound(null);
             }}
             autoCapitalize="characters"

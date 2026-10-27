@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SHADOWS } from '@/lib/theme';
+import { decimalOnly } from '@/lib/inputSanitize';
 import { useGroup } from './context/GroupContext';
 
 const GROUP_COLORS_6 = [
@@ -42,7 +43,7 @@ export default function CreateGroupScreen() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('ท่องเที่ยว');
   const [selectedColor, setSelectedColor] = useState(GROUP_COLORS_6[0]);
-  const [budget, setBudget] = useState('5,000.00');
+  const [budget, setBudget] = useState('5000.00');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -166,7 +167,7 @@ export default function CreateGroupScreen() {
                 placeholder="5,000.00"
                 placeholderTextColor="#94A3B8"
                 value={budget}
-                onChangeText={setBudget}
+                onChangeText={(value) => setBudget(decimalOnly(value))}
                 keyboardType="numeric"
               />
               <Text style={styles.budgetSuffix}>บาท</Text>

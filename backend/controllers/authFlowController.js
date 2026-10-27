@@ -1,11 +1,11 @@
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
-const supabase = require('../config/supabase');
-const store = require('../utils/memoryStore');
+const store = require('../utils/store');
 const { signFlowToken, signAccessToken, TTL } = require('../utils/jwt');
 const { generateOTP } = require('../utils/otp');
 const userService = require('../services/userService');
 const { sendOtpEmail } = require('../services/emailService');
+const userRepository = require('../repositories/userRepository');
 const {
   recordOtpSent,
   recordFailedVerify,
@@ -53,7 +53,7 @@ exports.registerRequestOtp = async (req, res) => {
     );
 
     await sendOtpEmail(cleanEmail, otp, 'register');
-    recordOtpSent('register', { email: cleanEmail, ip: req.ip });
+    await recordOtpSent('register', { email: cleanEmail, ip: req.ip });
 
     return res.json({
       success: true,
@@ -78,7 +78,7 @@ exports.registerVerifyOtp = async (req, res) => {
 
     const ok = await bcrypt.compare(otp, t.otpHash);
     if (!ok) {
-      const remaining = recordFailedVerify('register', t);
+      const remaining = await recordFailedVerify('register', t);
       return res.status(401).json({
         success: false,
         error: 'รหัส OTP ไม่ถูกต้อง',
@@ -92,19 +92,14 @@ exports.registerVerifyOtp = async (req, res) => {
     }
 
     const id = uuidv4();
-    const { error } = await supabase
-      .from('users')
-      .insert([
-        {
-          id,
-          email: t.email,
-          password_hash: t.hashedPassword,
-          name: t.name,
-          is_verified: true,
-          token_version: 0
-        }
-      ])
-      .select();
+    const { error } = await userRepository.insert({
+      id,
+      email: t.email,
+      password_hash: t.hashedPassword,
+      name: t.name,
+      is_verified: true,
+      token_version: 0
+    });
 
     if (error) {
       if (error.code === '23505') {
@@ -113,7 +108,7 @@ exports.registerVerifyOtp = async (req, res) => {
       throw new Error(`Database Insert Error: ${error.message}`);
     }
 
-    clearVerifyAttempts(t);
+    await clearVerifyAttempts(t);
 
     const token = signAccessToken({ id, name: t.name, email: t.email, ver: 0 });
 
@@ -148,7 +143,7 @@ exports.registerResendOtp = async (req, res) => {
     );
 
     await sendOtpEmail(t.email, otp, 'register');
-    recordOtpSent('register', { email: t.email, ip: req.ip });
+    await recordOtpSent('register', { email: t.email, ip: req.ip });
 
     return res.json({
       success: true,
@@ -195,7 +190,7 @@ exports.resetRequestOtp = async (req, res) => {
     );
 
     await sendOtpEmail(cleanEmail, otp, 'reset');
-    recordOtpSent('reset', { email: cleanEmail, ip: req.ip });
+    await recordOtpSent('reset', { email: cleanEmail, ip: req.ip });
 
     return res.json({
       success: true,
@@ -220,7 +215,7 @@ exports.resetVerifyOtp = async (req, res) => {
 
     const ok = await bcrypt.compare(otp, t.otpHash);
     if (!ok) {
-      const remaining = recordFailedVerify('reset', t);
+      const remaining = await recordFailedVerify('reset', t);
       return res.status(401).json({
         success: false,
         error: 'รหัส OTP ไม่ถูกต้อง',
@@ -228,7 +223,7 @@ exports.resetVerifyOtp = async (req, res) => {
       });
     }
 
-    clearVerifyAttempts(t);
+    await clearVerifyAttempts(t);
 
     const reset_verified_token = signFlowToken(
       'reset_verified',
@@ -252,7 +247,7 @@ exports.resetConfirm = async (req, res) => {
   try {
     const t = req.flowToken;
 
-    if (store.get(`used:${t.jti}`)) {
+    if (await store.get(`used:${t.jti}`)) {
       return res
         .status(401)
         .json({ success: false, error: 'โทเคนนี้ถูกใช้แล้ว กรุณาร้องขอรหัส OTP ใหม่' });
@@ -271,14 +266,14 @@ exports.resetConfirm = async (req, res) => {
     }
 
     const password_hash = await bcrypt.hash(newPassword, 10);
-    const { error } = await supabase
-      .from('users')
-      .update({ password_hash, token_version: (user.token_version || 0) + 1 })
-      .eq('id', t.userId);
+    const { error } = await userRepository.updateById(t.userId, {
+      password_hash,
+      token_version: (user.token_version || 0) + 1,
+    });
 
     if (error) throw new Error(`Database Update Error: ${error.message}`);
 
-    store.set(`used:${t.jti}`, 1, 5 * 60 * 1000);
+    await store.set(`used:${t.jti}`, 1, 5 * 60 * 1000);
 
     return res.json({
       success: true,

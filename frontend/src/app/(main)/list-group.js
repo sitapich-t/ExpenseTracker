@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,33 @@ import { useGroup } from '../context/GroupContext';
 
 export default function GroupListScreen() {
   const router = useRouter();
-  const { groups, me, loading } = useGroup();
+  const { groups, me, loading, fetchSettlement } = useGroup();
+  const [settlementBalances, setSettlementBalances] = useState({});
 
-  const processedGroups = groups.map((g) => {
+  useEffect(() => {
+    let active = true;
+    if (!me?.id || groups.length === 0) return () => { active = false; };
+
+    Promise.all(groups.map(async (group) => {
+      try {
+        const { balances } = await fetchSettlement(group.id);
+        const mine = balances.find((balance) => String(balance.person) === String(me.id));
+        return [group.id, Number(mine?.amount) || 0];
+      } catch {
+        return [group.id, null];
+      }
+    })).then((entries) => {
+      if (active) setSettlementBalances(Object.fromEntries(entries));
+    });
+
+    return () => { active = false; };
+  }, [groups, me?.id, fetchSettlement]);
+
+  const processedGroups = [...groups].sort((a, b) => {
+    const newest = new Date(b.created_at || 0).getTime();
+    const oldest = new Date(a.created_at || 0).getTime();
+    return newest - oldest;
+  }).map((g) => {
     const memberColors = (g.members || []).map((m) => m.color || '#7C3AED');
     const extraCount = Math.max(0, (g.members?.length || 0) - 4);
 
@@ -25,30 +49,14 @@ export default function GroupListScreen() {
       return sum + (parseFloat(String(b.amount).replace(/,/g, '')) || 0);
     }, 0);
 
-    const n = g.members?.length || 1;
-    const perPerson = Math.round((total / n) * 100) / 100;
+    // ใช้ยอดเดียวกับหน้าเคลียร์บิล เพื่อรองรับการหารตาม %/รายการ/ยอดตายตัว
+    const net = settlementBalances[g.id] ?? 0;
 
-    // เทียบด้วย id ของฉันจริง ไม่ใช่ชื่อ (ชื่อซ้ำกันได้)
-    const userPaid = (g.bills || [])
-      .filter((b) => {
-        if (!me?.id) return false;
-        // ใช้ paid_by ตาม Backend Controller ล่าสุด
-        const payerId = String(b.paid_by || b.created_by || b.payer || '');
-        const myId = String(me.id);
-        return payerId === myId;
-      })
-      .reduce((sum, b) => {
-        const amt = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0).replace(/,/g, ''));
-        return sum + (isNaN(amt) ? 0 : amt);
-      }, 0);
+    let statusType = 'empty';
+    let statusLabel = 'ยังไม่มีค่าใช้จ่าย';
+    let statusAmount = 'เพิ่มรายการแรก';
 
-    const net = userPaid - perPerson;
-
-    let statusType = 'settled';
-    let statusLabel = 'เคลียร์แล้ว';
-    let statusAmount = '✓ เคลียร์แล้ว';
-
-    if (g.settled || total === 0) {
+    if (g.settled && total > 0) {
       statusType = 'settled';
       statusLabel = 'เคลียร์แล้ว';
       statusAmount = '✓ เคลียร์แล้ว';
@@ -75,11 +83,11 @@ export default function GroupListScreen() {
   });
 
   const totalReceive = processedGroups
-    .filter((g) => !g.settled && g.net > 0.01)
+    .filter((g) => g.net > 0.01)
     .reduce((sum, g) => sum + g.net, 0);
 
   const totalDebt = processedGroups
-    .filter((g) => !g.settled && g.net < -0.01)
+    .filter((g) => g.net < -0.01)
     .reduce((sum, g) => sum + Math.abs(g.net), 0);
 
   return (
@@ -212,12 +220,14 @@ export default function GroupListScreen() {
                 item.statusType === 'receive' && styles.statusStripReceive,
                 item.statusType === 'debt' && styles.statusStripDebt,
                 item.statusType === 'settled' && styles.statusStripSettled,
+                item.statusType === 'empty' && styles.statusStripEmpty,
               ]}>
                 <Text style={[
                   styles.statusLabel,
                   item.statusType === 'receive' && styles.statusLabelReceive,
                   item.statusType === 'debt' && styles.statusLabelDebt,
                   item.statusType === 'settled' && styles.statusLabelSettled,
+                  item.statusType === 'empty' && styles.statusLabelEmpty,
                 ]}>
                   {item.statusLabel}
                 </Text>
@@ -227,6 +237,7 @@ export default function GroupListScreen() {
                   item.statusType === 'receive' && styles.statusAmountReceive,
                   item.statusType === 'debt' && styles.statusAmountDebt,
                   item.statusType === 'settled' && styles.statusAmountSettled,
+                  item.statusType === 'empty' && styles.statusAmountEmpty,
                 ]}>
                   {item.statusAmount}
                 </Text>
@@ -473,6 +484,9 @@ const styles = StyleSheet.create({
   statusStripSettled: {
     backgroundColor: '#F5F3FF',
   },
+  statusStripEmpty: {
+    backgroundColor: '#F8FAFC',
+  },
   statusLabel: {
     fontSize: 12,
     fontWeight: '600',
@@ -486,6 +500,9 @@ const styles = StyleSheet.create({
   statusLabelSettled: {
     color: '#6D28D9',
   },
+  statusLabelEmpty: {
+    color: '#64748B',
+  },
   statusAmount: {
     fontSize: 14,
     fontWeight: '700',
@@ -498,5 +515,8 @@ const styles = StyleSheet.create({
   },
   statusAmountSettled: {
     color: '#6D28D9',
+  },
+  statusAmountEmpty: {
+    color: '#64748B',
   },
 });

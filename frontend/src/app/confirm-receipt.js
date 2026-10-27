@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL, getToken } from '@/lib/api';
 import { getScannedImage, clearScannedImage } from '@/utils/scannedImageStore';
+import { decimalOnly, digitsOnly } from '@/lib/inputSanitize';
 
 // ---------- Helper: แปลง ISO string -> DD/MM/YYYY สำหรับแสดงผลใน UI ----------
 function isoToDisplayDate(iso) {
@@ -363,7 +364,7 @@ export default function ConfirmReceiptScreen() {
                     style={styles.itemQtyInput}
                     value={String(item.quantity || 1)}
                     keyboardType="numeric"
-                    onChangeText={(val) => handleUpdateItem(index, 'quantity', val)}
+                    onChangeText={(val) => handleUpdateItem(index, 'quantity', digitsOnly(val))}
                   />
                   
                   {/* ชื่อสินค้า */}
@@ -382,7 +383,7 @@ export default function ConfirmReceiptScreen() {
                     keyboardType="numeric"
                     placeholder="0.00"
                     placeholderTextColor="#aaa"
-                    onChangeText={(val) => handleUpdateItem(index, 'price', val)}
+                    onChangeText={(val) => handleUpdateItem(index, 'price', decimalOnly(val))}
                   />
 
                   {/* ปุ่มลบ */}
@@ -405,7 +406,7 @@ export default function ConfirmReceiptScreen() {
           <TextInput
             style={[styles.inputText, styles.amountText]}
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(value) => setAmount(decimalOnly(value))}
             keyboardType="numeric"
           />
         </View>
@@ -420,7 +421,7 @@ export default function ConfirmReceiptScreen() {
                 <TextInput
                   style={styles.inputText}
                   value={String(vat)}
-                  onChangeText={setVat}
+                  onChangeText={(value) => setVat(decimalOnly(value))}
                   keyboardType="numeric"
                 />
               </View>
@@ -433,7 +434,7 @@ export default function ConfirmReceiptScreen() {
                 <TextInput
                   style={styles.inputText}
                   value={String(serviceCharge)}
-                  onChangeText={setServiceCharge}
+                  onChangeText={(value) => setServiceCharge(decimalOnly(value))}
                   keyboardType="numeric"
                 />
               </View>

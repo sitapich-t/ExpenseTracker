@@ -1,4 +1,4 @@
-const store = require('../utils/memoryStore');
+const store = require('../utils/store');
 const { verifyFlowToken } = require('../utils/jwt');
 
 const LIMITS = {
@@ -9,9 +9,8 @@ const LIMITS = {
   verifyPerEmailDay: 15,
   confirmPerIpHour: 10,
   authPerIpMin: 60,
-  // --- เพิ่มลิมิตสำหรับการล็อกอิน ---
-  loginMaxAttempts: 3,         // ใส่รหัสผ่านผิดได้สูงสุด 3 ครั้ง
-  loginLockoutSec: 15 * 60     // ติด Cooldown 15 นาที (900 วินาที)
+  loginMaxAttempts: 3,
+  loginLockoutSec: 15 * 60
 };
 
 function retryAfter(res, seconds, error) {
@@ -38,22 +37,30 @@ function secondsUntilMidnight() {
    IP-based Limiters
    ========================================================================== */
 
-function authIpLimiter(req, res, next) {
-  const ip = clientIp(req);
-  const n = store.incr(`authip:${ip}`, 60 * 1000);
-  if (n > LIMITS.authPerIpMin) {
-    return retryAfter(res, store.ttlLeft(`authip:${ip}`), 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่');
+async function authIpLimiter(req, res, next) {
+  try {
+    const ip = clientIp(req);
+    const n = await store.incr(`authip:${ip}`, 60 * 1000);
+    if (n > LIMITS.authPerIpMin) {
+      return retryAfter(res, await store.ttlLeft(`authip:${ip}`), 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่');
+    }
+    return next();
+  } catch (err) {
+    return next(err);
   }
-  return next();
 }
 
-function confirmIpLimiter(req, res, next) {
-  const ip = clientIp(req);
-  const n = store.incr(`confirm:${ip}`, 60 * 60 * 1000);
-  if (n > LIMITS.confirmPerIpHour) {
-    return retryAfter(res, store.ttlLeft(`confirm:${ip}`), 'พยายามยืนยันบ่อยเกินไป กรุณาลองใหม่ภายหลัง');
+async function confirmIpLimiter(req, res, next) {
+  try {
+    const ip = clientIp(req);
+    const n = await store.incr(`confirm:${ip}`, 60 * 60 * 1000);
+    if (n > LIMITS.confirmPerIpHour) {
+      return retryAfter(res, await store.ttlLeft(`confirm:${ip}`), 'พยายามยืนยันบ่อยเกินไป กรุณาลองใหม่ภายหลัง');
+    }
+    return next();
+  } catch (err) {
+    return next(err);
   }
-  return next();
 }
 
 /* ==========================================================================
@@ -64,38 +71,42 @@ function confirmIpLimiter(req, res, next) {
  * Middleware เช็กก่อนเข้า controller ล็อกอิน
  * ถ้าติด Cooldown จะบล็อกทันที
  */
-function loginAttemptLimiter(req, res, next) {
-  const email = emailKey(req.body && req.body.email);
-  if (!email) return next();
+async function loginAttemptLimiter(req, res, next) {
+  try {
+    const email = emailKey(req.body && req.body.email);
+    if (!email) return next();
 
-  const lockLeft = store.ttlLeft(`login:lock:${email}`);
-  if (lockLeft > 0) {
-    const minutes = Math.ceil(lockLeft / 60);
-    return retryAfter(
-      res,
-      lockLeft,
-      `พยายามเข้าสู่ระบบผิดเกินกำหนด กรุณารอ ${minutes} นาที แล้วลองใหม่อีกครั้ง`
-    );
+    const lockLeft = await store.ttlLeft(`login:lock:${email}`);
+    if (lockLeft > 0) {
+      const minutes = Math.ceil(lockLeft / 60);
+      return retryAfter(
+        res,
+        lockLeft,
+        `พยายามเข้าสู่ระบบผิดเกินกำหนด กรุณารอ ${minutes} นาที แล้วลองใหม่อีกครั้ง`
+      );
+    }
+    return next();
+  } catch (err) {
+    return next(err);
   }
-  return next();
 }
 
 /**
  * เรียกเมื่อผู้ใช้ระบุรหัสผ่านผิด
- * @returns {number} จำนวนครั้งที่เหลือที่ลองได้
+ * @returns {Promise<number>} จำนวนครั้งที่เหลือที่ลองได้
  */
-function recordFailedLogin(email) {
+async function recordFailedLogin(email) {
   const key = emailKey(email);
   if (!key) return LIMITS.loginMaxAttempts;
 
   const ttl = LIMITS.loginLockoutSec * 1000;
-  const n = store.incr(`login:att:${key}`, ttl);
+  const n = await store.incr(`login:att:${key}`, ttl);
 
   if (n >= LIMITS.loginMaxAttempts) {
     // ล็อกบัญชีชั่วคราวเป็นเวลา 15 นาที
-    store.set(`login:lock:${key}`, 1, ttl);
+    await store.set(`login:lock:${key}`, 1, ttl);
     // ล้างนับครั้ง เพื่อเริ่มนับใหม่หลังหมด Cooldown
-    store.del(`login:att:${key}`);
+    await store.del(`login:att:${key}`);
   }
 
   return Math.max(LIMITS.loginMaxAttempts - n, 0);
@@ -103,22 +114,23 @@ function recordFailedLogin(email) {
 
 /**
  * คืนค่าจำนวนครั้งการล็อกอินที่เหลือ
+ * @returns {Promise<number>}
  */
-function loginAttemptsLeft(email) {
+async function loginAttemptsLeft(email) {
   const key = emailKey(email);
   if (!key) return LIMITS.loginMaxAttempts;
-  const n = store.get(`login:att:${key}`);
+  const n = await store.get(`login:att:${key}`);
   return Math.max(LIMITS.loginMaxAttempts - (typeof n === 'number' ? n : 0), 0);
 }
 
 /**
  * ล้างประวัติเมื่อล็อกอินสำเร็จ
  */
-function clearLoginAttempts(email) {
+async function clearLoginAttempts(email) {
   const key = emailKey(email);
   if (key) {
-    store.del(`login:att:${key}`);
-    store.del(`login:lock:${key}`);
+    await store.del(`login:att:${key}`);
+    await store.del(`login:lock:${key}`);
   }
 }
 
@@ -128,66 +140,74 @@ function clearLoginAttempts(email) {
 
 function otpRequestLimiter(purpose, options = {}) {
   const fromToken = !!options.fromToken;
-  return (req, res, next) => {
-    const email = fromToken
-      ? emailKey(req.flowToken && req.flowToken.email)
-      : emailKey(req.body && req.body.email);
-    const ip = clientIp(req);
+  return async (req, res, next) => {
+    try {
+      const email = fromToken
+        ? emailKey(req.flowToken && req.flowToken.email)
+        : emailKey(req.body && req.body.email);
+      const ip = clientIp(req);
 
-    if (email) {
-      const left = store.ttlLeft(`cd:${purpose}:e:${email}`);
-      if (left > 0) return retryAfter(res, left, `โปรดรอ ${left} วินาทีก่อนขอรหัส OTP ใหม่`);
+      if (email) {
+        const left = await store.ttlLeft(`cd:${purpose}:e:${email}`);
+        if (left > 0) return retryAfter(res, left, `โปรดรอ ${left} วินาทีก่อนขอรหัส OTP ใหม่`);
+      }
+      if (email && (await store.dayCount(`day:${purpose}:e:${email}`)) >= LIMITS.emailDaily) {
+        return retryAfter(res, secondsUntilMidnight(), 'ขอรหัส OTP วันนี้ครบ 5 ครั้งแล้ว กรุณาลองใหม่วันพรุ่งนี้');
+      }
+      if ((await store.dayCount(`day:${purpose}:ip:${ip}`)) >= LIMITS.ipDaily) {
+        return retryAfter(res, secondsUntilMidnight(), 'เครื่องนี้ขอรหัส OTP บ่อยเกินไป กรุณาลองใหม่วันพรุ่งนี้');
+      }
+      return next();
+    } catch (err) {
+      return next(err);
     }
-    if (email && store.dayCount(`day:${purpose}:e:${email}`) >= LIMITS.emailDaily) {
-      return retryAfter(res, secondsUntilMidnight(), 'ขอรหัส OTP วันนี้ครบ 5 ครั้งแล้ว กรุณาลองใหม่วันพรุ่งนี้');
-    }
-    if (store.dayCount(`day:${purpose}:ip:${ip}`) >= LIMITS.ipDaily) {
-      return retryAfter(res, secondsUntilMidnight(), 'เครื่องนี้ขอรหัส OTP บ่อยเกินไป กรุณาลองใหม่วันพรุ่งนี้');
-    }
-    return next();
   };
 }
 
-function recordOtpSent(purpose, { email, ip } = {}) {
+async function recordOtpSent(purpose, { email, ip } = {}) {
   const ttl = LIMITS.cooldownSec * 1000;
   if (email) {
-    store.set(`cd:${purpose}:e:${email}`, 1, ttl);
-    store.incrDay(`day:${purpose}:e:${email}`);
+    await store.set(`cd:${purpose}:e:${email}`, 1, ttl);
+    await store.incrDay(`day:${purpose}:e:${email}`);
   }
-  if (ip) store.incrDay(`day:${purpose}:ip:${ip}`);
+  if (ip) await store.incrDay(`day:${purpose}:ip:${ip}`);
 }
 
 function otpVerifyLimiter(purpose) {
-  return (req, res, next) => {
-    const t = req.flowToken || {};
-    if (store.get(`blocked:${t.jti}`)) {
-      return retryAfter(
-        res,
-        store.ttlLeft(`blocked:${t.jti}`),
-        'พยายามยืนยันรหัส OTP บ่อยเกินไป กรุณาร้องขอรหัส OTP ใหม่'
-      );
+  return async (req, res, next) => {
+    try {
+      const t = req.flowToken || {};
+      if (await store.get(`blocked:${t.jti}`)) {
+        return retryAfter(
+          res,
+          await store.ttlLeft(`blocked:${t.jti}`),
+          'พยายามยืนยันรหัส OTP บ่อยเกินไป กรุณาร้องขอรหัส OTP ใหม่'
+        );
+      }
+      if (t.email && (await store.dayCount(`vday:${purpose}:e:${t.email}`)) >= LIMITS.verifyPerEmailDay) {
+        return retryAfter(res, secondsUntilMidnight(), 'ยืนยันรหัส OTP เกินจำนวนครั้งที่อนุญาตในวันนี้');
+      }
+      return next();
+    } catch (err) {
+      return next(err);
     }
-    if (t.email && store.dayCount(`vday:${purpose}:e:${t.email}`) >= LIMITS.verifyPerEmailDay) {
-      return retryAfter(res, secondsUntilMidnight(), 'ยืนยันรหัส OTP เกินจำนวนครั้งที่อนุญาตในวันนี้');
-    }
-    return next();
   };
 }
 
-function recordFailedVerify(purpose, t) {
-  const n = store.incr(`att:${t.jti}`, 10 * 60 * 1000);
-  if (n >= LIMITS.verifyPerToken) store.set(`blocked:${t.jti}`, 1, 10 * 60 * 1000);
-  if (t.email) store.incrDay(`vday:${purpose}:e:${t.email}`);
+async function recordFailedVerify(purpose, t) {
+  const n = await store.incr(`att:${t.jti}`, 10 * 60 * 1000);
+  if (n >= LIMITS.verifyPerToken) await store.set(`blocked:${t.jti}`, 1, 10 * 60 * 1000);
+  if (t.email) await store.incrDay(`vday:${purpose}:e:${t.email}`);
   return Math.max(LIMITS.verifyPerToken - n, 0);
 }
 
-function attemptsLeft(t) {
-  const n = store.get(`att:${t.jti}`);
+async function attemptsLeft(t) {
+  const n = await store.get(`att:${t.jti}`);
   return Math.max(LIMITS.verifyPerToken - (typeof n === 'number' ? n : 0), 0);
 }
 
-function clearVerifyAttempts(t) {
-  if (t && t.jti) store.del(`att:${t.jti}`);
+async function clearVerifyAttempts(t) {
+  if (t && t.jti) await store.del(`att:${t.jti}`);
 }
 
 /* ==========================================================================

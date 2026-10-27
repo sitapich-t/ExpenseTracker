@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
-const supabase = require('../config/supabase');
+const userRepository = require('../repositories/userRepository');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'student_wallet_jwt_secret_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 module.exports = async (req, res, next) => {
   try {
@@ -29,11 +29,7 @@ module.exports = async (req, res, next) => {
         .json({ success: false, error: 'เซสชันไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่' });
     }
 
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, token_version')
-      .eq('id', payload.id)
-      .maybeSingle();
+    const { data: user, error } = await userRepository.findAuthById(payload.id);
 
     if (error) throw error;
 

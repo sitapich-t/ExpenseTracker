@@ -27,13 +27,13 @@ exports.login = async (req, res) => {
 
     // กรณีไม่พบ User หรือ รหัสผ่านไม่ถูกต้อง
     if (!user) {
-      const attemptsLeft = recordFailedLogin(cleanEmail);
+      const attemptsLeft = await recordFailedLogin(cleanEmail);
       return sendLoginError(res, attemptsLeft);
     }
 
     const ok = await bcrypt.compare(cleanPassword, user.password_hash);
     if (!ok) {
-      const attemptsLeft = recordFailedLogin(cleanEmail);
+      const attemptsLeft = await recordFailedLogin(cleanEmail);
       return sendLoginError(res, attemptsLeft);
     }
 
@@ -45,7 +45,7 @@ exports.login = async (req, res) => {
     }
 
     // ล็อกอินสำเร็จ -> ล้างประวัติการใส่รหัสผ่านผิด
-    clearLoginAttempts(cleanEmail);
+    await clearLoginAttempts(cleanEmail);
 
     const token = generateToken(user);
     return res.json({

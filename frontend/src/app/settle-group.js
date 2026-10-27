@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SHADOWS } from '@/lib/theme';
 import { useGroup } from './context/GroupContext';
+import { getToken, http } from '@/lib/api';
 
 const baht = (n) =>
   Number(n || 0).toLocaleString('th-TH', {
@@ -26,7 +27,7 @@ const EMPTY = [];
 export default function GroupSettleScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { settleGroup, getGroup, refresh, fetchSettlement } = useGroup();
+  const { settleGroup, getGroup, refresh } = useGroup();
 
   const groupId = params.groupId;
   const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
@@ -51,10 +52,6 @@ export default function GroupSettleScreen() {
   const [calcLoading, setCalcLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
-  // ยอดคงเหลือต่อคน (บวก=ได้คืน, ลบ=ต้องจ่าย) — มาจาก backend
-  const [balances, setBalances] = useState([]);
-  // บิลที่คำนวณไม่ได้ — ต้องโชว์ผู้ใช้ ไม่เงียบทิ้ง
-  const [skippedBills, setSkippedBills] = useState([]);
 
   // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่กลับมาหน้านี้ (เผื่อเพิ่งเพิ่มบิล/สมาชิก)
   useFocusEffect(
@@ -69,67 +66,99 @@ export default function GroupSettleScreen() {
     }, [refresh])
   );
 
-  // รายการ "ต้องจ่ายให้ใคร" ต่อบิล — อ่านจาก shares ที่ backend คำนวณให้
-  // (เดิมหารเท่ากันอย่างเดียวในหน้าจอ ผิดทันทีถ้าบิลนั้นหารแบบ percent/item/amount)
-  const [perBill, setPerBill] = useState([]);
+  // รายการ "ต้องจ่ายให้ใคร" ต่อบิล (คำนวณตรงนี้ เพราะเป็นการรวมข้อมูลของฉันเอง)
+  const rawTransactions = [];
+  bills.forEach((b, bIdx) => {
+    const total = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
+    if (total <= 0) return;
 
-  const billTitleOf = useCallback(
-    (billId) => {
-      const b = bills.find((x) => String(x.id) === String(billId));
-      return b?.title || 'บิล';
-    },
-    [bills]
-  );
+    // ใครแชร์บิลนี้ (ถ้าไม่มีข้อมูล = ทุกคน)
+    const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
+      ? b.splitData.memberIds.map(String)
+      : members.map((m) => String(m.id));
 
-  const rawTransactions = useMemo(() => {
-    const out = [];
-    perBill.forEach((b) => {
-      Object.entries(b.shares || {}).forEach(([sid, share], i) => {
-        if (String(sid) === String(b.payer)) return;
-        out.push({
-          id: `r_${b.bill_id}_${i}`,
-          from: nameOf(sid),
-          to: nameOf(b.payer),
-          note: billTitleOf(b.bill_id),
-          amount: baht(share.total),
-        });
+    const n = sharedIds.length || 1;
+    const per = Math.round((total / n) * 100) / 100;
+    const payer = String(b.payer ?? b.paidBy ?? '');
+
+    sharedIds.forEach((sid, mIdx) => {
+      if (sid === payer) return;
+      rawTransactions.push({
+        id: `r_${b.id || bIdx}_${mIdx}`,
+        from: nameOf(sid),
+        to: nameOf(payer),
+        note: b.title || 'บิล',
+        amount: baht(per),
       });
     });
-    return out;
-  }, [perBill, nameOf, billTitleOf]);
+  });
 
-  // ยอดสะสด + ตัดหนี้: ให้ backend คำนวณ (อ่าน split_data ของแต่ละบิลจริง)
+  // การตัดหนี้ (debt simplification) ให้ backend คำนวณ เพราะเป็น business logic
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
-      if (!groupId) {
+      if (members.length === 0 || bills.length === 0) {
         setSimplifiedDebts([]);
         return;
       }
+
+      // ยอดคงเหลือต่อคน หน่วยสตางค์ (จำนวนเต็ม): จ่ายบิลได้ = บวก, ต้องจ่าย = ลบ
+      const balanceSatang = {};
+      members.forEach((m) => {
+        balanceSatang[String(m.id)] = 0;
+      });
+
+      bills.forEach((b) => {
+        const totalSatang = Math.round(
+          (parseFloat(String(b.amount).replace(/,/g, '')) || 0) * 100
+        );
+        if (totalSatang <= 0) return;
+
+        const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
+          ? b.splitData.memberIds.map(String)
+          : members.map((m) => String(m.id));
+
+        const n = sharedIds.length || 1;
+        const base = Math.floor(totalSatang / n);
+        const remainder = totalSatang - base * n; // เศษสตางค์ที่ต้องแจก
+        const payer = String(b.payer ?? b.paidBy ?? '');
+
+        if (payer in balanceSatang) balanceSatang[payer] += totalSatang;
+        sharedIds.forEach((sid, i) => {
+          const share = base + (i < remainder ? 1 : 0); // คน i ตัวแรกได้เศษคนละ 1 สตางค์
+          if (sid in balanceSatang) balanceSatang[sid] -= share;
+        });
+      });
+
+      const payload = Object.entries(balanceSatang).map(([person, satang]) => ({
+        person,
+        amount: satang / 100,
+      }));
+
       try {
         setCalcLoading(true);
-        const res = await fetchSettlement(groupId);
+        const token = await getToken();
+        const res = await http.post(
+          '/bill-split/simplify-debts',
+          { balances: payload },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         if (cancelled) return;
 
-        setBalances(res.balances);
-        setPerBill(res.perBill);
-        // บิลรายได้ถูกข้ามโดยเหตุผลปกติ ไม่ต้องเตือน
-        setSkippedBills(res.skipped.filter((s) => s.reason !== 'income'));
+        const txs = res.data?.transactions || [];
         setSimplifiedDebts(
-          res.transactions.map((t, i) => ({
+          txs.map((t, i) => ({
             id: `s_${i + 1}`,
             from: nameOf(t.from),
             to: nameOf(t.to),
             amount: baht(t.amount),
           }))
         );
-      } catch {
+      } catch (err) {
         if (cancelled) return;
         // คำนวณไม่ได้ก็ยังดูรายบิลดิบได้
         setSimplifiedDebts([]);
-        setBalances([]);
-        setPerBill([]);
       } finally {
         if (!cancelled) setCalcLoading(false);
       }
@@ -139,7 +168,7 @@ export default function GroupSettleScreen() {
     return () => {
       cancelled = true;
     };
-  }, [groupId, bills, nameOf, fetchSettlement]);
+  }, [members, bills, nameOf]);
 
   const handleSendReminder = (debt) => {
     setRemindedList((prev) => [...prev, debt.id]);
@@ -233,7 +262,7 @@ export default function GroupSettleScreen() {
             activeOpacity={0.8}
           >
             <Text style={[styles.segmentText, activeTab === 'summary' && styles.segmentTextActive]}>
-              ตัดหนี้ (ง่าย)
+              จ่าย
             </Text>
           </TouchableOpacity>
         </View>
@@ -288,45 +317,6 @@ export default function GroupSettleScreen() {
           {/* View 2: จ่าย (Simplified Net Debts with Red Bell ทวงเงิน) */}
           {activeTab === 'summary' && (
             <View>
-              {/* ยอดคงเหลือต่อคน — คำนวณจาก split_data จริงของแต่ละบิล */}
-              {balances.length > 0 && (
-                <View style={styles.balanceCard}>
-                  <Text style={styles.balanceCardTitle}>ยอดคงเหลือต่อคน</Text>
-                  {balances.map((b) => {
-                    const amt = Number(b.amount) || 0;
-                    const settle = amt > 0 ? 'ได้คืน' : amt < 0 ? 'ต้องจ่าย' : 'เสร็จแล้ว';
-                    return (
-                      <View key={b.person} style={styles.balanceRow}>
-                        <Text style={styles.balanceName}>{nameOf(b.person)}</Text>
-                        <View style={styles.balanceRight}>
-                          <Text
-                            style={[
-                              styles.balanceAmount,
-                              amt > 0 && { color: '#059669' },
-                              amt < 0 && { color: '#DC2626' },
-                            ]}
-                          >
-                            {amt > 0 ? '+' : ''}
-                            {baht(amt)}
-                          </Text>
-                          <Text style={styles.balanceLabel}>{settle}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* บิลที่คำนวณไม่ได้ — ต้องโชว์ ไม่เงียบทิ้ง เพราะยอดจะไม่ครบ */}
-              {skippedBills.length > 0 && (
-                <View style={styles.warnCard}>
-                  <Ionicons name="warning-outline" size={16} color="#B45309" />
-                  <Text style={styles.warnText}>
-                    คำนวณ {skippedBills.length} บิลไม่ได้ (สัดส่วนไม่ครบ) — ยอดข้างล่างยังไม่รวมบิลเหล่านี้
-                  </Text>
-                </View>
-              )}
-
               <Text style={styles.sectionSubtitle}>
                 สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
               </Text>
@@ -399,62 +389,6 @@ export default function GroupSettleScreen() {
 }
 
 const styles = StyleSheet.create({
-  balanceCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  balanceCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 12,
-  },
-  balanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  balanceName: {
-    flex: 1,
-    fontSize: 14,
-    color: '#334155',
-  },
-  balanceRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  balanceAmount: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  balanceLabel: {
-    fontSize: 11,
-    color: '#94A3B8',
-    width: 52,
-    textAlign: 'right',
-  },
-  warnCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    gap: 8,
-  },
-  warnText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#B45309',
-    lineHeight: 18,
-  },
   safeArea: {
     flex: 1,
     backgroundColor: '#F8FAFC',

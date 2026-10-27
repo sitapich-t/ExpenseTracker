@@ -1,7 +1,14 @@
 require('dotenv').config();
 process.env.TZ = "Asia/Bangkok";
+
+const { validateEnv } = require('./config/env');
+validateEnv();
+
 const express = require('express');
 const cors = require('cors');
+const logger = require('./utils/logger');
+const requestIdMiddleware = require('./middlewares/requestIdMiddleware');
+const errorMiddleware = require('./middlewares/errorMiddleware');
 
 // ดึง Supabase Instance จาก config/supabase.js (จัดการ WebSocket & .env ให้เสร็จในตัว)
 const supabase = require('./config/supabase');
@@ -14,8 +21,51 @@ const billSplitRoutes = require('./routes/billSplitRoutes');
 
 const { SLIP_DIR, ensureDir } = require('./middlewares/uploadMiddleware');
 
+// OpenAPI Docs (swagger-ui) — ดูที่ /api-docs
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./config/swagger');
+
+// ==========================================
+// ROOT ROUTES
+// ==========================================
+
+/**
+ * @openapi
+ * /:
+ *   get:
+ *     summary: หน้าแรกของ API
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: ข้อความบอกว่า API ทำงานอยู่
+ */
+
+/**
+ * @openapi
+ * /api/health:
+ *   get:
+ *     summary: Health check
+ *     tags: [System]
+ *     responses:
+ *       200:
+ *         description: สถานะของเซิร์ฟเวอร์และการเชื่อมต่อ Supabase
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: "ok" }
+ *                 supabaseConnected: { type: boolean }
+ */
+
 const app = express();
-app.use(cors());
+app.use(requestIdMiddleware);
+
+// จำกัด origin ของ CORS ตาม env (ค่าเริ่มต้น = หน้าเว็บ dev หลัก)
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : ['http://localhost:5173', 'http://localhost:8081'];
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 
 // ขยายขีดจำกัดให้รับ Base64 String ขนาดใหญ่สำหรับสแกนใบเสร็จ
 app.use(express.json({ limit: '50mb' }));
@@ -56,22 +106,21 @@ app.use('/api/v1/personal', personalRoutes);
 app.use('/api/v1/groups', groupRoutes);
 app.use('/api/v1/bill-split', billSplitRoutes);
 
+// ==========================================
+// OPENAPI DOCS (swagger-ui)
+// ==========================================
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, { customSiteTitle: 'Expense Tracker API Docs' }));
+app.get('/api-docs.json', (req, res) => res.json(swaggerSpecs));
+
 // จับ error ที่หลุดจาก route (เช่น multer พัง) ให้เป็น JSON เสมอ
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error('❌ Unhandled error:', err);
-  res.status(err.status || 500).json({
-    success: false,
-    error: err.message || 'Internal Server Error',
-  });
-});
+app.use(errorMiddleware);
 
 // ==========================================
 // SERVER START
 // ==========================================
 app.listen(PORT, () => {
-  console.log(`=========================================`);
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`=========================================`);
+  logger.info('Server started', {
+    url: `http://localhost:${PORT}`,
+    health: `http://localhost:${PORT}/api/health`,
+  });
 });

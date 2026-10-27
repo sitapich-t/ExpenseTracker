@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'student_wallet_jwt_secret_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const TTL = {
   register_otp: 600,
