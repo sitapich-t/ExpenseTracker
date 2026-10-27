@@ -7,7 +7,6 @@ import {
     TouchableOpacity,
     Alert,
     Image,
-    Switch,
 } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from "@expo/vector-icons";
@@ -18,8 +17,6 @@ import { SHADOWS } from "@/lib/theme";
 
 export default function ProfileScreen() {
     const router = useRouter();
-
-    const [isDarkMode, setIsDarkMode] = useState(false);
     const [user, setUser] = useState(null);
 
     // อ่านข้อมูลผู้ใช้จาก AsyncStorage (ไม่มี AuthContext ในโปรเจกต์นี้)
@@ -89,7 +86,7 @@ export default function ProfileScreen() {
 
                         {/* Sub details: studentId • email */}
                         <Text style={styles.userSubDetails}>
-                            {email}
+                            {studentId ? `${studentId} • ${email}` : email}
                         </Text>
 
                         {/* Edit Profile Button Pill */}

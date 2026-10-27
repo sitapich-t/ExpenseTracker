@@ -22,7 +22,7 @@ export default function DashboardScreen() {
   const [monthlyBudget, setMonthlyBudget] = useState(0);
   const [hasBudget, setHasBudget] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const token = await getToken();
       if (!token) {
@@ -90,13 +90,13 @@ export default function DashboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [router]);
 
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchData();
-    }, [])
+    }, [fetchData])
   );
 
   const onRefresh = () => {

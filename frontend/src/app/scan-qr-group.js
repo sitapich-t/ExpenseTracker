@@ -18,7 +18,7 @@ export default function ScanQRCodeScreen() {
         if (!permission) {
             requestPermission();
         }
-    }, [permission]);
+    }, [permission, requestPermission]);
 
     if (!permission) {
         return <View style={s.safe}><Text style={{ color: '#fff' }}>กำลังขอสิทธิ์การใช้งานกล้อง...</Text></View>;
@@ -81,7 +81,7 @@ export default function ScanQRCodeScreen() {
                     { text: "ตกลง", onPress: () => setScanned(false) }
                 ]);
             }
-        } catch (error) {
+        } catch (_error) {
             Alert.alert("อ่าน QR Code ไม่สำเร็จ", "QR Code นี้ไม่ใช่รูปแบบที่ระบบรองรับ", [
                 { text: "ตกลง", onPress: () => setScanned(false) }
             ]);

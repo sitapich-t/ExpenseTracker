@@ -333,7 +333,7 @@ export default function ConfirmReceiptScreen() {
         </View>
 
         {/* Bank Name (if transfer slip) */}
-        {/* {isTransferSlip && bankName ? (
+        {isTransferSlip && bankName ? (
           <View>
             <Text style={styles.labelTitle}>ธนาคาร</Text>
             <View style={styles.inputBox}>
@@ -341,7 +341,7 @@ export default function ConfirmReceiptScreen() {
               <Text style={styles.inputText}>{bankName}</Text>
             </View>
           </View>
-        ) : null} */}
+        ) : null}
 
         {/* ✨ SECTION: รายการสินค้า (แสดงเฉพาะใบเสร็จ) */}
         {!isTransferSlip && (

@@ -8,6 +8,7 @@ const API_V1 = `${API_URL}/api/v1`;
 export { API_URL, API_V1 };
 
 // Axios instance ตัวกลาง: log ทุก request/response/error ที่เดียว
+// eslint-disable-next-line import/no-named-as-default-member
 export const http = axios.create({ baseURL: API_V1 });
 
 http.interceptors.request.use((config) => {

@@ -144,7 +144,7 @@ export default function AddGroupExpenseScreen() {
             sharedBy: [],
           }));
           if (mapped.length > 0) setItems(mapped);
-        } catch (e) {}
+        } catch (_e) {}
       }
       if (ocr_vat && parseFloat(ocr_vat) > 0) setVatRate(String(parseFloat(ocr_vat) * 100 / ((parseFloat(ocr_amount||'0')-(parseFloat(ocr_serviceCharge||'0')||0)) || 1)).replace(/\.0+$/, '') || '7');
       if (ocr_serviceCharge && parseFloat(ocr_serviceCharge) > 0) setServiceChargeRate(String(parseFloat(ocr_serviceCharge)*100/parseFloat(ocr_amount||'1')).replace(/\.0+$/,'') || '10');
@@ -163,7 +163,7 @@ export default function AddGroupExpenseScreen() {
       return () => {
         active = false;
       };
-    }, [groupId, initSplitDefaults])
+    }, [groupId, initSplitDefaults, ocr_amount, ocr_items, ocr_serviceCharge, ocr_vat])
   );
 
   const numAmount = parseAmount(amount);
@@ -429,6 +429,7 @@ export default function AddGroupExpenseScreen() {
         category,
         payer: payerId || currentUserId(currentUser),
         payerName: payerLabel,
+        date: ocr_date || new Date().toISOString(),
         // วิธีหาร: equal | percent | item | amount
         splitData: split.data,
         slipFile: slipImage,

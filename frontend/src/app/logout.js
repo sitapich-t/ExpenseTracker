@@ -9,6 +9,6 @@ export default function Logout() {
       await clearToken();
       router.replace('/login');
     })();
-  }, []);
+  }, [router]);
   return null;
 }
