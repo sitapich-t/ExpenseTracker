@@ -41,7 +41,7 @@ exports.setBudget = async (req, res) => {
     const { data: existing } = await budgetRepository.findExistingForUpsert(userId, {
       month,
       year,
-      categoryId,
+      categoryId: category_id,
     });
 
     let resultData;
