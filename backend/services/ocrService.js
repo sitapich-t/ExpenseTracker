@@ -4,6 +4,7 @@
 // ==========================================
 
 const { recognizeText } = require('./ocrEngine');
+const { mergeItems } = require('./ocrMerge');
 const { shouldUseAI, fixItemsWithAI } = require('./aiFallback');
 const USE_MOCK_OCR = String(process.env.USE_MOCK_OCR || '').toLowerCase() === 'true';
 
@@ -425,10 +426,12 @@ function extractLineItems(parsedText) {
   if (!parsedText) return [];
   let lines = parsedText.split('\n').map((l) => l.trim()).filter(Boolean);
   // ส่วนหลังบรรทัดยอดรวม (ตาราง VAT, เงินสด, ฯลฯ) ไม่ใช่สินค้า
-  let cutoff = lines.findIndex((l) => /^(total\b|sub\s*total|ยอด|รวมทั้ง|รวมสุทธิ)/i.test(l));
+  let cutoff = lines.findIndex((l) =>
+    /^(total\b|sub\s*total|grand\s*total|total\s*amount|ยอดรวม|ยอดสุทธิ|ยอดชำระ|รวมทั้ง|รวมสุทธิ|จำนวนเงิน)/i.test(l)
+  );
 
-  // สำรอง: บรรทัดก่อน "Cash / เงินสด" คือบรรทัดยอดรวมเสมอ แม้ OCR จะอ่านคำว่า Total เป็นขยะ
-  const cashIdx = lines.findIndex((l) => /^(cash|เง.{0,3}สด)/i.test(l));
+  // สำรอง: บรรทัดก่อน "Cash / เงินสด / เงินทอน" คือบรรทัดยอดรวมเสมอ แม้ OCR จะอ่านคำว่า Total เป็นขยะ
+  const cashIdx = lines.findIndex((l) => /^(cash|change|เงินสด|เงินทอน)/i.test(l));
   if (cashIdx > 0 && /\d[\d,]*\.\d{2}\s*\S{0,2}$/.test(lines[cashIdx - 1])) {
    const c = cashIdx - 1;
     if (cutoff === -1 || c < cutoff) cutoff = c;
@@ -438,14 +441,42 @@ function extractLineItems(parsedText) {
   const usedLineIdx = new Set();
 
   // บรรทัดที่ไม่ใช่รายการสินค้าแน่ๆ (header/footer/ยอดรวม/ส่วนลด/metadata)
-  const noiseRegex = /(ใบเสร็จ|พนักงาน|ระบบขายหน้าร้าน|เสริฟในร้าน|รวมทั้งหมด|ยอดรวม|ยอดสุทธิ|ยอดชำระ|ส่วนลด|รวมส่วนลด|ภาษี|VAT|Tax\b|Subtotal|Total\b|Net\s*Amount|เงินทอน|เงินสด|Cash|Change|ไทยช่วยไทย|THANK YOU|Tax Invoice|โต๊ะ|Table|เวลา|วันที่|Tran{1,2}\s*ID|โทร|Tel\b|^[A-Z]{2,}#|^\d+[-=|]\d|บริการ|Service\s*Charge|ขอบคุณ|^ยอด)/i;
+  const noiseRegex = /(ใบเสร็จ|ใบกำกับ|พนักงาน|ระบบขายหน้าร้าน|served|รวมทั้งหมด|ยอดรวม|ยอดสุทธิ|ยอดชำระ|ส่วนลด|รวมส่วนลด|ภาษี|VAT|Tax\b|Subtotal|Total\b|Net\s*Amount|เงินทอน|เงินสด|Cash|Change|ไทยช่วยไทย|THANK YOU|Tax Invoice|โต๊ะ|Table|เวลา|วันที่|Tran{1,2}\s*ID|เลขที่|โทร|Tel\b|สาขา|เครื่อง|POS\b|www\.|https?:|@|^[A-Z]{2,}#|^\d+[-=|]\d|ค่าบริการ|Service\s*Charge|ขอบคุณ|ผู้ขาย|ที่อยู่|เลขประจำตัวผู้เสียภาษี)/i;
   const pureNumberLine = /^[\$8฿]?[\d,]+\.\d{2}$/;
   // หัวข้อหมวดหมู่ในใบเสร็จ (เช่น "เครื่องดื่ม 10%", "อาหาร") ไม่ใช่ตัวสินค้า
   const sectionHeaderRegex = /^(เครื่องดื่ม|อาหาร|ของหวาน|อื่นๆ|ทั่วไป|Beverages?|Foods?|Drinks?)\s*(\(?\d+\s*%\)?)?$/i;
 
   const pureNumbersRowRegex = /^[\d,\s]+\.\d{2}(?:\s+[\d,]+\.\d{2}){1,3}$/;
   const manyMoneyRow = /(\d[\d,]*\.\d{2}\D+){2,}\d[\d,]*\.\d{2}/;
+  const hasLetter = /[A-Za-zก-๙]/;
   const isNoiseLine = (line) => noiseRegex.test(line) || sectionHeaderRegex.test(line) || pureNumberLine.test(line) || pureNumbersRowRegex.test(line) || manyMoneyRow.test(line);
+  const money = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+  // price = ราคารวมของบรรทัด (ให้ตรงกับที่ group/bill-split ใช้), unitPrice = ราคาต่อหน่วย
+  const pushItem = (rawName, quantity, price, unitPrice, lineIdx) => {
+    const name = String(rawName || '')
+      .replace(/^\d{1,4}[-.)]\s*/, '') // รหัสสินค้านำหน้า เช่น "001-" / "12."
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (name.length < 2 || !hasLetter.test(name) || isNoiseLine(name)) return;
+
+    const qty = Number.isFinite(Number(quantity)) && Number(quantity) > 0 ? Number(quantity) : 1;
+    const lineTotal = money(price);
+    if (!Number.isFinite(lineTotal) || lineTotal <= 0) return;
+
+    const unit = Number.isFinite(Number(unitPrice)) && Number(unitPrice) > 0
+      ? money(unitPrice)
+      : money(lineTotal / qty);
+
+    // เก็บลำดับบรรทัดไว้เรียงรายการให้ตรงกับใบเสร็จ แล้วค่อยตัดออกตอน return
+    items.push({
+      name,
+      quantity: qty,
+      unitPrice: unit,
+      price: lineTotal,
+      _line: Number.isFinite(Number(lineIdx)) ? Number(lineIdx) : items.length,
+    });
+  };
   // ---------- Pattern A: ชื่ออยู่บรรทัดก่อนหน้า, "qty x unitPrice" อยู่คนละบรรทัด ----------
   // เช่น "A ซุปกระดูกหมูหม่าล่าเผ็ดกลาง" แล้วบรรทัดถัดมา "0.725 x ฿290.00"
   const qtyPriceRegex = /^(\d+(?:\.\d+)?)\s*[xX×]\s*[฿Bb]?\s*([\d,]+\.\d{2})/;
@@ -465,18 +496,17 @@ function extractLineItems(parsedText) {
     for (let j = i - 1; j >= 0 && j >= i - 3; j--) {
       if (usedLineIdx.has(j)) continue;
       const candidate = lines[j];
-      if (isNoiseLine(candidate) || candidate.length < 3) continue;
+      if (isNoiseLine(candidate) || candidate.length < 2 || !hasLetter.test(candidate)) continue;
       name = candidate;
       nameIdx = j;
       break;
     }
+    if (!name) continue;
 
-    if (name) {
-      name = name.replace(/\s+[฿8Bb]?[\d,]+\.\d{2}.*$/, '').trim();
-      items.push({ name, quantity: qty, price: parseFloat((qty * unitPrice).toFixed(2)) });
-      usedLineIdx.add(i);
-      if (nameIdx !== -1) usedLineIdx.add(nameIdx);
-    }
+    name = name.replace(/\s+[฿8Bb]?[\d,]+\.\d{2}.*$/, '').trim();
+    pushItem(name, qty, qty * unitPrice, unitPrice, i);
+    usedLineIdx.add(i);
+    if (nameIdx !== -1) usedLineIdx.add(nameIdx);
   }
 
   // ---------- Pattern B: ตารางอยู่บรรทัดเดียว "ชื่อสินค้า  จำนวน  ราคาต่อหน่วย  ราคารวม" ----------
@@ -491,57 +521,60 @@ function extractLineItems(parsedText) {
     const rowMatch = line.match(tableRowRegex);
     if (!rowMatch) continue;
 
-    const [, rawName, qtyStr, , totalStr] = rowMatch;
-    const name = rawName.trim();
-    if (name.length < 2 || isNoiseLine(name)) continue;
-
+    const [, rawName, qtyStr, unitStr, totalStr] = rowMatch;
     const qty = parseFloat(qtyStr);
     const total = parseFloat(stripMisreadBahtSymbol(totalStr));
     if (isNaN(qty) || isNaN(total)) continue;
 
-    items.push({ name, quantity: qty, price: total });
+    pushItem(rawName, qty, total, parseFloat(stripMisreadBahtSymbol(unitStr)), i);
     usedLineIdx.add(i);
   }
 
-  // ---------- Pattern C: บรรทัดเดียว "ชื่อสินค้า  ราคา" แบบง่าย (จำนวน = 1) ----------
+  // ---------- Pattern C: บรรทัดเดียว "ชื่อสินค้า  ราคา" (จำนวน = 1 หรือมี qty ในชื่อ) ----------
+  // รันทุกครั้งหลัง Pattern A/B เพื่อไม่ให้รายการที่เหลือหลุด (เดิมรันเฉพาะตอน items ว่าง)
   // รองรับตัวอักษรต่อท้ายราคา เช่น "V" (VAT-applicable marker) ที่ใบเสร็จบางร้านใส่ไว้
-  const simpleRowRegex = /^(.+?)\s+([\d,]+\.\d{2})\s*([A-Za-zก-๙])?\s*$/;
-  if (items.length === 0) {
-    for (let i = 0; i < lines.length; i++) {
-      if (usedLineIdx.has(i)) continue;
-      const line = lines[i];
-      if (isNoiseLine(line)) continue;
+  const simpleRowRegex = /^(.+?)\s+[฿]?\s*([\d,]+\.\d{2})\s*([A-Za-zก-๙]{1,3})?\s*$/;
+  for (let i = 0; i < lines.length; i++) {
+    if (usedLineIdx.has(i)) continue;
+    const line = lines[i];
+    if (isNoiseLine(line)) continue;
 
-      const rowMatch = line.match(simpleRowRegex);
-      if (!rowMatch) continue;
+    const rowMatch = line.match(simpleRowRegex);
+    if (!rowMatch) continue;
 
-      const [, rawName, priceStr, marker] = rowMatch;
-      if (marker && /[Nnนมผ]/.test(marker)) continue; // 0.00N (แต้ม/สิทธิ์) ที่ OCR อ่านเป็น ม/ผ
-      let name = rawName.trim().replace(/^\d+[-.]\s*/, '');
+    const [, rawName, priceStr, marker] = rowMatch;
+    if (marker && /[Nnนมผ]/.test(marker)) continue; // 0.00N (แต้ม/สิทธิ์) ที่ OCR อ่านเป็น ม/ผ
+    let name = rawName.trim().replace(/^\d{1,4}[-.)]\s*/, '');
 
-      // "1 ขนมรีบกุ้ง" -> quantity 1, name "ขนมรีบกุ้ง"
-      let quantity = 1;
-      const qtyPrefix = name.match(/^(\d{1,2})\s+(\S.*)$/);
-      if (qtyPrefix) {
-        quantity = parseInt(qtyPrefix[1], 10);
-        name = qtyPrefix[2].trim();
+    // "1 ขนมรีบกุ้ง" -> quantity 1, name "ขนมรีบกุ้ง"
+    let quantity = 1;
+    const qtyPrefix = name.match(/^(\d{1,2})\s+(\S.*)$/);
+    if (qtyPrefix) {
+      quantity = parseInt(qtyPrefix[1], 10);
+      name = qtyPrefix[2].trim();
+    } else {
+      // "น้ำเปล่า 2 ขวด" -> quantity 2
+      const qtyUnit = name.match(/(?:^|\s)(\d{1,2})\s*(?:pcs?|ชิ้น|อัน|แก้ว|ขวด|จาน|ที่|กล่อง|ถุง)(?=\s|$)/i);
+      if (qtyUnit) {
+        quantity = parseInt(qtyUnit[1], 10);
+        name = `${name.slice(0, qtyUnit.index)} ${name.slice(qtyUnit.index + qtyUnit[0].length)}`
+          .replace(/\s{2,}/g, ' ')
+          .trim();
       }
-
-      if (name.length < 3 || isNoiseLine(name) || /^\d+$/.test(name)) continue;
-
-      const price = parseFloat(stripMisreadBahtSymbol(priceStr));
-      if (isNaN(price)) continue;
-
-      items.push({ name, quantity, price });
-      usedLineIdx.add(i);
     }
+
+    const price = parseFloat(stripMisreadBahtSymbol(priceStr));
+    if (isNaN(price)) continue;
+
+    pushItem(name, quantity, price, undefined, i);
+    usedLineIdx.add(i);
   }
 
   // ---------- Fallback เดิม: ใบเสร็จรูปแบบเก่าที่มี header "รายการสินค้า" ชัดเจน ----------
   if (items.length === 0) {
     let isItemSection = false;
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (!line) continue;
 
       if (/รายการสินค้า/i.test(line)) {
@@ -558,7 +591,7 @@ function extractLineItems(parsedText) {
           const name = match[2].trim();
           const price = parseFloat(match[3].replace(/,/g, ''));
           if (name && !isNaN(price)) {
-            items.push({ name, quantity: qty, price });
+            pushItem(name, qty, price, undefined, i);
           }
         }
       }
@@ -566,8 +599,14 @@ function extractLineItems(parsedText) {
   }
 
   // ตัดรายการราคา 0 ออก (แต้มสะสม, M-Stamp, ภารกิจ, สิทธิ์แลกซื้อ ฯลฯ)
-  return items.filter((it) => it.price > 0 && !/ภารกิ|M-?Stamp|สิทธิ์?แลก/i.test(it.name));
+  // แล้วเรียงตามลำดับบรรทัดในใบเสร็จ + ตัด field ภายในออก
+  return items
+    .filter((it) => it.price > 0 && !/ภารกิ|M-?Stamp|สิทธิ์?แลก/i.test(it.name))
+    .sort((a, b) => a._line - b._line)
+    .map(({ _line, ...it }) => it);
 }
+
+exports.extractLineItems = extractLineItems;
 
 // 📅 11. เดาว่าปี 2 หลักเป็น ค.ศ. หรือ พ.ศ. โดยเทียบกับปีปัจจุบัน
 function convertTwoDigitYear(y2) {
@@ -749,10 +788,11 @@ function scoreParsed(r) {
   return s;
 }
 
-exports.parseBest = (rawTexts) => {
-  const parsed = rawTexts.map((t) => exports.parseText(t));
+function pickBest(parsed) {
   return parsed.reduce((best, r) => (scoreParsed(r) > scoreParsed(best) ? r : best));
-};
+}
+
+exports.parseBest = (rawTexts) => pickBest(rawTexts.map((t) => exports.parseText(t)));
 
 
 
@@ -792,7 +832,12 @@ exports.scanReceipt = async ({ file, image } = {}) => {
     throw new Error('อ่านข้อความจากรูปไม่ได้เลย กรุณาถ่ายรูปให้ชัดเจนขึ้นและมีแสงเพียงพอ');
   }
 
-  const result = rawTexts.length > 1 ? exports.parseBest(rawTexts) : exports.parseText(rawOcr);
+  const parsed = rawTexts.map((t) => exports.parseText(t));
+  const result = pickBest(parsed);
+  if (parsed.length > 1) {
+    // รวมรายการจากทุก psm: ผลที่คะแนนดีสุดเป็นฐาน แล้วเติมรายการที่รอบอื่นอ่านเจอ
+    result.items = mergeItems([result, ...parsed.filter((r) => r !== result)]);
+  }
 
   if (shouldUseAI(result, confidence)) {
     const aiItems = await fixItemsWithAI(inputImage, result);
