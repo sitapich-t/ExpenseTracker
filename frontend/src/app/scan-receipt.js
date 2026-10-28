@@ -7,15 +7,15 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL, getToken } from '@/lib/api';
 import { setScannedImage } from '@/utils/scannedImageStore';
-
+import { File } from 'expo-file-system';
 
 export default function ScanReceiptScreen() {
   const router = useRouter();
   const cameraRef = useRef(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [flash, setFlash] = useState(false);
-  const [loading, setLoading] = useState(false);
   const params = useLocalSearchParams();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [loading, setLoading] = useState(false);
+  const [flash, setFlash] = useState(false);
 
   // ใช้จาก params ตอน push แทนตัวแปรที่ไม่ได้ใช้งาน
 
@@ -58,18 +58,9 @@ export default function ScanReceiptScreen() {
         throw new Error('กรุณาเข้าสู่ระบบก่อนใช้สแกนใบเสร็จ');
       }
 
-      const filename = imageUri.split('/').pop() || 'receipt.jpg';
-      const match = /\.(\w+)$/.exec(filename);
-      const ext = match ? match[1].toLowerCase() : 'jpg';
-      const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-
-      const formData = new FormData();
-      formData.append('receipt', {
-        uri: imageUri,
-        name: filename.includes('.') ? filename : `receipt.${ext}`,
-        type,
-      });
-      const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
+        const formData = new FormData();
+        formData.append('receipt', new File(imageUri));
+        const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -215,7 +206,7 @@ const styles = StyleSheet.create({
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center',
     zIndex: 999,
   },
