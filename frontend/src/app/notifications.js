@@ -134,6 +134,20 @@ export default function NotificationsScreen() {
           bg: '#D1FAE5',
           badgeText: 'ได้รับเงินแล้ว',
         };
+      case 'new_group_bill':
+        return {
+          icon: 'receipt',
+          color: '#2563EB',
+          bg: '#DBEAFE',
+          badgeText: 'บิลใหม่',
+        };
+      case 'member_joined':
+        return {
+          icon: 'person-add',
+          color: '#7C3AED',
+          bg: '#EDE9FE',
+          badgeText: 'สมาชิกใหม่',
+        };
       case 'budget_over':
         return {
           icon: 'warning',
