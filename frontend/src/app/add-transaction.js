@@ -153,16 +153,6 @@ export default function AddTransactionScreen() {
     setPaymentModalVisible(false);
   };
 
-  // เลือก alert ที่ "รุนแรงที่สุด" มาโชว์ ถ้ามีหลาย budget ข้าม threshold พร้อมกัน
-  const pickMostSevereAlert = (budgetAlerts) => {
-    if (!budgetAlerts || budgetAlerts.length === 0) return null;
-    return (
-      budgetAlerts.find((a) => a.level === 'OVER') ||
-      budgetAlerts.find((a) => a.level === 'WARNING') ||
-      null
-    );
-  };
-
   const handleSave = async () => {
     const numAmount = parseFloat(amount.replace(/,/g, ''));
     if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
@@ -204,7 +194,6 @@ export default function AddTransactionScreen() {
       });
 
       const data = await response.json();
-      console.log('=== BUDGET ALERTS ===', JSON.stringify(data.budgetAlerts));
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -217,23 +206,10 @@ export default function AddTransactionScreen() {
         throw new Error(data.error || 'บันทึกไม่สำเร็จ');
       }
 
-      // เช็คว่ารายการนี้ทำให้งบข้าม threshold (WARNING/OVER) หรือไม่
-      const alert = pickMostSevereAlert(data.budgetAlerts);
-
-      if (alert) {
-        const percentText = `${(alert.percentUsed * 100).toFixed(0)}%`;
-        const title = alert.level === 'OVER' ? '🔴 เกินงบประมาณแล้ว' : '⚠️ ใกล้เต็มงบแล้ว';
-        const body =
-          alert.level === 'OVER'
-            ? `บันทึกรายการสำเร็จ แต่คุณใช้จ่ายไปแล้ว ${percentText} เกินงบที่ตั้งไว้`
-            : `บันทึกรายการสำเร็จ ตอนนี้ใช้จ่ายไปแล้ว ${percentText} ของงบที่ตั้งไว้`;
-
-        Alert.alert(title, body, [{ text: 'ตกลง', onPress: () => router.back() }]);
-      } else {
-        Alert.alert('สำเร็จ', editId ? 'อัปเดตรายการเรียบร้อย' : 'บันทึกรายการเรียบร้อย', [
-          { text: 'ตกลง', onPress: () => router.back() },
-        ]);
-      }
+      // ยกเลิกการแจ้งเตือนงบประมาณเกินแล้ว — แจ้งผลการบันทึกอย่างเดียว
+      Alert.alert('สำเร็จ', editId ? 'อัปเดตรายการเรียบร้อย' : 'บันทึกรายการเรียบร้อย', [
+        { text: 'ตกลง', onPress: () => router.back() },
+      ]);
     } catch (error) {
       console.log('Save expense error:', error);
       Alert.alert('ข้อผิดพลาด', error.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่');

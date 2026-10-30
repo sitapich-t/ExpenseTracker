@@ -1,3 +1,4 @@
+const notificationRepo = require('../repositories/notificationRepository');
 const { v4: uuidv4 } = require('uuid');
 const transactionService = require('../services/transactionService');
 const ocrService = require('../services/ocrService');
@@ -10,6 +11,29 @@ const transactionRepository = require('../repositories/transactionRepository');
 // ==========================================
 // Budgets Controllers
 // ==========================================
+
+
+async function persistBudgetNotifications(userId, alerts) {
+  if (!alerts || alerts.length === 0) return;
+  try {
+    const rows = alerts.map((a) => {
+      const isOver = a.level === 'OVER';
+      const pct = Math.round((a.percentUsed || 0) * 100);
+      return {
+        user_id: userId,
+        type: isOver ? 'budget_over' : 'budget_warning',
+        title: isOver ? 'การใช้จ่ายเกินงบประมาณ' : 'การใช้จ่ายใกล้เต็มงบประมาณ',
+        message: isOver
+          ? `คุณใช้จ่ายไปแล้ว ${pct}% ของงบประมาณที่ตั้งไว้ กรุณาตรวจสอบและควบคุมค่าใช้จ่าย`
+          : `คุณใช้จ่ายไปแล้ว ${pct}% ของงบประมาณที่ตั้งไว้ ใกล้ถึงขีดจำกัดแล้ว`,
+        amount: a.spent || 0,
+      };
+    });
+    await notificationRepo.notifications.insertMany(rows);
+  } catch (err) {
+    console.error('⚠️ บันทึกแจ้งเตือนงบประมาณไม่สำเร็จ:', err.message);
+  }
+}
 
 exports.getBudgets = async (req, res) => {
   try {
@@ -80,6 +104,7 @@ exports.setBudget = async (req, res) => {
     let budgetAlert = null;
     try {
       budgetAlert = await budgetService.checkSingleBudgetById(resultData.id);
+      if (budgetAlert) await persistBudgetNotifications(userId, [budgetAlert]);
     } catch (alertErr) {
       console.error('⚠️ Budget alert check failed (setBudget):', alertErr);
     }

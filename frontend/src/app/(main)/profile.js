@@ -135,7 +135,7 @@ export default function ProfileScreen() {
                             style={styles.settingsRow}
                             onPress={() =>
                                 Alert.alert(
-                                    "การแจ้งเตือน 🔔",
+                                    "การแจ้งเตือน",
                                     "• เตือนเมื่อเกินงบประมาณ: เปิดใช้งาน\n• เตือนทวงหนี้ในกลุ่ม: เปิดใช้งาน"
                                 )
                             }

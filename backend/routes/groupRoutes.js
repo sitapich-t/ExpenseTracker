@@ -327,6 +327,67 @@ router.post('/:id/slips', authenticate, slipUpload, groupController.uploadGroupS
  */
 router.get('/:id/settlement', authenticate, groupController.getGroupSettlement);
 
+/**
+ * @openapi
+ * /api/v1/groups/{id}/reminders:
+ *   post:
+ *     summary: ส่งแจ้งเตือนทวงเงินไปยังลูกหนี้ทุกคนในกลุ่ม (หรือเฉพาะ debtor_id)
+ *     description: ยอดเงินคำนวณจาก settlement ฝั่ง server (หักยอดที่ยืนยันรับเงินแล้ว)
+ *     tags: [Settlement]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               debtor_id: { type: string, description: "ไม่ส่ง = ทวงทุกคน" }
+ *     responses:
+ *       200:
+ *         description: "{ sent, recipients: [{ user_id, name, amount }] }"
+ *       503:
+ *         description: ยังไม่รัน migration create_debt_notifications.sql
+ */
+router.post('/:id/reminders', authenticate, groupController.sendDebtReminders);
+
+/**
+ * @openapi
+ * /api/v1/groups/{id}/payments/confirm:
+ *   post:
+ *     summary: เจ้าหนี้ยืนยันว่าได้รับเงินจาก from_user แล้ว
+ *     description: เฉพาะคนที่เป็นผู้รับเงิน (to) ของรายการนั้น; ไม่ส่ง amount = ยืนยันเต็มยอด
+ *     tags: [Settlement]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [from_user]
+ *             properties:
+ *               from_user: { type: string }
+ *               amount: { type: number }
+ *     responses:
+ *       200:
+ *         description: "{ payment, remaining, all_settled }"
+ *       404:
+ *         description: ไม่พบยอดค้างชำระจาก from_user ถึงผู้ใช้
+ */
+router.post('/:id/payments/confirm', authenticate, groupController.confirmPaymentReceived);
+
 // ==========================================
 // Group Members Routes
 // ==========================================

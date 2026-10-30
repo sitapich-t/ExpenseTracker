@@ -21,6 +21,7 @@ export default function DashboardScreen() {
   // Budget — ดึงจาก backend จริง ไม่ใช้ AsyncStorage อีกต่อไป
   const [monthlyBudget, setMonthlyBudget] = useState(0);
   const [hasBudget, setHasBudget] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const fetchData = useCallback(async () => {
     try {
@@ -61,6 +62,13 @@ export default function DashboardScreen() {
       } catch (budgetErr) {
         console.error('Fetch budget error:', budgetErr.response?.data || budgetErr.message);
       }
+
+      try {
+        const notifRes = await http.get('/notifications', authHeader);
+        if (notifRes.data?.success) {
+          setUnreadCount(notifRes.data.unread || 0);
+        }
+      } catch (e) {}
 
       const res = await http.get('/personal/transactions', authHeader);
 
@@ -124,19 +132,7 @@ export default function DashboardScreen() {
   const progressColor = budgetPercent >= 100 ? '#ef4444' : budgetPercent >= 70 ? '#f59e0b' : '#10b981';
 
   const handleShowNotification = () => {
-    if (monthlyBudget > 0 && budgetPercent >= 100) {
-      Alert.alert(
-        '🚨 แจ้งเตือนงบประมาณ',
-        `คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้แล้ว (${budgetPercent.toFixed(0)}%)\nยอดใช้จ่าย: ฿${totalExpense.toLocaleString()} จากงบ ฿${monthlyBudget.toLocaleString()}`
-      );
-    } else if (monthlyBudget > 0 && budgetPercent >= 70) {
-      Alert.alert(
-        '⚠️ แจ้งเตือนงบประมาณ',
-        `คุณใช้จ่ายใกล้เต็มงบประมาณแล้ว (${budgetPercent.toFixed(0)}%)\nยอดใช้จ่าย: ฿${totalExpense.toLocaleString()} จากงบ ฿${monthlyBudget.toLocaleString()}`
-      );
-    } else {
-      Alert.alert('🔔 การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในขณะนี้ ยอดใช้จ่ายอยู่ในเกณฑ์ปกติ');
-    }
+    router.push('/notifications');
   };
 
   return (
@@ -153,12 +149,17 @@ export default function DashboardScreen() {
               <Ionicons name="person" size={20} color="#5f3dc4" />
             </View>
             <View>
-              <Text style={styles.greetingSub}>ยินดีต้อนรับกลับมา 👋</Text>
+              <Text style={styles.greetingSub}>ยินดีต้อนรับกลับมา</Text>
               <Text style={styles.greetingTitle}>{userName}</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.iconBtn} onPress={handleShowNotification}>
             <Ionicons name="notifications-outline" size={24} color="#333" />
+            {unreadCount > 0 && (
+              <View style={styles.badgeContainer}>
+                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -299,6 +300,25 @@ const styles = StyleSheet.create({
   },
   greetingSub: { fontSize: 12, color: '#777', marginBottom: 2 },
   greetingTitle: { fontSize: 18, fontWeight: '800', color: '#222' },
+  badgeContainer: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#EF4444',
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
   iconBtn: { padding: 8, backgroundColor: '#fff', borderRadius: 20, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
 
   balanceCard: {

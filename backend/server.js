@@ -18,6 +18,7 @@ const authRoutes = require('./routes/authRoutes');
 const personalRoutes = require('./routes/personalRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const billSplitRoutes = require('./routes/billSplitRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const { SLIP_DIR, ensureDir } = require('./middlewares/uploadMiddleware');
 
@@ -105,6 +106,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/personal', personalRoutes);
 app.use('/api/v1/groups', groupRoutes);
 app.use('/api/v1/bill-split', billSplitRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // ==========================================
 // OPENAPI DOCS (swagger-ui)

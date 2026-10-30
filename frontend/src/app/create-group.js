@@ -63,7 +63,7 @@ export default function CreateGroupScreen() {
       });
 
       Alert.alert(
-        'สร้างกลุ่มสำเร็จ! 🎉',
+        'สร้างกลุ่มสำเร็จ',
         `สร้างกลุ่ม "${created?.name || name}" เรียบร้อยแล้ว\nรหัสเชิญ: ${created?.invite_code || '-'}`,
         [
           {

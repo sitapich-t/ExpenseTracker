@@ -7,6 +7,41 @@ const { validateSplit } = require('../utils/splitMethod');
 const { calculateSettlement } = require('../utils/settlementCalculator');
 const { slipPathOf, removeSlip } = require('../middlewares/uploadMiddleware');
 const { groups, members, transactions } = require('../repositories/groupRepository');
+const notificationRepo = require('../repositories/notificationRepository');
+
+// ตาราง group_payments / notifications ยังไม่ถูกสร้าง (ยังไม่รัน migration)
+const isMissingTable = (err) => {
+  const msg = String(err?.message || '');
+  return err?.code === '42P01' || err?.code === 'PGRST205' || /relation .* does not exist|could not find the table/i.test(msg);
+};
+
+// รายการ "ยืนยันรับเงินแล้ว" ของกลุ่ม — ถ้ายังไม่รัน migration ให้ถือว่าไม่มี (settlement ยังทำงานได้)
+async function listGroupPayments(groupId) {
+  const { data, error } = await notificationRepo.payments.listByGroup(groupId);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return data || [];
+}
+
+// คำนวณ settlement ของกลุ่ม (บิลทั้งหมด − ยอดที่ยืนยันรับเงินแล้ว) ใช้ร่วมกันทุก endpoint
+async function computeGroupSettlement(groupId) {
+  const memberIds = await getGroupMemberIds(groupId);
+  const { data, error } = await transactions.listForSettlement(groupId);
+  if (error) throw error;
+  const payments = await listGroupPayments(groupId);
+  return { ...calculateSettlement(data || [], memberIds, payments), payments };
+}
+
+// ชื่อสมาชิกในกลุ่ม: Map<user_id, name>
+async function memberNameMap(groupId) {
+  const { data } = await members.listMembershipsByGroupIds([groupId]);
+  return new Map((data || []).map((m) => [String(m.user_id), m.users?.name || m.users?.email || 'สมาชิก']));
+}
+
+const fmtBaht = (n) =>
+  Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
 // อ่านข้อมูลจากรูปสลิป/ใบเสร็จด้วย OCR (รูปแบบเดียวกับ personal scan-receipt)
 // ถ้าอ่านไม่ได้ไม่ทำให้ flow ล้มเหลว — คืน null แล้วหน้าจอยังเก็บรูปสลิปได้ตามเดิม
@@ -375,18 +410,14 @@ exports.getGroupSettlement = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const memberIds = await getGroupMemberIds(id);
-
-    const { data, error } = await transactions.listForSettlement(id);
-
-    if (error) throw error;
-
-    const result = calculateSettlement(data || [], memberIds);
+    const result = await computeGroupSettlement(id);
 
     return res.json({
       success: true,
       balances: result.balances,
       transactions: result.transactions,
+      // ประวัติ "ยืนยันรับเงินแล้ว" (หักออกจาก transactions ข้างบนแล้ว)
+      payments: result.payments || [],
       // รายละเอียดต่อบิล เผื่อ UI อยากแสดงว่าใครโดนเท่าไร
       per_bill: result.perBill.map((b) => ({
         bill_id: b.billId,
@@ -399,6 +430,157 @@ exports.getGroupSettlement = async (req, res) => {
     });
   } catch (err) {
     console.error('❌ Get group settlement error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// ==========================================
+// ทวงเงิน + ยืนยันรับเงิน (ต้องรัน sql/create_debt_notifications.sql)
+// ==========================================
+
+const MIGRATION_HINT =
+  'ระบบแจ้งเตือนยังไม่พร้อม (ผู้ดูแลต้องรัน backend/sql/create_debt_notifications.sql)';
+
+// POST /:id/reminders   body: { debtor_id? }
+// ส่งแจ้งเตือนทวงเงินไปยัง "ลูกหนี้" ทุกคนในกลุ่ม (หรือเฉพาะ debtor_id)
+// ยอดเงินคำนวณใหม่ฝั่ง server เสมอ ไม่เชื่อยอดจากหน้าจอ
+exports.sendDebtReminders = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = String(req.user.id || req.user.user_id);
+    const debtorId = req.body?.debtor_id ? String(req.body.debtor_id) : null;
+
+    if (!(await isGroupMember(id, userId))) {
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
+
+    const { transactions: debts } = await computeGroupSettlement(id);
+    // ไม่ทวงตัวเอง
+    const targets = debts.filter(
+      (d) => String(d.from) !== userId && (!debtorId || String(d.from) === debtorId)
+    );
+
+    if (targets.length === 0) {
+      return res.json({ success: true, sent: 0, recipients: [], message: 'ไม่มียอดค้างชำระที่ต้องทวง' });
+    }
+
+    const names = await memberNameMap(id);
+    const { data: group } = await groups.findById(id, 'name');
+    const groupName = group?.name || 'กลุ่ม';
+    const senderName = names.get(userId) || 'สมาชิก';
+
+    const rows = targets.map((d) => ({
+      user_id: d.from,
+      sender_id: userId,
+      group_id: id,
+      type: 'debt_reminder',
+      title: `ทวงเงินจากกลุ่ม "${groupName}"`,
+      message: `${senderName} แจ้งเตือน: คุณต้องโอน ฿${fmtBaht(d.amount)} ให้ ${names.get(String(d.to)) || 'สมาชิก'}`,
+      amount: d.amount,
+    }));
+
+    const { error } = await notificationRepo.notifications.insertMany(rows);
+    if (error) {
+      if (isMissingTable(error)) return res.status(503).json({ success: false, error: MIGRATION_HINT });
+      throw error;
+    }
+
+    return res.json({
+      success: true,
+      sent: rows.length,
+      recipients: targets.map((d) => ({
+        user_id: d.from,
+        name: names.get(String(d.from)) || 'สมาชิก',
+        amount: d.amount,
+      })),
+    });
+  } catch (err) {
+    console.error('❌ Send reminders error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// POST /:id/payments/confirm   body: { from_user, amount? }
+// เจ้าหนี้ (คนที่ต้องได้เงินคืน) กดยืนยันว่าได้รับเงินจาก from_user แล้ว
+// เฉพาะคนที่เป็น "to" ของรายการนั้นเท่านั้นที่ยืนยันได้
+exports.confirmPaymentReceived = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = String(req.user.id || req.user.user_id);
+    const fromUser = req.body?.from_user ? String(req.body.from_user) : '';
+
+    if (!fromUser) {
+      return res.status(400).json({ success: false, error: 'กรุณาระบุผู้โอนเงิน (from_user)' });
+    }
+    if (fromUser === userId) {
+      return res.status(400).json({ success: false, error: 'ไม่สามารถยืนยันรับเงินจากตัวเองได้' });
+    }
+    if (!(await isGroupMember(id, userId))) {
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
+
+    const { transactions: debts } = await computeGroupSettlement(id);
+    const debt = debts.find((d) => String(d.from) === fromUser && String(d.to) === userId);
+    if (!debt) {
+      return res.status(404).json({ success: false, error: 'ไม่พบยอดค้างชำระจากสมาชิกคนนี้ถึงคุณ' });
+    }
+
+    let amount = req.body?.amount !== undefined ? Number(req.body.amount) : Number(debt.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'ยอดเงินไม่ถูกต้อง' });
+    }
+    if (amount > Number(debt.amount) + 0.01) {
+      return res.status(400).json({ success: false, error: 'ยอดเงินมากกว่ายอดที่ค้างชำระ' });
+    }
+    amount = Math.round(amount * 100) / 100;
+
+    const { data: payment, error } = await notificationRepo.payments.insert({
+      group_id: id,
+      from_user: fromUser,
+      to_user: userId,
+      amount,
+      confirmed_by: userId,
+    });
+    if (error) {
+      if (isMissingTable(error)) return res.status(503).json({ success: false, error: MIGRATION_HINT });
+      throw error;
+    }
+
+    // แจ้งลูกหนี้ว่าเจ้าหนี้ยืนยันแล้ว (ล้มเหลวก็ไม่ทำให้การยืนยันล้ม)
+    try {
+      const names = await memberNameMap(id);
+      const { data: group } = await groups.findById(id, 'name');
+      await notificationRepo.notifications.insertMany([
+        {
+          user_id: fromUser,
+          sender_id: userId,
+          group_id: id,
+          type: 'payment_confirmed',
+          title: `ยืนยันรับเงินแล้ว — กลุ่ม "${group?.name || 'กลุ่ม'}"`,
+          message: `${names.get(userId) || 'สมาชิก'} ยืนยันว่าได้รับเงิน ฿${fmtBaht(amount)} จากคุณเรียบร้อยแล้ว`,
+          amount,
+        },
+      ]);
+    } catch (notifyErr) {
+      console.warn('⚠️ แจ้งเตือนการยืนยันรับเงินไม่สำเร็จ:', notifyErr.message);
+    }
+
+    // ถ้าไม่เหลือหนี้แล้ว -> ปิดกลุ่มเป็น settled อัตโนมัติ
+    const after = await computeGroupSettlement(id);
+    const allSettled = after.transactions.length === 0;
+    if (allSettled) {
+      await groups.updateById(id, { status_type: 'settled' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'ยืนยันรับเงินเรียบร้อย',
+      payment,
+      remaining: after.transactions,
+      all_settled: allSettled,
+    });
+  } catch (err) {
+    console.error('❌ Confirm payment error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };

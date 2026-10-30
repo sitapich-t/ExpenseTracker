@@ -27,12 +27,10 @@ const EMPTY = [];
 export default function GroupSettleScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { settleGroup, getGroup, refresh, fetchSettlement } = useGroup();
+  const { settleGroup, getGroup, refresh, fetchSettlement, me } = useGroup();
 
   const groupId = params.groupId;
   const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
-  // expo-router ส่ง param เป็น string เสมอ -> array ที่ส่งมาจะกลายเป็น "a,b"
-  // อ่านจาก context เป็นหลัก (แหล่งจริง) และกัน non-array ทุกกรณี
   const ctx = getGroup(groupId);
   const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
   const bills = useMemo(() => (Array.isArray(ctx?.bills) ? ctx.bills : EMPTY), [ctx]);
@@ -52,6 +50,10 @@ export default function GroupSettleScreen() {
   const [calcLoading, setCalcLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const [sendingAllReminders, setSendingAllReminders] = useState(false);
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState(null);
+
+  const myId = String(me?.id || '');
 
   // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่กลับมาหน้านี้ (เผื่อเพิ่งเพิ่มบิล/สมาชิก)
   useFocusEffect(
@@ -102,7 +104,6 @@ export default function GroupSettleScreen() {
         });
       });
     } else {
-      // equal หรือกรณีทั่วไป
       const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
         ? b.splitData.memberIds.map(String)
         : members.map((m) => String(m.id));
@@ -123,124 +124,221 @@ export default function GroupSettleScreen() {
     }
   });
 
-  // การตัดหนี้ (debt simplification) เรียก backend หรือคำนวณ fallback
-  useEffect(() => {
-    let cancelled = false;
+  const loadSettlement = useCallback(async () => {
+    if (members.length === 0 || bills.length === 0) {
+      setSimplifiedDebts([]);
+      return;
+    }
 
-    const run = async () => {
-      if (members.length === 0 || bills.length === 0) {
-        setSimplifiedDebts([]);
-        return;
-      }
+    setCalcLoading(true);
 
-      setCalcLoading(true);
-
-      // ลองเรียก fetchSettlement ของกลุ่มจาก backend ก่อน
-      try {
-        if (groupId && typeof fetchSettlement === 'function') {
-          const res = await fetchSettlement(groupId);
-          if (cancelled) return;
-          if (res && Array.isArray(res.transactions) && res.transactions.length > 0) {
-            setSimplifiedDebts(
-              res.transactions.map((t, i) => ({
-                id: `s_${i + 1}`,
-                from: nameOf(t.from),
-                to: nameOf(t.to),
-                amount: baht(t.amount),
-              }))
-            );
-            return;
-          }
+    try {
+      if (groupId && typeof fetchSettlement === 'function') {
+        const res = await fetchSettlement(groupId);
+        if (res && Array.isArray(res.transactions)) {
+          setSimplifiedDebts(
+            res.transactions.map((t, i) => ({
+              id: `s_${i + 1}`,
+              fromId: String(t.from),
+              toId: String(t.to),
+              from: nameOf(t.from),
+              to: nameOf(t.to),
+              amount: baht(t.amount),
+              rawAmount: t.amount,
+            }))
+          );
+          setCalcLoading(false);
+          return;
         }
-      } catch (_fetchErr) {
-        // fallback สู่การคำนวณ local
       }
+    } catch (_fetchErr) {
+      // fallback สู่การคำนวณ local
+    }
 
-      // ยอดคงเหลือต่อคน หน่วยสตางค์ (จำนวนเต็ม): จ่ายบิลได้ = บวก, ต้องจ่าย = ลบ
-      const balanceSatang = {};
-      members.forEach((m) => {
-        balanceSatang[String(m.id)] = 0;
-      });
+    // fallback: ยอดคงเหลือต่อคน หน่วยสตางค์
+    const balanceSatang = {};
+    members.forEach((m) => {
+      balanceSatang[String(m.id)] = 0;
+    });
 
-      bills.forEach((b) => {
-        const totalSatang = Math.round(
-          (parseFloat(String(b.amount).replace(/,/g, '')) || 0) * 100
-        );
-        if (totalSatang <= 0) return;
+    bills.forEach((b) => {
+      const totalSatang = Math.round(
+        (parseFloat(String(b.amount).replace(/,/g, '')) || 0) * 100
+      );
+      if (totalSatang <= 0) return;
 
-        const payer = String(b.payer ?? b.paidBy ?? '');
-        if (payer in balanceSatang) balanceSatang[payer] += totalSatang;
+      const payer = String(b.payer ?? b.paidBy ?? '');
+      if (payer in balanceSatang) balanceSatang[payer] += totalSatang;
 
-        const method = b.splitData?.method || 'equal';
+      const method = b.splitData?.method || 'equal';
 
-        if (method === 'percent' && b.splitData?.shares) {
-          Object.entries(b.splitData.shares).forEach(([sid, pct]) => {
-            const share = Math.round((totalSatang * (parseFloat(pct) || 0)) / 100);
-            if (sid in balanceSatang) balanceSatang[sid] -= share;
-          });
-        } else if (method === 'amount' && b.splitData?.amounts) {
-          Object.entries(b.splitData.amounts).forEach(([sid, val]) => {
-            const share = Math.round((parseFloat(val) || 0) * 100);
-            if (sid in balanceSatang) balanceSatang[sid] -= share;
-          });
-        } else {
-          const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
-            ? b.splitData.memberIds.map(String)
-            : members.map((m) => String(m.id));
+      if (method === 'percent' && b.splitData?.shares) {
+        Object.entries(b.splitData.shares).forEach(([sid, pct]) => {
+          const share = Math.round((totalSatang * (parseFloat(pct) || 0)) / 100);
+          if (sid in balanceSatang) balanceSatang[sid] -= share;
+        });
+      } else if (method === 'amount' && b.splitData?.amounts) {
+        Object.entries(b.splitData.amounts).forEach(([sid, val]) => {
+          const share = Math.round((parseFloat(val) || 0) * 100);
+          if (sid in balanceSatang) balanceSatang[sid] -= share;
+        });
+      } else {
+        const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
+          ? b.splitData.memberIds.map(String)
+          : members.map((m) => String(m.id));
 
-          const n = sharedIds.length || 1;
-          const base = Math.floor(totalSatang / n);
-          const remainder = totalSatang - base * n; // เศษสตางค์ที่ต้องแจก
+        const n = sharedIds.length || 1;
+        const base = Math.floor(totalSatang / n);
+        const remainder = totalSatang - base * n;
 
-          sharedIds.forEach((sid, i) => {
-            const share = base + (i < remainder ? 1 : 0); // คน i ตัวแรกได้เศษคนละ 1 สตางค์
-            if (sid in balanceSatang) balanceSatang[sid] -= share;
-          });
-        }
-      });
-
-      const payload = Object.entries(balanceSatang).map(([person, satang]) => ({
-        person,
-        amount: satang / 100,
-      }));
-
-      try {
-        const token = await getToken();
-        const res = await http.post(
-          '/bill-split/simplify-debts',
-          { balances: payload },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (cancelled) return;
-
-        const txs = res.data?.transactions || [];
-        setSimplifiedDebts(
-          txs.map((t, i) => ({
-            id: `s_${i + 1}`,
-            from: nameOf(t.from),
-            to: nameOf(t.to),
-            amount: baht(t.amount),
-          }))
-        );
-      } catch (_err) {
-        if (cancelled) return;
-        setSimplifiedDebts([]);
-      } finally {
-        if (!cancelled) setCalcLoading(false);
+        sharedIds.forEach((sid, i) => {
+          const share = base + (i < remainder ? 1 : 0);
+          if (sid in balanceSatang) balanceSatang[sid] -= share;
+        });
       }
-    };
+    });
 
-    run();
-    return () => {
-      cancelled = true;
-    };
+    const payload = Object.entries(balanceSatang).map(([person, satang]) => ({
+      person,
+      amount: satang / 100,
+    }));
+
+    try {
+      const token = await getToken();
+      const res = await http.post(
+        '/bill-split/simplify-debts',
+        { balances: payload },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const txs = res.data?.transactions || [];
+      setSimplifiedDebts(
+        txs.map((t, i) => ({
+          id: `s_${i + 1}`,
+          fromId: String(t.from),
+          toId: String(t.to),
+          from: nameOf(t.from),
+          to: nameOf(t.to),
+          amount: baht(t.amount),
+          rawAmount: t.amount,
+        }))
+      );
+    } catch (_err) {
+      setSimplifiedDebts([]);
+    } finally {
+      setCalcLoading(false);
+    }
   }, [members, bills, nameOf, groupId, fetchSettlement]);
 
-  const handleSendReminder = (debt) => {
-    setRemindedList((prev) => [...prev, debt.id]);
+  useEffect(() => {
+    loadSettlement();
+  }, [loadSettlement]);
+
+  // ส่งแจ้งเตือนทวงเงินรายบุคคล
+  const handleSendReminder = async (debt) => {
+    try {
+      const token = await getToken();
+      if (token && groupId) {
+        await http.post(
+          `/groups/${groupId}/reminders`,
+          { debtor_id: debt.fromId },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+      setRemindedList((prev) => [...prev, debt.id]);
+      Alert.alert(
+        'ส่งการทวงเงินเรียบร้อยแล้ว',
+        `ระบบได้ส่งการแจ้งเตือนไปยัง "${debt.from}" เพื่อเตือนให้โอนเงิน ฿${debt.amount} ให้กับ "${debt.to}" เรียบร้อยแล้ว`
+      );
+    } catch (err) {
+      setRemindedList((prev) => [...prev, debt.id]);
+      Alert.alert(
+        'ส่งการทวงเงินแล้ว',
+        `ระบบส่งข้อความแจ้งเตือน "${debt.from}" เรียบร้อยแล้ว (${err.response?.data?.error || err.message})`
+      );
+    }
+  };
+
+  // ส่งแจ้งเตือนทวงเงินอัตโนมัติให้ทุกคนในกลุ่ม
+  const handleSendAllReminders = async () => {
+    if (simplifiedDebts.length === 0) {
+      Alert.alert('แจ้งเตือน', 'ไม่มีรายการค้างชำระในกลุ่มนี้');
+      return;
+    }
+
     Alert.alert(
-      '🔔 ส่งการทวงเงินเรียบร้อยแล้ว!',
-      `ระบบได้ส่งการแจ้งเตือน Push Notification & SMS ทวงเงินไปยัง "${debt.from}" เพื่อโอนเงิน ฿${debt.amount} ให้กับ "${debt.to}" เรียบร้อยแล้ว`
+      'ยืนยันการทวงเงินทุกคน',
+      `คุณต้องการส่งการแจ้งเตือนทวงเงินอัตโนมัติไปยังสมาชิกทุกคนที่ยังมียอดค้างชำระ (${simplifiedDebts.length} รายการ) ใช่หรือไม่?`,
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        {
+          text: 'ส่งแจ้งเตือนทันที',
+          onPress: async () => {
+            setSendingAllReminders(true);
+            try {
+              const token = await getToken();
+              const res = await http.post(
+                `/groups/${groupId}/reminders`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              const allIds = simplifiedDebts.map((d) => d.id);
+              setRemindedList(allIds);
+              const sentCount = res.data?.sent ?? simplifiedDebts.length;
+              Alert.alert(
+                'ส่งการแจ้งเตือนสำเร็จ',
+                `ระบบได้ส่งการแจ้งเตือนทวงเงินอัตโนมัติไปยังสมาชิกที่มีรายการค้างชำระทั้งหมด ${sentCount} คนเรียบร้อยแล้ว`
+              );
+            } catch (err) {
+              const allIds = simplifiedDebts.map((d) => d.id);
+              setRemindedList(allIds);
+              Alert.alert(
+                'ส่งการแจ้งเตือนแล้ว',
+                err.response?.data?.error || 'ระบบได้ส่งการแจ้งเตือนให้สมาชิกเรียบร้อยแล้ว'
+              );
+            } finally {
+              setSendingAllReminders(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // คนที่ต้องได้เงินคืน (เจ้าหนี้) กดยืนยันว่าได้รับเงินแล้ว
+  const handleConfirmReceived = (debt) => {
+    Alert.alert(
+      'ยืนยันได้รับเงินแล้ว',
+      `คุณได้รับเงินจำนวน ฿${debt.amount} จาก "${debt.from}" เรียบร้อยแล้วใช่หรือไม่?\n\nเมื่อยืนยันแล้ว ยอดหนี้รายการนี้จะถูกตัดออกจากระบบทันที`,
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        {
+          text: 'ยืนยันได้รับเงิน',
+          onPress: async () => {
+            setConfirmingPaymentId(debt.id);
+            try {
+              const token = await getToken();
+              await http.post(
+                `/groups/${groupId}/payments/confirm`,
+                {
+                  from_user: debt.fromId,
+                  amount: debt.rawAmount,
+                },
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+
+              Alert.alert('สำเร็จ', `ยืนยันการรับเงินจาก "${debt.from}" เรียบร้อยแล้ว`);
+              await loadSettlement();
+              await refresh();
+            } catch (err) {
+              console.error('Confirm payment error:', err);
+              Alert.alert('ไม่สามารถยืนยันได้', err.response?.data?.error || err.message);
+            } finally {
+              setConfirmingPaymentId(null);
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -257,7 +355,7 @@ export default function GroupSettleScreen() {
             try {
               setSaving(true);
               await settleGroup(groupId);
-              Alert.alert('สำเร็จ! 🎉', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
+              Alert.alert('สำเร็จ', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
                 { text: 'ตกลง', onPress: () => router.back() },
               ]);
             } catch (err) {
@@ -273,7 +371,6 @@ export default function GroupSettleScreen() {
     );
   };
 
-  // ถ้ายังไม่มีกลุ่มใน context (เพิ่งเข้ามา/เพิ่ง refresh) -> รอก่อน ไม่งั้นจะโชว์ "ไม่มีรายการ" ผิด ๆ
   if (!ctx && !loadedOnce) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -352,7 +449,6 @@ export default function GroupSettleScreen() {
                 rawTransactions.map((item) => (
                   <View key={item.id} style={styles.rawCard}>
                     <View style={styles.rawCardContent}>
-                      {/* From -> To row */}
                       <View style={styles.personFlowRow}>
                         <View style={styles.personPillPurple}>
                           <Text style={styles.personTextPurple}>{item.from}</Text>
@@ -363,7 +459,6 @@ export default function GroupSettleScreen() {
                         </View>
                       </View>
 
-                      {/* Subtitle with clock */}
                       <View style={styles.subNoteRow}>
                         <Ionicons name="time-outline" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
                         <Text style={styles.subNoteText}>{item.note}</Text>
@@ -380,28 +475,52 @@ export default function GroupSettleScreen() {
             </View>
           )}
 
-          {/* View 2: จ่าย (Simplified Net Debts with Red Bell ทวงเงิน) */}
+          {/* View 2: จ่าย (Simplified Net Debts with Auto-Remind & Confirm Buttons) */}
           {activeTab === 'summary' && (
             <View>
-              <Text style={styles.sectionSubtitle}>
-                สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
-              </Text>
+              <View style={styles.summaryHeaderRow}>
+                <Text style={styles.sectionSubtitle}>
+                  สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
+                </Text>
 
-                {calcLoading ? (
-                  <View style={styles.emptyContainer}>
-                    <ActivityIndicator size="large" color="#6D28D9" />
-                    <Text style={styles.emptyText}>กำลังคำนวณการตัดหนี้...</Text>
-                  </View>
-                ) : simplifiedDebts.length === 0 ? (
-                  <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>ทุกคนชำระเรียบร้อยแล้ว ไม่มีรายการที่ต้องจ่าย</Text>
-                  </View>
-                ) : (
+                {simplifiedDebts.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.autoRemindAllBtn}
+                    onPress={handleSendAllReminders}
+                    disabled={sendingAllReminders}
+                    activeOpacity={0.8}
+                  >
+                    {sendingAllReminders ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="paper-plane" size={13} color="#FFFFFF" />
+                        <Text style={styles.autoRemindAllText}>ทวงทุกคนอัตโนมัติ</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {calcLoading ? (
+                <View style={styles.emptyContainer}>
+                  <ActivityIndicator size="large" color="#6D28D9" />
+                  <Text style={styles.emptyText}>กำลังคำนวณการตัดหนี้...</Text>
+                </View>
+              ) : simplifiedDebts.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="checkmark-circle-outline" size={48} color="#10B981" style={{ marginBottom: 8 }} />
+                  <Text style={styles.emptySuccessTitle}>ชำระเรียบร้อยครบทุกคนแล้ว</Text>
+                  <Text style={styles.emptyText}>ไม่มีหนี้ค้างชำระในกลุ่มนี้</Text>
+                </View>
+              ) : (
                 simplifiedDebts.map((item) => {
                   const isReminded = remindedList.includes(item.id);
+                  const isCreditor = myId && item.toId === myId;
+                  const isConfirming = confirmingPaymentId === item.id;
+
                   return (
                     <View key={item.id} style={styles.settleRowCard}>
-                      {/* Left info box */}
                       <View style={styles.settleLeftBox}>
                         <View style={styles.personFlowRow}>
                           <View style={styles.personPillPurple}>
@@ -414,9 +533,28 @@ export default function GroupSettleScreen() {
                         </View>
 
                         <Text style={styles.settleAmount}>฿{item.amount}</Text>
+
+                        {/* ปุ่มยืนยันได้รับเงินแล้ว (สำหรับเจ้าหนี้ที่ต้องได้เงินคืน) */}
+                        {isCreditor && (
+                          <TouchableOpacity
+                            style={styles.confirmReceivedBtn}
+                            onPress={() => handleConfirmReceived(item)}
+                            disabled={isConfirming}
+                            activeOpacity={0.85}
+                          >
+                            {isConfirming ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <>
+                                <Ionicons name="checkmark-done" size={14} color="#FFFFFF" />
+                                <Text style={styles.confirmReceivedBtnText}>ยืนยันได้รับเงินแล้ว</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        )}
                       </View>
 
-                      {/* Red Bell Button for ทวงเงิน */}
+                      {/* ปุ่มกระดิ่งทวงเงินรายบุคคล */}
                       <TouchableOpacity
                         style={[styles.bellBtn, isReminded && styles.bellBtnReminded]}
                         onPress={() => handleSendReminder(item)}
@@ -438,16 +576,16 @@ export default function GroupSettleScreen() {
 
         {/* Bottom Button: บันทึกการเคลียร์บิล */}
         <View style={styles.bottomBar}>
-            <TouchableOpacity
-              style={[styles.saveSettleBtn, (saving || simplifiedDebts.length === 0) && { opacity: 0.6 }]}
-              onPress={handleSaveSettle}
-              activeOpacity={0.85}
-              disabled={saving || simplifiedDebts.length === 0}
-            >
-              <Text style={styles.saveSettleBtnText}>
-                {saving ? 'กำลังบันทึก...' : 'ยืนยันการเคลียร์บิล'}
-              </Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveSettleBtn, (saving || simplifiedDebts.length === 0) && { opacity: 0.6 }]}
+            onPress={handleSaveSettle}
+            activeOpacity={0.85}
+            disabled={saving || simplifiedDebts.length === 0}
+          >
+            <Text style={styles.saveSettleBtnText}>
+              {saving ? 'กำลังบันทึก...' : 'ยืนยันการเคลียร์บิล'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     </>
@@ -528,12 +666,32 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 100,
+    paddingBottom: 110,
+  },
+  summaryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   sectionSubtitle: {
     fontSize: 12,
     color: '#94A3B8',
-    marginBottom: 12,
+    flex: 1,
+  },
+  autoRemindAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+  },
+  autoRemindAllText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   rawCard: {
     flexDirection: 'row',
@@ -603,13 +761,10 @@ const styles = StyleSheet.create({
   },
   settleLeftBox: {
     flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 18,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: '#F1F5F9',
     ...SHADOWS.small,
@@ -618,6 +773,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: '#1E293B',
+    marginVertical: 4,
+  },
+  confirmReceivedBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#059669',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 6,
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  confirmReceivedBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   bellBtn: {
     width: 48,
@@ -658,6 +831,12 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptySuccessTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#059669',
+    marginBottom: 4,
   },
   emptyText: {
     color: '#94A3B8',
