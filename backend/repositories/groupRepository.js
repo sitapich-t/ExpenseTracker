@@ -43,9 +43,43 @@ const groups = {
   },
 
   // อัปเดต total_spend แบบ atomic ผ่าน PostgreSQL RPC
-  // (ต้องรัน sql/update_group_spend.sql ก่อน; ถ้ายังไม่ได้รันจะได้ error)
+  // (ต้องรัน sql/update_group_spend.sql ก่อน; ถ้ายังไม่ได้รันจะ fallback เป็นอัปเดตปกติ)
   async updateSpend(groupId, delta) {
-    return supabase.rpc('update_group_spend', { p_group_id: groupId, p_delta: delta });
+    const amount = Number(delta) || 0;
+    if (!groupId || amount === 0) return { data: null, error: null };
+
+    try {
+      const { data, error } = await supabase.rpc('update_group_spend', {
+        p_group_id: groupId,
+        p_delta: amount,
+      });
+      if (!error) return { data, error: null };
+      if (error.code !== 'PGRST202') return { data, error };
+    } catch (_) {
+      // fallback ถ้า RPC ยังไม่ถูกสร้าง
+    }
+
+    try {
+      const { data: group, error: getErr } = await supabase
+        .from('groups')
+        .select('total_spend')
+        .eq('id', groupId)
+        .single();
+
+      if (getErr) return { data: null, error: getErr };
+
+      const newTotal = (Number(group?.total_spend) || 0) + amount;
+      const { data, error } = await supabase
+        .from('groups')
+        .update({ total_spend: newTotal })
+        .eq('id', groupId)
+        .select()
+        .single();
+
+      return { data, error };
+    } catch (err) {
+      return { data: null, error: err };
+    }
   },
 
   async updateById(id, patch, { select, single = false } = {}) {

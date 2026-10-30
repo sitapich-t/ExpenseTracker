@@ -68,6 +68,7 @@ export default function AddGroupExpenseScreen() {
   const ocr_vat = scalar(params.ocr_vat);
   const ocr_serviceCharge = scalar(params.ocr_serviceCharge);
   const ocr_date = scalar(params.ocr_date);
+  const ocr_image = scalar(params.ocr_image || params.ocr_slipUri || params.slipUri);
 
   const [title, setTitle] = useState(ocr_merchant || '');
   const [amount, setAmount] = useState(ocr_amount || '');
@@ -85,7 +86,15 @@ export default function AddGroupExpenseScreen() {
   const [vatRate, setVatRate] = useState('7');
 
   // แนบรูปสลิป / ใบเสร็จ
-  const [slipImage, setSlipImage] = useState(null);
+  const [slipImage, setSlipImage] = useState(
+    ocr_image
+      ? {
+          uri: ocr_image,
+          name: 'receipt.jpg',
+          type: 'image/jpeg',
+        }
+      : null
+  );
 
   // วิธีหารบิล: equal | percent | item | amount
   const [splitMethod, setSplitMethod] = useState('equal');
@@ -143,7 +152,10 @@ export default function AddGroupExpenseScreen() {
             price: String(it.price ?? it.total ?? ''),
             sharedBy: [],
           }));
-          if (mapped.length > 0) setItems(mapped);
+          if (mapped.length > 0) {
+            setItems(mapped);
+            setSplitMethod('item');
+          }
         } catch (_e) {}
       }
       if (ocr_vat && parseFloat(ocr_vat) > 0) setVatRate(String(parseFloat(ocr_vat) * 100 / ((parseFloat(ocr_amount||'0')-(parseFloat(ocr_serviceCharge||'0')||0)) || 1)).replace(/\.0+$/, '') || '7');

@@ -95,40 +95,49 @@ export default function ScanReceiptScreen() {
 
       // กรณีมาจากหน้า Add Group Expense
       if (returnToRoute === 'add-group-expense' && groupIdRoute) {
-        router.push({
-          pathname: '/add-group-expense',
-          params: {
-            groupId: groupIdRoute,
-            ocr_amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
-            ocr_merchant: data.merchant || '',
-            ocr_netAmount: String(data.netTotal ?? data.total ?? ''),
-            ocr_vat: String(data.vat ?? '0'),
-            ocr_serviceCharge: String(data.serviceCharge ?? '0'),
-            ocr_items: JSON.stringify(data.items || []),
-            ocr_date: data.date || '',
-            ocr_parsed: data.parsedText || '',
-          },
-        });
+        setLoading(false);
+        setTimeout(() => {
+          router.replace({
+            pathname: '/add-group-expense',
+            params: {
+              groupId: groupIdRoute,
+              ocr_amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
+              ocr_merchant: data.merchant || '',
+              ocr_netAmount: String(data.netTotal ?? data.total ?? ''),
+              ocr_vat: String(data.vat ?? '0'),
+              ocr_serviceCharge: String(data.serviceCharge ?? '0'),
+              ocr_items: JSON.stringify(data.items || []),
+              ocr_date: data.date || '',
+              ocr_parsed: data.parsedText || '',
+              ocr_image: imageUri,
+              ocr_slipUri: imageUri,
+              slipUri: imageUri,
+            },
+          });
+        }, 50);
         return;
       }
 
       // กรณีสแกนทั่วไป ไปยังหน้า Confirm Receipt
-      router.push({
-        pathname: '/confirm-receipt',
-        params: {
-          merchant: data.merchant || '',
-          amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
-          vat: String(data.vat ?? '0'),
-          serviceCharge: String(data.serviceCharge ?? '0'),
-          date: data.date || '',
-          parsedText: data.parsedText || '',
-          categoryId: data.categoryId != null ? String(data.categoryId) : '',
-          documentType: isSlip ? 'transfer_slip' : 'receipt',
-          bankName: data.bankName || '',
-          transactionId: data.transactionId || '',
-          lineItems: JSON.stringify(data.items || []),
-        },
-      });
+      setLoading(false);
+      setTimeout(() => {
+        router.replace({
+          pathname: '/confirm-receipt',
+          params: {
+            merchant: data.merchant || '',
+            amount: String(data.totalAmount ?? data.netTotal ?? data.total ?? ''),
+            vat: String(data.vat ?? '0'),
+            serviceCharge: String(data.serviceCharge ?? '0'),
+            date: data.date || '',
+            parsedText: data.parsedText || '',
+            categoryId: data.categoryId != null ? String(data.categoryId) : '',
+            documentType: isSlip ? 'transfer_slip' : 'receipt',
+            bankName: data.bankName || '',
+            transactionId: data.transactionId || '',
+            lineItems: JSON.stringify(data.items || []),
+          },
+        });
+      }, 50);
     } catch (error) {
       Alert.alert(
         'การสแกนล้มเหลว',

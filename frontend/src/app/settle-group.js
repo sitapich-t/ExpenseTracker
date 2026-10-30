@@ -21,29 +21,48 @@ const baht = (n) =>
     maximumFractionDigits: 2,
   });
 
-// array ว่างที่ reference เดิมทุกครั้ง (ไม่ให้ useCallback/useMemo คำนวณใหม่ทุก render)
-const EMPTY = [];
+  // array ว่างที่ reference เดิมทุกครั้ง (ไม่ให้ useCallback/useMemo คำนวณใหม่ทุก render)
+  const EMPTY = [];
 
-export default function GroupSettleScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const { settleGroup, getGroup, refresh, fetchSettlement } = useGroup();
+  export default function GroupSettleScreen() {
+    const router = useRouter();
+    const params = useLocalSearchParams();
+    const { settleGroup, getGroup, refresh, fetchSettlement } = useGroup();
 
-  const groupId = params.groupId;
-  const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
-  // expo-router ส่ง param เป็น string เสมอ -> array ที่ส่งมาจะกลายเป็น "a,b"
-  // อ่านจาก context เป็นหลัก (แหล่งจริง) และกัน non-array ทุกกรณี
-  const ctx = getGroup(groupId);
-  const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
-  const bills = useMemo(() => (Array.isArray(ctx?.bills) ? ctx.bills : EMPTY), [ctx]);
+    const groupId = params.groupId;
+    const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
+    // expo-router ส่ง param เป็น string เสมอ -> array ที่ส่งมาจะกลายเป็น "a,b"
+    // อ่านจาก context เป็นหลัก (แหล่งจริง) และกัน non-array ทุกกรณี
+    const ctx = getGroup(groupId);
+    const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
+    const bills = useMemo(() => (Array.isArray(ctx?.bills) ? ctx.bills : EMPTY), [ctx]);
 
-  const nameOf = useCallback(
-    (id) => {
-      const m = members.find((mm) => String(mm.id) === String(id));
-      return m?.name || 'สมาชิก';
-    },
-    [members]
-  );
+    const nameOf = useCallback(
+      (val) => {
+        if (val === null || val === undefined) return 'สมาชิก';
+        if (typeof val === 'object') {
+          const n = val.name || val.full_name || val.display_name || val.username || val.member_name || val.user_name;
+          if (n) return n;
+          const mid = val.id || val.user_id || val.member_id || val.uid;
+          if (mid != null) val = mid;
+        }
+        if (typeof val === 'number') val = String(val);
+        const sid = String(val).trim();
+        if (!sid) return 'สมาชิก';
+        // ถ้าไม่ใช่รูปแบบ id ให้แสดงเป็นชื่อได้เลย
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid);
+        const isNumericId = /^\d+$/.test(sid);
+        if (!isUuid && !isNumericId) return sid;
+
+        const m = members.find((mm) => {
+          const mids = [mm.id, mm.user_id, mm.member_id, mm.uid, mm.userId].filter(Boolean).map((x) => String(x));
+          return mids.includes(sid);
+        });
+        if (!m) return 'สมาชิก';
+        return m.name || m.full_name || m.display_name || m.username || m.member_name || 'สมาชิก';
+      },
+      [members]
+    );
 
   // 2 modes: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
   const [activeTab, setActiveTab] = useState('summary');

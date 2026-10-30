@@ -23,14 +23,21 @@ http.interceptors.response.use(
   },
   (err) => {
     const url = err.config ? `${API_V1}${err.config.url || ""}` : "(no config)";
-    const status = err.response ? err.response.status : "NETWORK";
-    const body = err.response ? err.response.data : err.message;
-    console.error(
-      "[API ✗]",
-      status,
-      url,
-      typeof body === "string" ? body : JSON.stringify(body)
-    );
+    const status = err.response?.status ?? "NETWORK";
+    const body = err.response?.data ?? err.message;
+    let bodyStr = "";
+    try {
+      if (typeof body === "string") {
+        bodyStr = body;
+      } else if (body === undefined || body === null) {
+        bodyStr = "";
+      } else {
+        bodyStr = JSON.stringify(body);
+      }
+    } catch {
+      bodyStr = "[unserializable error body]";
+    }
+    console.error("[API ✗]", status, url, bodyStr);
     return Promise.reject(err);
   }
 );
@@ -96,15 +103,21 @@ export async function clearToken() {
 }
 
 function logApiFailure(method, path, err) {
-  const status = err.status || (err.response && err.response.status) || "NETWORK";
-  const body = err.body || (err.response && err.response.data) || err.message;
-  console.error(
-    "[API ✗]",
-    method,
-    status,
-    `${API_URL}${path}`,
-    typeof body === "string" ? body : JSON.stringify(body)
-  );
+  const status = err.status || err.response?.status || "NETWORK";
+  const body = err.body || err.response?.data || err.message;
+  let bodyStr = "";
+  try {
+    if (typeof body === "string") {
+      bodyStr = body;
+    } else if (body === undefined || body === null) {
+      bodyStr = "";
+    } else {
+      bodyStr = JSON.stringify(body);
+    }
+  } catch {
+    bodyStr = "[unserializable error body]";
+  }
+  console.error("[API ✗]", method, status, `${API_URL}${path}`, bodyStr);
 }
 
 async function authFetch(path, opts = {}) {
