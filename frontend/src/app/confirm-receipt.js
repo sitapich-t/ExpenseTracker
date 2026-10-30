@@ -179,7 +179,7 @@ export default function ConfirmReceiptScreen() {
   const [paymentMethod, setPaymentMethod] = useState(isTransferSlip ? 'Transfer' : 'Card');
   const [showOriginal, setShowOriginal] = useState(false);
 
-    // ✨ State สำหรับรายการสินค้า
+    //  State สำหรับรายการสินค้า
   const [lineItems, setLineItems] = useState(initialLineItems);
 
   const selectedCategory = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
@@ -343,7 +343,7 @@ export default function ConfirmReceiptScreen() {
           </View>
         ) : null}
 
-        {/* ✨ SECTION: รายการสินค้า (แสดงเฉพาะใบเสร็จ) */}
+        {/*  SECTION: รายการสินค้า (แสดงเฉพาะใบเสร็จ) */}
         {!isTransferSlip && (
           <View style={styles.itemsSection}>
             <View style={styles.itemsHeader}>
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
   amountText: { fontSize: 18, fontWeight: '800', color: '#111' },
   currencySymbol: { fontSize: 18, fontWeight: '700', color: '#666', marginRight: 6 },
 
-  // ✨ Styles สำหรับ Line Items Section
+  //  Styles สำหรับ Line Items Section
   itemsSection: {
     marginTop: 8,
     backgroundColor: '#fff',

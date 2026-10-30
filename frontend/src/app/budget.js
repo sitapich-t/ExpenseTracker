@@ -154,38 +154,28 @@ export default function BudgetScreen() {
         return;
       }
 
-      let budgetAlert = null;
-
       // งบรวม (category_id = null)
       if (numeric > 0) {
-        const res = await http.post(
+        await http.post(
           '/personal/budgets',
           { category_id: null, monthly_limit: numeric, month, year },
           { headers }
         );
-        budgetAlert = res.data?.budgetAlert || null;
       }
 
       // งบรายหมวด (ข้ามหมวดที่ไม่ได้ใส่จำนวนเงิน)
       for (const { cat, value } of parsed) {
         if (value <= 0) continue;
-        const res = await http.post(
+        await http.post(
           '/personal/budgets',
           { category_id: cat.id, monthly_limit: value, month, year },
           { headers }
         );
-        budgetAlert = budgetAlert || res.data?.budgetAlert || null;
       }
 
       await fetchBudget();
 
-      if (budgetAlert?.level === 'OVER') {
-        Alert.alert('⚠️ เกินงบประมาณ', `คุณใช้จ่ายไปแล้ว ${(budgetAlert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
-      } else if (budgetAlert?.level === 'WARNING') {
-        Alert.alert('⚠️ ใกล้เต็มงบ', `คุณใช้จ่ายไปแล้ว ${(budgetAlert.percentUsed * 100).toFixed(0)}% ของงบที่ตั้งไว้`);
-      } else {
-        Alert.alert('สำเร็จ', 'บันทึกงบประมาณเรียบร้อยแล้ว');
-      }
+      Alert.alert('สำเร็จ', 'บันทึกงบประมาณเรียบร้อยแล้ว');
     } catch (err) {
       console.error('Error saving budget:', err);
       Alert.alert('ข้อผิดพลาด', err.message || 'ไม่สามารถบันทึกงบประมาณได้');
@@ -251,20 +241,6 @@ export default function BudgetScreen() {
               </View>
             )}
 
-            {hasBudget && percentage >= 100 ? (
-              <View style={[styles.alertCard, styles.alertCritical]}>
-                <Ionicons name="warning" size={24} color="#FFFFFF" />
-                <Text style={styles.alertTextCritical}>คุณใช้จ่ายเกินงบประมาณที่ตั้งไว้!</Text>
-              </View>
-            ) : hasBudget && percentage >= 70 ? (
-              <View style={[styles.alertCard, styles.alertWarning]}>
-                <Ionicons name="warning" size={24} color="#92400E" />
-                <Text style={styles.alertTextWarning}>
-                  คุณใช้จ่ายถึง {percentage.toFixed(0)}% ของงบประมาณแล้ว (เกิน 70%)!
-                </Text>
-              </View>
-            ) : null}
-
             <View style={styles.mainBudgetCard}>
               <Text style={styles.budgetLabel}>งบประมาณรวม (บาท)</Text>
               <TextInput
@@ -275,10 +251,6 @@ export default function BudgetScreen() {
                 placeholder="0.00"
                 placeholderTextColor="#C4C4CC"
               />
-              <View style={styles.infoRow}>
-                <Ionicons name="warning-outline" size={16} color={COLORS.warning} />
-                <Text style={styles.infoText}>แจ้งเตือนเมื่อใช้จ่ายถึง 70% ของงบประมาณ</Text>
-              </View>
             </View>
 
             <View style={styles.categoriesSection}>

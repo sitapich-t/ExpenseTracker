@@ -69,7 +69,7 @@ function prepareBill(tx, memberIds) {
  * @param {string[]} memberIds สมาชิกทั้งกลุ่ม
  * @returns {{balances:Array, transactions:Array, perBill:Array, skipped:Array}}
  */
-function calculateSettlement(transactions, memberIds = []) {
+function calculateSettlement(transactions, memberIds = [], payments = []) {
   const prepared = [];
   const skipped = [];
 
@@ -92,7 +92,8 @@ function calculateSettlement(transactions, memberIds = []) {
     }
   }
 
-  const balances = calculateGroupBalances(prepared);
+  // หักยอดที่เจ้าหนี้ยืนยันรับเงินแล้ว (group_payments) ก่อนตัดหนี้
+  const balances = applyPayments(calculateGroupBalances(prepared), payments);
   const settlements = prepared.length > 0 ? simplifyDebts(balances) : [];
 
   // เติมยอด 0 ให้สมาชิกที่ยังไม่มีภาระ เพื่อให้ UI แสดงครบทุกคน
@@ -113,7 +114,34 @@ function calculateSettlement(transactions, memberIds = []) {
   };
 }
 
+/**
+ * หักยอดที่เจ้าหนี้ "ยืนยันรับเงินแล้ว" ออกจาก net balance (คิดเป็นสตางค์ กันเศษทศนิยม)
+ * โอนจาก from -> to จำนวน X: from (ติดลบ) ขยับขึ้น +X, to (เป็นบวก) ลดลง -X
+ *
+ * @param {Array<{person:string, amount:number}>} balances
+ * @param {Array<{from_user:string, to_user:string, amount:number}>} payments
+ * @returns {Array<{person:string, amount:number}>} balances ชุดใหม่ (ไม่ mutate ของเดิม)
+ */
+function applyPayments(balances, payments = []) {
+  if (!Array.isArray(payments) || payments.length === 0) return balances;
+
+  const satang = new Map();
+  for (const b of balances || []) {
+    satang.set(String(b.person), Math.round(num(b.amount) * 100));
+  }
+  for (const p of payments) {
+    const amt = Math.round(num(p.amount) * 100);
+    if (amt <= 0 || !p.from_user || !p.to_user) continue;
+    const from = String(p.from_user);
+    const to = String(p.to_user);
+    satang.set(from, (satang.get(from) || 0) + amt);
+    satang.set(to, (satang.get(to) || 0) - amt);
+  }
+  return Array.from(satang, ([person, s]) => ({ person, amount: s / 100 }));
+}
+
 module.exports = {
+  applyPayments,
   calculateSettlement,
   prepareBill,
 };

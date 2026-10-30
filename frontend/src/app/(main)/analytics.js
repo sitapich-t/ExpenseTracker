@@ -223,12 +223,7 @@ export default function ReportScreen() {
           </View>
           <Text style={styles.appTitle}>Personal Analytics</Text>
         </View>
-        <TouchableOpacity
-          style={styles.bellBtn}
-          onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่')}
-        >
-          <Ionicons name="notifications-outline" size={20} color="#1E293B" />
-        </TouchableOpacity>
+        
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>

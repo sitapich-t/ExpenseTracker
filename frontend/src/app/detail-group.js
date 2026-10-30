@@ -137,12 +137,6 @@ export default function GroupDetailScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.bellButton}
-            onPress={() => Alert.alert('การแจ้งเตือน', 'ไม่มีการแจ้งเตือนใหม่ในกลุ่มนี้')}
-          >
-            <Ionicons name="notifications-outline" size={20} color="#1E293B" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.bellButton}
             onPress={() =>
               router.push({
                 pathname: '/group-qrcode',
