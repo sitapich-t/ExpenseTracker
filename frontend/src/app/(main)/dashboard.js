@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -68,7 +68,7 @@ export default function DashboardScreen() {
         if (notifRes.data?.success) {
           setUnreadCount(notifRes.data.unread || 0);
         }
-      } catch (e) {}
+      } catch (_e) {}
 
       const res = await http.get('/personal/transactions', authHeader);
 

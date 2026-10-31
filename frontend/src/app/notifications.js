@@ -7,7 +7,6 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +42,7 @@ export default function NotificationsScreen() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchNotifications();
   }, [fetchNotifications]);
 
@@ -79,7 +79,7 @@ export default function NotificationsScreen() {
         setNotifications((prev) =>
           prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
         );
-      } catch (e) {}
+      } catch (_e) {}
     }
 
     // 2. Navigate based on notification type and data (Deep Navigation)

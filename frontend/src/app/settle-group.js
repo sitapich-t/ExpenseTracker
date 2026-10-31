@@ -231,6 +231,7 @@ export default function GroupSettleScreen() {
   }, [members, bills, nameOf, groupId, fetchSettlement]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSettlement();
   }, [loadSettlement]);
 
