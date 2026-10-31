@@ -236,6 +236,15 @@ export default function NotificationsScreen() {
 
                     <Text style={styles.notifMessage}>{item.message}</Text>
 
+                    {item.amount != null && item.type === 'debt_reminder' && (
+                      <View style={styles.amountHighlightBox}>
+                        <Text style={styles.amountHighlightLabel}>ยอดที่ต้องชำระ:</Text>
+                        <Text style={styles.amountHighlightValue}>
+                          ฿{Number(item.amount).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท
+                        </Text>
+                      </View>
+                    )}
+
                     <View style={styles.cardFooter}>
                       <Text style={styles.notifTime}>{formatDate(item.created_at)}</Text>
                       {hasAction && (
@@ -370,5 +379,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#6D28D9',
+  },
+  amountHighlightBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+  },
+  amountHighlightLabel: {
+    fontSize: 12,
+    color: '#991B1B',
+    fontWeight: '600',
+  },
+  amountHighlightValue: {
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '800',
   },
 });

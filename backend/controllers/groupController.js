@@ -469,15 +469,19 @@ exports.sendDebtReminders = async (req, res) => {
     const groupName = group?.name || 'กลุ่ม';
     const senderName = names.get(userId) || 'สมาชิก';
 
-    const rows = targets.map((d) => ({
-      user_id: d.from,
-      sender_id: userId,
-      group_id: id,
-      type: 'debt_reminder',
-      title: `ทวงเงินจากกลุ่ม "${groupName}"`,
-      message: `${senderName} แจ้งเตือน: คุณต้องโอน ฿${fmtBaht(d.amount)} ให้ ${names.get(String(d.to)) || 'สมาชิก'}`,
-      amount: d.amount,
-    }));
+    const rows = targets.map((d) => {
+      const recipientName = names.get(String(d.to)) || 'สมาชิก';
+      const formattedAmount = fmtBaht(d.amount);
+      return {
+        user_id: d.from,
+        sender_id: userId,
+        group_id: id,
+        type: 'debt_reminder',
+        title: `ทวงเงินกลุ่ม "${groupName}" (ยอด ฿${formattedAmount})`,
+        message: `${senderName} แจ้งเตือน: คุณมียอดที่ต้องโอนชำระจำนวน ฿${formattedAmount} บาท ให้กับ ${recipientName}`,
+        amount: d.amount,
+      };
+    });
 
     const { error } = await notificationRepo.notifications.insertMany(rows);
     if (error) {
