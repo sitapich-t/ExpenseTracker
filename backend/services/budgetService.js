@@ -35,14 +35,14 @@ async function sumSpentForBudget(budget) {
 
 // เช็ค budget ก้อนเดียว → อัปเดต last_notified_level ถ้าข้าม threshold ใหม่
 // คืน alert object ถ้ามีสิ่งที่ต้องแจ้งเตือน, คืน null ถ้าไม่มีอะไรเปลี่ยน
-async function checkSingleBudget(budget) {
+async function checkSingleBudget(budget, force = false) {
   const spent = await sumSpentForBudget(budget);
   const percentUsed = budget.monthly_limit > 0 ? spent / budget.monthly_limit : 0;
   const currentLevel = getBudgetLevel(percentUsed);
   const previousLevel = budget.last_notified_level || 'NORMAL';
 
-  // แจ้งเตือนเฉพาะตอน "ข้าม" ระดับใหม่ (กัน spam ทุกครั้งที่มี transaction)
-  if (currentLevel !== 'NORMAL' && currentLevel !== previousLevel) {
+  // แจ้งเตือนเฉพาะตอน "ข้าม" ระดับใหม่ หรือถูกสั่ง force (เช่น ตอนบันทึกงบประมาณแล้วเกินงบทันที)
+  if (currentLevel !== 'NORMAL' && (force || currentLevel !== previousLevel)) {
     await budgetRepository.updateNotification(budget.id, {
       last_notified_level: currentLevel,
       notified_at: new Date().toISOString(),
@@ -75,17 +75,18 @@ exports.checkBudgetsAfterTransaction = async ({ userId, categoryId, transactionD
   const year = d.getFullYear();
 
   const budgets = await getRelevantBudgets({ userId, month, year, categoryId });
-  const results = await Promise.all(budgets.map(checkSingleBudget));
+  const results = await Promise.all(budgets.map((b) => checkSingleBudget(b)));
   return results.filter(Boolean);
 };
 
 // เรียกหลัง setBudget/updateBudget — เช็คงบก้อนที่เพิ่งตั้ง/แก้เอง
 // (เผื่อผู้ใช้ลดวงเงินลงจนต่ำกว่ายอดที่ใช้ไปแล้ว ทำให้เกิน threshold ทันทีโดยไม่มี transaction ใหม่)
-exports.checkSingleBudgetById = async (budgetId) => {
+exports.checkSingleBudgetById = async (budgetId, force = false) => {
   const { data: budget, error } = await budgetRepository.findById(budgetId);
 
   if (error) throw error;
-  return checkSingleBudget(budget);
+  if (!budget) return null;
+  return checkSingleBudget(budget, force);
 };
 
 // export ไว้เผื่อ frontend หรือ controller อื่นอยากคำนวณ level ตรงๆ โดยไม่ผ่าน DB
