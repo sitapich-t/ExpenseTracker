@@ -82,23 +82,22 @@ export default function NotificationsScreen() {
       } catch (e) {}
     }
 
-    // 2. Navigate based on notification type and data
+    // 2. Navigate based on notification type and data (Deep Navigation)
     if (item.group_id) {
       const groupName = item.groups?.name || 'รายละเอียดกลุ่ม';
-      // ถ้าเป็นการทวงเงิน หรือยืนยันรับเงิน สามารถพาไปที่หน้าเคลียร์บิลหรือหน้ารายละเอียดกลุ่มได้โดยตรง
-      if (item.type === 'debt_reminder') {
+      if (item.type === 'debt_reminder' || item.type === 'payment_confirmed') {
         router.push({
           pathname: '/settle-group',
-          params: { groupId: item.group_id, groupName },
+          params: { groupId: item.group_id, id: item.group_id, groupName },
         });
       } else {
         router.push({
           pathname: '/detail-group',
-          params: { id: item.group_id, name: groupName },
+          params: { id: item.group_id, groupId: item.group_id, name: groupName },
         });
       }
     } else if (item.type === 'budget_over' || item.type === 'budget_warning') {
-      // พาไปที่หน้างบประมาณส่วนตัว
+      // พาไปที่หน้างบประมาณส่วนบุคคล
       router.push('/budget');
     }
   };

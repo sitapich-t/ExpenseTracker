@@ -29,7 +29,7 @@ export default function GroupSettleScreen() {
   const params = useLocalSearchParams();
   const { settleGroup, getGroup, refresh, fetchSettlement, me } = useGroup();
 
-  const groupId = params.groupId;
+  const groupId = params.groupId || params.id;
   const location = params.groupName || getGroup(groupId)?.name || 'กลุ่มของฉัน';
   const ctx = getGroup(groupId);
   const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
