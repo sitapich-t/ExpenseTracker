@@ -241,7 +241,11 @@ export default function NotificationsScreen() {
                       {hasAction && (
                         <View style={styles.actionHint}>
                           <Text style={styles.actionHintText}>
-                            {item.group_id ? 'แตะเพื่อเข้ากลุ่ม' : 'แตะเพื่อดูงบ'}
+                            {item.type === 'debt_reminder'
+                              ? 'แตะเพื่อเคลียร์บิล'
+                              : item.group_id
+                              ? 'แตะเพื่อเข้ากลุ่ม'
+                              : 'แตะเพื่อดูงบ'}
                           </Text>
                           <Ionicons name="chevron-forward" size={12} color="#6D28D9" />
                         </View>
