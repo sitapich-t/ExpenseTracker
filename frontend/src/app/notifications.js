@@ -7,7 +7,6 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +42,7 @@ export default function NotificationsScreen() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchNotifications();
   }, [fetchNotifications]);
 
@@ -79,26 +79,25 @@ export default function NotificationsScreen() {
         setNotifications((prev) =>
           prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
         );
-      } catch (e) {}
+      } catch (_e) {}
     }
 
-    // 2. Navigate based on notification type and data
+    // 2. Navigate based on notification type and data (Deep Navigation)
     if (item.group_id) {
       const groupName = item.groups?.name || 'รายละเอียดกลุ่ม';
-      // ถ้าเป็นการทวงเงิน หรือยืนยันรับเงิน สามารถพาไปที่หน้าเคลียร์บิลหรือหน้ารายละเอียดกลุ่มได้โดยตรง
-      if (item.type === 'debt_reminder') {
+      if (item.type === 'debt_reminder' || item.type === 'payment_confirmed') {
         router.push({
           pathname: '/settle-group',
-          params: { groupId: item.group_id, groupName },
+          params: { groupId: item.group_id, id: item.group_id, groupName },
         });
       } else {
         router.push({
           pathname: '/detail-group',
-          params: { id: item.group_id, name: groupName },
+          params: { id: item.group_id, groupId: item.group_id, name: groupName },
         });
       }
     } else if (item.type === 'budget_over' || item.type === 'budget_warning') {
-      // พาไปที่หน้างบประมาณส่วนตัว
+      // พาไปที่หน้างบประมาณส่วนบุคคล
       router.push('/budget');
     }
   };
@@ -133,6 +132,20 @@ export default function NotificationsScreen() {
           color: '#059669',
           bg: '#D1FAE5',
           badgeText: 'ได้รับเงินแล้ว',
+        };
+      case 'new_group_bill':
+        return {
+          icon: 'receipt',
+          color: '#2563EB',
+          bg: '#DBEAFE',
+          badgeText: 'บิลใหม่',
+        };
+      case 'member_joined':
+        return {
+          icon: 'person-add',
+          color: '#7C3AED',
+          bg: '#EDE9FE',
+          badgeText: 'สมาชิกใหม่',
         };
       case 'budget_over':
         return {
@@ -222,12 +235,25 @@ export default function NotificationsScreen() {
 
                     <Text style={styles.notifMessage}>{item.message}</Text>
 
+                    {item.amount != null && item.type === 'debt_reminder' && (
+                      <View style={styles.amountHighlightBox}>
+                        <Text style={styles.amountHighlightLabel}>ยอดที่ต้องชำระ:</Text>
+                        <Text style={styles.amountHighlightValue}>
+                          ฿{Number(item.amount).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท
+                        </Text>
+                      </View>
+                    )}
+
                     <View style={styles.cardFooter}>
                       <Text style={styles.notifTime}>{formatDate(item.created_at)}</Text>
                       {hasAction && (
                         <View style={styles.actionHint}>
                           <Text style={styles.actionHintText}>
-                            {item.group_id ? 'แตะเพื่อเข้ากลุ่ม' : 'แตะเพื่อดูงบ'}
+                            {item.type === 'debt_reminder'
+                              ? 'แตะเพื่อเคลียร์บิล'
+                              : item.group_id
+                              ? 'แตะเพื่อเข้ากลุ่ม'
+                              : 'แตะเพื่อดูงบ'}
                           </Text>
                           <Ionicons name="chevron-forward" size={12} color="#6D28D9" />
                         </View>
@@ -352,5 +378,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#6D28D9',
+  },
+  amountHighlightBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+  },
+  amountHighlightLabel: {
+    fontSize: 12,
+    color: '#991B1B',
+    fontWeight: '600',
+  },
+  amountHighlightValue: {
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '800',
   },
 });

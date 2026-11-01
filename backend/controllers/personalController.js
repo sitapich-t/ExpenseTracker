@@ -19,17 +19,22 @@ async function persistBudgetNotifications(userId, alerts) {
     const rows = alerts.map((a) => {
       const isOver = a.level === 'OVER';
       const pct = Math.round((a.percentUsed || 0) * 100);
+      const isOverall = a.categoryId == null;
+      const targetName = isOverall ? 'งบประมาณรวม' : 'งบประมาณหมวดหมู่';
       return {
         user_id: userId,
         type: isOver ? 'budget_over' : 'budget_warning',
-        title: isOver ? 'การใช้จ่ายเกินงบประมาณ' : 'การใช้จ่ายใกล้เต็มงบประมาณ',
+        title: isOver ? `การใช้จ่ายเกินงบประมาณ (${targetName})` : `การใช้จ่ายใกล้เต็มงบประมาณ (${targetName})`,
         message: isOver
-          ? `คุณใช้จ่ายไปแล้ว ${pct}% ของงบประมาณที่ตั้งไว้ กรุณาตรวจสอบและควบคุมค่าใช้จ่าย`
-          : `คุณใช้จ่ายไปแล้ว ${pct}% ของงบประมาณที่ตั้งไว้ ใกล้ถึงขีดจำกัดแล้ว`,
+          ? `คุณตั้งงบไว้ ฿${Number(a.monthlyLimit).toLocaleString()} แต่ใช้จ่ายไปแล้ว ฿${Number(a.spent).toLocaleString()} (${pct}%) เกินงบที่กำหนด`
+          : `คุณตั้งงบไว้ ฿${Number(a.monthlyLimit).toLocaleString()} และใช้จ่ายไปแล้ว ฿${Number(a.spent).toLocaleString()} (${pct}%) ใกล้ถึงขีดจำกัดแล้ว`,
         amount: a.spent || 0,
       };
     });
-    await notificationRepo.notifications.insertMany(rows);
+    const res = await notificationRepo.notifications.insertMany(rows);
+    if (res?.error) {
+      console.error('⚠️ บันทึกแจ้งเตือนงบประมาณไม่สำเร็จ (Supabase Error):', res.error.message || res.error);
+    }
   } catch (err) {
     console.error('⚠️ บันทึกแจ้งเตือนงบประมาณไม่สำเร็จ:', err.message);
   }
@@ -103,7 +108,7 @@ exports.setBudget = async (req, res) => {
     // เช็คทันทีหลังตั้ง/แก้วงเงิน เผื่อยอดที่ใช้ไปแล้วเกิน threshold ทันที (เช่น ลดวงเงินลงต่ำกว่ายอดที่ใช้ไปแล้ว)
     let budgetAlert = null;
     try {
-      budgetAlert = await budgetService.checkSingleBudgetById(resultData.id);
+      budgetAlert = await budgetService.checkSingleBudgetById(resultData.id, true);
       if (budgetAlert) await persistBudgetNotifications(userId, [budgetAlert]);
     } catch (alertErr) {
       console.error('⚠️ Budget alert check failed (setBudget):', alertErr);
@@ -264,6 +269,9 @@ exports.createTransaction = async (req, res) => {
           categoryId: data.category_id,
           transactionDate: data.transaction_date,
         });
+        if (budgetAlerts && budgetAlerts.length > 0) {
+          await persistBudgetNotifications(userId, budgetAlerts);
+        }
       } catch (alertErr) {
         console.error('⚠️ Budget alert check failed (createTransaction):', alertErr);
       }
@@ -308,6 +316,9 @@ exports.updateTransaction = async (req, res) => {
           categoryId: data.category_id,
           transactionDate: data.transaction_date,
         });
+        if (budgetAlerts && budgetAlerts.length > 0) {
+          await persistBudgetNotifications(userId, budgetAlerts);
+        }
       } catch (alertErr) {
         console.error('⚠️ Budget alert check failed (updateTransaction):', alertErr);
       }
@@ -346,6 +357,9 @@ exports.deleteTransaction = async (req, res) => {
           categoryId: existing.category_id,
           transactionDate: existing.transaction_date,
         });
+        if (budgetAlerts && budgetAlerts.length > 0) {
+          await persistBudgetNotifications(userId, budgetAlerts);
+        }
       } catch (alertErr) {
         console.error('⚠️ Budget alert check failed (deleteTransaction):', alertErr);
       }

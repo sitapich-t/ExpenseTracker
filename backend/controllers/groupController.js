@@ -469,15 +469,19 @@ exports.sendDebtReminders = async (req, res) => {
     const groupName = group?.name || 'กลุ่ม';
     const senderName = names.get(userId) || 'สมาชิก';
 
-    const rows = targets.map((d) => ({
-      user_id: d.from,
-      sender_id: userId,
-      group_id: id,
-      type: 'debt_reminder',
-      title: `ทวงเงินจากกลุ่ม "${groupName}"`,
-      message: `${senderName} แจ้งเตือน: คุณต้องโอน ฿${fmtBaht(d.amount)} ให้ ${names.get(String(d.to)) || 'สมาชิก'}`,
-      amount: d.amount,
-    }));
+    const rows = targets.map((d) => {
+      const recipientName = names.get(String(d.to)) || 'สมาชิก';
+      const formattedAmount = fmtBaht(d.amount);
+      return {
+        user_id: d.from,
+        sender_id: userId,
+        group_id: id,
+        type: 'debt_reminder',
+        title: `ทวงเงินกลุ่ม "${groupName}" (ยอด ฿${formattedAmount})`,
+        message: `${senderName} แจ้งเตือน: คุณมียอดที่ต้องโอนชำระจำนวน ฿${formattedAmount} บาท ให้กับ ${recipientName}`,
+        amount: d.amount,
+      };
+    });
 
     const { error } = await notificationRepo.notifications.insertMany(rows);
     if (error) {
@@ -779,6 +783,29 @@ exports.createGroupTransaction = async (req, res) => {
 
     if (groupError) console.error('❌ Update group total_spend error:', groupError);
 
+    // ส่งการแจ้งเตือนบิลใหม่เข้ากระดิ่งของสมาชิกคนอื่นๆ ในกลุ่ม
+    try {
+      const memberIds = await getGroupMemberIds(id);
+      const otherMembers = memberIds.filter((mid) => String(mid) !== String(userId));
+      if (otherMembers.length > 0) {
+        const { data: grp } = await groups.findById(id, 'name');
+        const names = await memberNameMap(id);
+        const payerName = names.get(String(userId)) || 'สมาชิก';
+        const notifRows = otherMembers.map((mid) => ({
+          user_id: mid,
+          sender_id: userId,
+          group_id: id,
+          type: 'new_group_bill',
+          title: `บิลใหม่ในกลุ่ม "${grp?.name || 'กลุ่ม'}"`,
+          message: `${payerName} ได้เพิ่มบิล "${newTransaction.title}" ยอดเงิน ฿${fmtBaht(summary.grandTotal)}`,
+          amount: summary.grandTotal,
+        }));
+        await notificationRepo.notifications.insertMany(notifRows);
+      }
+    } catch (nErr) {
+      console.warn('⚠️ แจ้งเตือนบิลใหม่ไม่สำเร็จ:', nErr.message);
+    }
+
     const degraded = droppedFields.length > 0;
 
     return res.json({
@@ -960,6 +987,29 @@ exports.joinGroup = async (req, res) => {
       members_count: memberRows?.length || 1,
     });
     if (countErr) throw countErr;
+
+    // แจ้งเตือนสมาชิกในกลุ่มว่ามีเพื่อนใหม่เข้าร่วมกลุ่ม
+    try {
+      const { data: memberRows } = await members.listMembers(group_id, 'user_id');
+      const otherMembers = (memberRows || [])
+        .map((m) => String(m.user_id))
+        .filter((mid) => mid !== String(userId));
+      if (otherMembers.length > 0) {
+        const names = await memberNameMap(group_id);
+        const newMemberName = names.get(String(userId)) || 'สมาชิกใหม่';
+        const notifRows = otherMembers.map((mid) => ({
+          user_id: mid,
+          sender_id: userId,
+          group_id: group_id,
+          type: 'member_joined',
+          title: `สมาชิกใหม่ในกลุ่ม "${group.name}"`,
+          message: `${newMemberName} ได้เข้าร่วมกลุ่มเรียบร้อยแล้ว`,
+        }));
+        await notificationRepo.notifications.insertMany(notifRows);
+      }
+    } catch (jErr) {
+      console.warn('⚠️ แจ้งเตือนสมาชิกใหม่ไม่สำเร็จ:', jErr.message);
+    }
 
     return res.json({ success: true, message: `เข้าร่วมกลุ่ม "${group.name}" สำเร็จ`, group });
   } catch (err) {
