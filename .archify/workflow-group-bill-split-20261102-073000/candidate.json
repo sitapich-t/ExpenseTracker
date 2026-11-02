@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "อัลกอริทึมการหารบิลภายในกลุ่ม (Group Bill Split)",
+    "quality_profile": "showcase",
+    "output": "group-bill-split.html"
+  },
+  "lanes": [
+    { "id": "bill", "label": "คำนวณบิล" },
+    { "id": "balance", "label": "คำนวณสมดุล" },
+    { "id": "settle", "label": "ตัดหนี้ (Debt Simplification)" }
+  ],
+  "nodes": [
+    { "id": "start", "lane": "bill", "col": 0, "type": "external", "label": "เริ่มต้น" },
+    { "id": "input", "lane": "bill", "col": 1, "type": "frontend", "label": "รับข้อมูลบิล", "sublabel": "items, paidBy, sharedBy, SC/VAT" },
+    { "id": "calc_sc_vat", "lane": "bill", "col": 2, "type": "backend", "label": "คำนวณ SC/VAT", "sublabel": "distributeSCVAT" },
+    { "id": "split_bill", "lane": "bill", "col": 3, "type": "backend", "label": "คำนวณยอดต่อรายการ", "sublabel": "แยก paid / owed ต่อคน" },
+    { "id": "calc_balance", "lane": "balance", "col": 4, "type": "backend", "label": "คำนวณ balance", "sublabel": "balance = paid - owed" },
+    { "id": "check_sum", "lane": "balance", "col": 5, "type": "security", "label": "ผลรวม balance = 0 ?", "sublabel": "พร้อมแก้เศษสตางค์" },
+    { "id": "fix_residual", "lane": "balance", "col": 6, "type": "backend", "label": "แก้เศษ residual", "sublabel": "โยกให้คน balance สูงสุด" },
+    { "id": "separate", "lane": "settle", "col": 0, "type": "backend", "label": "แยกกลุ่ม", "sublabel": "Debtors (<0) vs Creditors (>0)" },
+    { "id": "greedy", "lane": "settle", "col": 1, "type": "backend", "label": "Greedy Algorithm", "sublabel": "จับคู่ debtor มากสุด - creditor มากสุด" },
+    { "id": "settle_pair", "lane": "settle", "col": 2, "type": "messagebus", "label": "โอนเท่ากับค่าที่น้อยกว่า", "sublabel": "ลดยอดทั้งสองฝ่าย" },
+    { "id": "check_zero", "lane": "settle", "col": 3, "type": "security", "label": "ฝ่ายใดฝ่ายหนึ่ง = 0 ?" },
+    { "id": "remove", "lane": "settle", "col": 4, "type": "backend", "label": "ลบคนที่เคลียร์แล้ว" },
+    { "id": "more", "lane": "settle", "col": 5, "type": "security", "label": "ยังมี debtor/creditor เหลือ?" },
+    { "id": "end", "lane": "settle", "col": 6, "type": "external", "label": "จบ", "sublabel": "แสดงรายการโอนที่เหลือ" }
+  ],
+  "edges": [
+    {"id": "e1", "from": "start", "to": "input"},
+    {"id": "e2", "from": "input", "to": "calc_sc_vat"},
+    {"id": "e3", "from": "calc_sc_vat", "to": "split_bill"},
+    {"id": "e4", "from": "split_bill", "to": "calc_balance"},
+    {"id": "e5", "from": "calc_balance", "to": "check_sum"},
+    {"id": "e6", "from": "check_sum", "to": "fix_residual", "label": "ไม่ลงตัว", "variant": "security"},
+    {"id": "e7", "from": "fix_residual", "to": "separate", "label": "ไปตัดหนี้", "fromSide": "right", "toSide": "left", "route": "outside-right"},
+    {"id": "e8", "from": "check_sum", "to": "separate", "label": "ลงตัว", "variant": "emphasis", "fromSide": "bottom", "toSide": "left", "route": "bottom-channel"},
+    {"id": "e9", "from": "separate", "to": "greedy"},
+    {"id": "e10", "from": "greedy", "to": "settle_pair"},
+    {"id": "e11", "from": "settle_pair", "to": "check_zero"},
+    {"id": "e12", "from": "check_zero", "to": "remove", "label": "ใช่", "variant": "emphasis"},
+    {"id": "e13", "from": "remove", "to": "more", "fromSide": "bottom", "toSide": "bottom", "route": "bottom-channel"},
+    {"id": "e14", "from": "check_zero", "to": "more", "label": "ไม่", "fromSide": "bottom", "toSide": "top", "route": "bottom-channel"},
+    {"id": "e15", "from": "more", "to": "greedy", "label": "ใช่", "variant": "emphasis", "fromSide": "left", "toSide": "left", "route": "outside-left"},
+    {"id": "e16", "from": "more", "to": "end", "label": "ไม่"}
+  ]
+}

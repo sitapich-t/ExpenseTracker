@@ -447,3 +447,7 @@ router.get('/:id/members', authenticate, groupController.getGroupMembers);
 router.post('/:id/members', authenticate, groupController.addGroupMember);
 
 module.exports = router;
+
+// Settlements (simplified debts - stored in DB)
+router.get('/:id/settlements', authenticate, groupController.getGroupSettlements);
+router.patch('/:id/settlements/:settlementId/paid', authenticate, groupController.markSettlementPaid);

@@ -1,0 +1,2471 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "workflow",
+  "quality": "showcase",
+  "startedAt": "2026-11-02T00:27:17.922Z",
+  "specification": {
+    "path": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\candidate.json",
+    "sha256": "ba37dc37b97f5fcdb753d7e2a4c1ef1a461246f67d2df74ed999b816bdf9ec29",
+    "bytes": 4009
+  },
+  "artifact": {
+    "path": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\group-bill-split.html"
+  },
+  "stages": {
+    "validate": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": null,
+      "command": [
+        "E:\\Node\\node.exe",
+        "C:\\Users\\sitap\\.agents\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "workflow",
+        "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\candidate.json",
+        "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\group-bill-split.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "deliver",
+        "receiptId": "e402beac-1cbb-4961-a730-7686599b8729",
+        "stage": "render",
+        "type": "workflow",
+        "input": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\candidate.json",
+        "output": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\group-bill-split.html",
+        "error": "workflow schema validation failed:\n  / must have required property 'schema_version' {\"missingProperty\":\"schema_version\"}\n  / must have required property 'diagram_type' {\"missingProperty\":\"diagram_type\"}\n  / must have required property 'lanes' {\"missingProperty\":\"lanes\"}\n  / must have required property 'edges' {\"missingProperty\":\"edges\"}\n  / must NOT have additional properties {\"additionalProperty\":\"schemaVersion\"}\n  / must NOT have additional properties {\"additionalProperty\":\"type\"}\n  / must NOT have additional properties {\"additionalProperty\":\"relationships\"}\n  /meta must NOT have additional properties {\"additionalProperty\":\"description\"}\n  /nodes/0 (id/label: \"start\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/0 (id/label: \"start\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/0 (id/label: \"start\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/0/type (id/label: \"start\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/1 (id/label: \"input\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/1 (id/label: \"input\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/1 (id/label: \"input\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/1/type (id/label: \"input\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/2 (id/label: \"calc_sc_vat\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/2 (id/label: \"calc_sc_vat\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/2 (id/label: \"calc_sc_vat\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/2/type (id/label: \"calc_sc_vat\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/3 (id/label: \"split_bill\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/3 (id/label: \"split_bill\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/3 (id/label: \"split_bill\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/3/type (id/label: \"split_bill\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/4 (id/label: \"calc_balance\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/4 (id/label: \"calc_balance\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/4 (id/label: \"calc_balance\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/4/type (id/label: \"calc_balance\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/5 (id/label: \"check_sum\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/5 (id/label: \"check_sum\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/5 (id/label: \"check_sum\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/5/type (id/label: \"check_sum\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/6 (id/label: \"fix_residual\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/6 (id/label: \"fix_residual\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/6 (id/label: \"fix_residual\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/6/type (id/label: \"fix_residual\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/7 (id/label: \"separate\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/7 (id/label: \"separate\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/7 (id/label: \"separate\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/7/type (id/label: \"separate\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/8 (id/label: \"greedy\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/8 (id/label: \"greedy\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/8 (id/label: \"greedy\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/8/type (id/label: \"greedy\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/9 (id/label: \"settle_pair\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/9 (id/label: \"settle_pair\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/9 (id/label: \"settle_pair\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/9/type (id/label: \"settle_pair\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/10 (id/label: \"check_zero\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/10 (id/label: \"check_zero\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/10 (id/label: \"check_zero\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/10/type (id/label: \"check_zero\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/11 (id/label: \"remove\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/11 (id/label: \"remove\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/11 (id/label: \"remove\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/11/type (id/label: \"remove\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/12 (id/label: \"more\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/12 (id/label: \"more\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/12 (id/label: \"more\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/12/type (id/label: \"more\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}\n  /nodes/13 (id/label: \"end\") must have required property 'lane' {\"missingProperty\":\"lane\"}\n  /nodes/13 (id/label: \"end\") must have required property 'col' {\"missingProperty\":\"col\"}\n  /nodes/13 (id/label: \"end\") must NOT have additional properties {\"additionalProperty\":\"position\"}\n  /nodes/13/type (id/label: \"end\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+        "diagnostics": [
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/ must have required property 'schema_version' {\"missingProperty\":\"schema_version\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "schema_version"
+            },
+            "supportedFixes": [
+              "add required property \"schema_version\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/ must have required property 'diagram_type' {\"missingProperty\":\"diagram_type\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "diagram_type"
+            },
+            "supportedFixes": [
+              "add required property \"diagram_type\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/ must have required property 'lanes' {\"missingProperty\":\"lanes\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lanes"
+            },
+            "supportedFixes": [
+              "add required property \"lanes\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/ must have required property 'edges' {\"missingProperty\":\"edges\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "edges"
+            },
+            "supportedFixes": [
+              "add required property \"edges\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/ must NOT have additional properties {\"additionalProperty\":\"schemaVersion\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "schemaVersion"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"schemaVersion\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/ must NOT have additional properties {\"additionalProperty\":\"type\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "type"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"type\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/ must NOT have additional properties {\"additionalProperty\":\"relationships\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "relationships"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"relationships\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/meta must NOT have additional properties {\"additionalProperty\":\"description\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/meta"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "description"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"description\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/0 (id/label: \"start\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/0",
+              "identity": "start"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/0 (id/label: \"start\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/0",
+              "identity": "start"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/0 (id/label: \"start\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/0",
+              "identity": "start"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/0/type (id/label: \"start\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/0/type",
+              "identity": "start"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/1 (id/label: \"input\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/1",
+              "identity": "input"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/1 (id/label: \"input\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/1",
+              "identity": "input"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/1 (id/label: \"input\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/1",
+              "identity": "input"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/1/type (id/label: \"input\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/1/type",
+              "identity": "input"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/2 (id/label: \"calc_sc_vat\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/2",
+              "identity": "calc_sc_vat"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/2 (id/label: \"calc_sc_vat\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/2",
+              "identity": "calc_sc_vat"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/2 (id/label: \"calc_sc_vat\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/2",
+              "identity": "calc_sc_vat"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/2/type (id/label: \"calc_sc_vat\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/2/type",
+              "identity": "calc_sc_vat"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/3 (id/label: \"split_bill\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/3",
+              "identity": "split_bill"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/3 (id/label: \"split_bill\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/3",
+              "identity": "split_bill"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/3 (id/label: \"split_bill\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/3",
+              "identity": "split_bill"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/3/type (id/label: \"split_bill\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/3/type",
+              "identity": "split_bill"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/4 (id/label: \"calc_balance\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/4",
+              "identity": "calc_balance"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/4 (id/label: \"calc_balance\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/4",
+              "identity": "calc_balance"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/4 (id/label: \"calc_balance\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/4",
+              "identity": "calc_balance"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/4/type (id/label: \"calc_balance\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/4/type",
+              "identity": "calc_balance"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/5 (id/label: \"check_sum\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/5",
+              "identity": "check_sum"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/5 (id/label: \"check_sum\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/5",
+              "identity": "check_sum"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/5 (id/label: \"check_sum\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/5",
+              "identity": "check_sum"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/5/type (id/label: \"check_sum\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/5/type",
+              "identity": "check_sum"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/6 (id/label: \"fix_residual\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/6",
+              "identity": "fix_residual"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/6 (id/label: \"fix_residual\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/6",
+              "identity": "fix_residual"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/6 (id/label: \"fix_residual\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/6",
+              "identity": "fix_residual"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/6/type (id/label: \"fix_residual\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/6/type",
+              "identity": "fix_residual"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/7 (id/label: \"separate\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/7",
+              "identity": "separate"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/7 (id/label: \"separate\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/7",
+              "identity": "separate"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/7 (id/label: \"separate\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/7",
+              "identity": "separate"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/7/type (id/label: \"separate\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/7/type",
+              "identity": "separate"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/8 (id/label: \"greedy\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/8",
+              "identity": "greedy"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/8 (id/label: \"greedy\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/8",
+              "identity": "greedy"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/8 (id/label: \"greedy\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/8",
+              "identity": "greedy"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/8/type (id/label: \"greedy\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/8/type",
+              "identity": "greedy"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/9 (id/label: \"settle_pair\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/9",
+              "identity": "settle_pair"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/9 (id/label: \"settle_pair\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/9",
+              "identity": "settle_pair"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/9 (id/label: \"settle_pair\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/9",
+              "identity": "settle_pair"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/9/type (id/label: \"settle_pair\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/9/type",
+              "identity": "settle_pair"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/10 (id/label: \"check_zero\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/10",
+              "identity": "check_zero"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/10 (id/label: \"check_zero\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/10",
+              "identity": "check_zero"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/10 (id/label: \"check_zero\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/10",
+              "identity": "check_zero"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/10/type (id/label: \"check_zero\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/10/type",
+              "identity": "check_zero"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/11 (id/label: \"remove\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/11",
+              "identity": "remove"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/11 (id/label: \"remove\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/11",
+              "identity": "remove"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/11 (id/label: \"remove\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/11",
+              "identity": "remove"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/11/type (id/label: \"remove\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/11/type",
+              "identity": "remove"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/12 (id/label: \"more\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/12",
+              "identity": "more"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/12 (id/label: \"more\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/12",
+              "identity": "more"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/12 (id/label: \"more\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/12",
+              "identity": "more"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/12/type (id/label: \"more\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/12/type",
+              "identity": "more"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/13 (id/label: \"end\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/13",
+              "identity": "end"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "lane"
+            },
+            "supportedFixes": [
+              "add required property \"lane\""
+            ]
+          },
+          {
+            "code": "schema/required",
+            "severity": "error",
+            "message": "/nodes/13 (id/label: \"end\") must have required property 'col' {\"missingProperty\":\"col\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/13",
+              "identity": "end"
+            },
+            "evidence": {
+              "keyword": "required",
+              "missingProperty": "col"
+            },
+            "supportedFixes": [
+              "add required property \"col\""
+            ]
+          },
+          {
+            "code": "schema/additionalProperties",
+            "severity": "error",
+            "message": "/nodes/13 (id/label: \"end\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/13",
+              "identity": "end"
+            },
+            "evidence": {
+              "keyword": "additionalProperties",
+              "additionalProperty": "position"
+            },
+            "supportedFixes": [
+              "remove unsupported property \"position\""
+            ]
+          },
+          {
+            "code": "schema/enum",
+            "severity": "error",
+            "message": "/nodes/13/type (id/label: \"end\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+            "subject": {
+              "diagramType": "workflow",
+              "path": "/nodes/13/type",
+              "identity": "end"
+            },
+            "evidence": {
+              "keyword": "enum",
+              "allowedValues": [
+                "frontend",
+                "backend",
+                "database",
+                "cloud",
+                "security",
+                "messagebus",
+                "external"
+              ]
+            },
+            "supportedFixes": [
+              "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+            ]
+          }
+        ],
+        "provenance": "absent",
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      },
+      "execution": "embedded-in-deliver"
+    },
+    "deliver": {
+      "status": "not-run",
+      "execution": "blocked-by-validate"
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/ must have required property 'schema_version' {\"missingProperty\":\"schema_version\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "schema_version"
+      },
+      "supportedFixes": [
+        "add required property \"schema_version\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/ must have required property 'diagram_type' {\"missingProperty\":\"diagram_type\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "diagram_type"
+      },
+      "supportedFixes": [
+        "add required property \"diagram_type\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/ must have required property 'lanes' {\"missingProperty\":\"lanes\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lanes"
+      },
+      "supportedFixes": [
+        "add required property \"lanes\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/ must have required property 'edges' {\"missingProperty\":\"edges\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "edges"
+      },
+      "supportedFixes": [
+        "add required property \"edges\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/ must NOT have additional properties {\"additionalProperty\":\"schemaVersion\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "schemaVersion"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"schemaVersion\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/ must NOT have additional properties {\"additionalProperty\":\"type\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "type"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"type\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/ must NOT have additional properties {\"additionalProperty\":\"relationships\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "relationships"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"relationships\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/meta must NOT have additional properties {\"additionalProperty\":\"description\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/meta"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "description"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"description\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/0 (id/label: \"start\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/0",
+        "identity": "start"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/0 (id/label: \"start\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/0",
+        "identity": "start"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/0 (id/label: \"start\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/0",
+        "identity": "start"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/0/type (id/label: \"start\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/0/type",
+        "identity": "start"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/1 (id/label: \"input\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/1",
+        "identity": "input"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/1 (id/label: \"input\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/1",
+        "identity": "input"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/1 (id/label: \"input\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/1",
+        "identity": "input"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/1/type (id/label: \"input\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/1/type",
+        "identity": "input"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/2 (id/label: \"calc_sc_vat\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/2",
+        "identity": "calc_sc_vat"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/2 (id/label: \"calc_sc_vat\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/2",
+        "identity": "calc_sc_vat"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/2 (id/label: \"calc_sc_vat\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/2",
+        "identity": "calc_sc_vat"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/2/type (id/label: \"calc_sc_vat\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/2/type",
+        "identity": "calc_sc_vat"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/3 (id/label: \"split_bill\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/3",
+        "identity": "split_bill"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/3 (id/label: \"split_bill\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/3",
+        "identity": "split_bill"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/3 (id/label: \"split_bill\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/3",
+        "identity": "split_bill"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/3/type (id/label: \"split_bill\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/3/type",
+        "identity": "split_bill"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/4 (id/label: \"calc_balance\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/4",
+        "identity": "calc_balance"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/4 (id/label: \"calc_balance\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/4",
+        "identity": "calc_balance"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/4 (id/label: \"calc_balance\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/4",
+        "identity": "calc_balance"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/4/type (id/label: \"calc_balance\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/4/type",
+        "identity": "calc_balance"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/5 (id/label: \"check_sum\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/5",
+        "identity": "check_sum"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/5 (id/label: \"check_sum\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/5",
+        "identity": "check_sum"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/5 (id/label: \"check_sum\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/5",
+        "identity": "check_sum"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/5/type (id/label: \"check_sum\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/5/type",
+        "identity": "check_sum"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/6 (id/label: \"fix_residual\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/6",
+        "identity": "fix_residual"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/6 (id/label: \"fix_residual\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/6",
+        "identity": "fix_residual"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/6 (id/label: \"fix_residual\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/6",
+        "identity": "fix_residual"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/6/type (id/label: \"fix_residual\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/6/type",
+        "identity": "fix_residual"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/7 (id/label: \"separate\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/7",
+        "identity": "separate"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/7 (id/label: \"separate\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/7",
+        "identity": "separate"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/7 (id/label: \"separate\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/7",
+        "identity": "separate"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/7/type (id/label: \"separate\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/7/type",
+        "identity": "separate"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/8 (id/label: \"greedy\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/8",
+        "identity": "greedy"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/8 (id/label: \"greedy\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/8",
+        "identity": "greedy"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/8 (id/label: \"greedy\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/8",
+        "identity": "greedy"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/8/type (id/label: \"greedy\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/8/type",
+        "identity": "greedy"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/9 (id/label: \"settle_pair\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/9",
+        "identity": "settle_pair"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/9 (id/label: \"settle_pair\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/9",
+        "identity": "settle_pair"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/9 (id/label: \"settle_pair\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/9",
+        "identity": "settle_pair"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/9/type (id/label: \"settle_pair\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/9/type",
+        "identity": "settle_pair"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/10 (id/label: \"check_zero\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/10",
+        "identity": "check_zero"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/10 (id/label: \"check_zero\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/10",
+        "identity": "check_zero"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/10 (id/label: \"check_zero\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/10",
+        "identity": "check_zero"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/10/type (id/label: \"check_zero\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/10/type",
+        "identity": "check_zero"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/11 (id/label: \"remove\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/11",
+        "identity": "remove"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/11 (id/label: \"remove\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/11",
+        "identity": "remove"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/11 (id/label: \"remove\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/11",
+        "identity": "remove"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/11/type (id/label: \"remove\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/11/type",
+        "identity": "remove"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/12 (id/label: \"more\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/12",
+        "identity": "more"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/12 (id/label: \"more\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/12",
+        "identity": "more"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/12 (id/label: \"more\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/12",
+        "identity": "more"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/12/type (id/label: \"more\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/12/type",
+        "identity": "more"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/13 (id/label: \"end\") must have required property 'lane' {\"missingProperty\":\"lane\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/13",
+        "identity": "end"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "lane"
+      },
+      "supportedFixes": [
+        "add required property \"lane\""
+      ]
+    },
+    {
+      "code": "schema/required",
+      "severity": "error",
+      "message": "/nodes/13 (id/label: \"end\") must have required property 'col' {\"missingProperty\":\"col\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/13",
+        "identity": "end"
+      },
+      "evidence": {
+        "keyword": "required",
+        "missingProperty": "col"
+      },
+      "supportedFixes": [
+        "add required property \"col\""
+      ]
+    },
+    {
+      "code": "schema/additionalProperties",
+      "severity": "error",
+      "message": "/nodes/13 (id/label: \"end\") must NOT have additional properties {\"additionalProperty\":\"position\"}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/13",
+        "identity": "end"
+      },
+      "evidence": {
+        "keyword": "additionalProperties",
+        "additionalProperty": "position"
+      },
+      "supportedFixes": [
+        "remove unsupported property \"position\""
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/nodes/13/type (id/label: \"end\") must be equal to one of the allowed values {\"allowedValues\":[\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/13/type",
+        "identity": "end"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "frontend",
+          "backend",
+          "database",
+          "cloud",
+          "security",
+          "messagebus",
+          "external"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"frontend\",\"backend\",\"database\",\"cloud\",\"security\",\"messagebus\",\"external\"]"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\group-bill-split.finalize.json",
+    "summaryReceipt": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-072627\\group-bill-split.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "validate",
+  "finishedAt": "2026-11-02T00:27:18.551Z",
+  "durationMs": 629,
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-11-02T00:26:01.288Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-11-02T00:26:01.288Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  }
+}

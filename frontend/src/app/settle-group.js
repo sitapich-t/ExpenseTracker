@@ -35,13 +35,13 @@ export default function GroupSettleScreen() {
   const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
   const bills = useMemo(() => (Array.isArray(ctx?.bills) ? ctx.bills : EMPTY), [ctx]);
 
-  const nameOf = useCallback(
-    (id) => {
-      const m = members.find((mm) => String(mm.id) === String(id));
-      return m?.name || 'สมาชิก';
-    },
-    [members]
-  );
+    const nameOf = useCallback(
+      (id) => {
+        const m = members.find((mm) => String(mm.id) === String(id) || String(mm.user_id) === String(id));
+        return m?.name || 'สมาชิก';
+      },
+      [members]
+    );
 
   // 2 modes: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
   const [activeTab, setActiveTab] = useState('summary');
@@ -104,23 +104,32 @@ export default function GroupSettleScreen() {
         });
       });
     } else {
-      const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
-        ? b.splitData.memberIds.map(String)
-        : members.map((m) => String(m.id));
+      let sharedIds = [];
+      if (Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0) {
+        sharedIds = b.splitData.memberIds.map(String);
+      } else if (b.splitData?.shares && typeof b.splitData.shares === 'object') {
+        sharedIds = Object.keys(b.splitData.shares).map(String);
+      } else if (b.splitData?.amounts && typeof b.splitData.amounts === 'object') {
+        sharedIds = Object.keys(b.splitData.amounts).map(String);
+      } else {
+          sharedIds = members.map((m) => String(m.id ?? m.user_id));
+        }
+        sharedIds = sharedIds.filter((sid) => sid && sid !== 'undefined' && sid !== 'null');
+        if (sharedIds.length === 0) sharedIds = members.map((m) => String(m.id ?? m.user_id));
 
-      const n = sharedIds.length || 1;
-      const per = Math.round((total / n) * 100) / 100;
+        const n = sharedIds.length || 1;
+        const per = Math.round((total / n) * 100) / 100;
 
-      sharedIds.forEach((sid, mIdx) => {
-        if (sid === payer) return;
-        rawTransactions.push({
-          id: `r_${b.id || bIdx}_${mIdx}`,
-          from: nameOf(sid),
-          to: nameOf(payer),
-          note: b.title || 'บิล',
-          amount: baht(per),
+        sharedIds.forEach((sid, mIdx) => {
+          if (String(sid) === String(payer)) return;
+          rawTransactions.push({
+            id: `r_${b.id || bIdx}_${mIdx}`,
+            from: nameOf(sid),
+            to: nameOf(payer),
+            note: b.title || 'ค่าใช้จ่าย',
+            amount: baht(per),
+          });
         });
-      });
     }
   });
 

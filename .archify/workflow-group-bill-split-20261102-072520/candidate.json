@@ -1,0 +1,114 @@
+﻿{
+  "schemaVersion": "1.0.0",
+  "type": "workflow",
+  "meta": {
+    "title": "อัลกอริทึมการหารบิลภายในกลุ่ม (Group Bill Split)",
+    "description": "การคำนวณยอดที่แต่ละคนต้องจ่าย คำนวณ balance และตัดหนี้เพื่อให้จำนวนการโอนน้อยที่สุด",
+    "quality_profile": "showcase"
+  },
+  "nodes": [
+        {
+      "id": "start",
+      "type": "start",
+      "label": "เริ่มต้น",
+      "position": { "x": 400, "y": 40 }
+    },
+    {
+      "id": "input",
+      "type": "data",
+      "label": "รับข้อมูลบิล\n(items, paidBy, sharedBy, scRate, vatRate, split method)",
+      "position": { "x": 400, "y": 140 }
+    },
+    {
+      "id": "calc_sc_vat",
+      "type": "process",
+      "label": "คำนวณ SC/VAT\n(distributeSCVAT)",
+      "position": { "x": 400, "y": 250 }
+    },
+    {
+      "tag": "Bill Split Core",
+      "id": "split_bill",
+      "type": "process",
+      "label": "คำนวณยอดต่อรายการ\nแยก paid/owed ต่อคน",
+      "position": { "x": 400, "y": 360 }
+    },
+    {
+      "id": "calc_balance",
+      "type": "process",
+      "label": "คำนวณ balance\nbalance = paid - owed",
+      "position": { "x": 400, "y": 470 }
+    },
+    {
+      "id": "check_sum",
+      "type": "decision",
+      "label": "ผลรวม balance = 0\n(พร้อมแก้เศษสตางค์)?",
+      "position": { "x": 400, "y": 580 }
+    },
+    {
+      "id": "fix_residual",
+      "type": "process",
+      "label": "แก้เศษ residual\nโยกให้คน balance สูงสุด",
+      "position": { "x": 650, "y": 580 }
+    },
+    {
+      "id": "separate",
+      "type": "process",
+      "label": "แยกกลุ่ม\nDebtors (balance<0) vs Creditors (balance>0)",
+      "position": { "x": 400, "y": 710 }
+    },
+    {
+      "id": "greedy",
+      "type": "process",
+      "label": "Greedy Algorithm\nจับคู่ debtor มากที่สุด - creditor มากที่สุด",
+      "position": { "x": 400, "y": 820 }
+    },
+    {
+      "id": "settle_pair",
+      "type": "process",
+      "label": "โอนเท่ากับค่าที่น้อยกว่า\nลดยอดทั้งสองฝ่าย",
+      "position": { "x": 400, "y": 930 }
+    },
+    {
+      "id": "check_zero",
+      "type": "decision",
+      "label": "ฝ่ายใดฝ่ายหนึ่ง = 0 ?",
+      "position": { "x": 400, "y": 1040 }
+    },
+    {
+      "id": "remove",
+      "type": "process",
+      "label": "ลบคนที่เคลียร์แล้ว",
+      "position": { "x": 650, "y": 1040 }
+    },
+    {
+      "id": "more",
+      "type": "decision",
+      "label": "ยังมี debtor/creditor เหลือ?",
+      "position": { "x": 400, "y": 1160 }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "label": "จบ\nแสดงรายการโอนที่เหลือ",
+      "position": { "x": 400, "y": 1280 }
+    }
+  ],
+  "relationships": [
+    { "id": "r1", "from": "start", "to": "input", "label": "" },
+    { "id": "r2", "from": "input", "to": "calc_sc_vat", "label": "" },
+    { "id": "r3", "from": "calc_sc_vat", "to": "split_bill", "label": "" },
+    { "id": "r4", "from": "split_bill", "to": "calc_balance", "label": "" },
+    { "id": "r5", "from": "calc_balance", "to": "check_sum", "label": "" },
+    { "id": "r6", "from": "check_sum", "to": "fix_residual", "label": "ไม่ลงตัว", "fromPort": "right" },
+    { "id": "r7", "from": "fix_residual", "to": "separate", "label": "", "via": [[650,710]] },
+    { "id": "r8", "from": "check_sum", "to": "separate", "label": "ลงตัว", "fromPort": "bottom" },
+    { "id": "r9", "from": "separate", "to": "greedy", "label": "" },
+    { "id": "r10", "from": "greedy", "to": "settle_pair", "label": "" },
+    { "id": "r11", "from": "settle_pair", "to": "check_zero", "label": "" },
+    { "id": "r12", "from": "check_zero", "to": "remove", "label": "ใช่", "fromPort": "right" },
+    { "id": "r13", "from": "remove", "to": "more", "label": "", "via": [[650,1160]] },
+    { "id": "r14", "from": "check_zero", "to": "more", "label": "ไม่", "fromPort": "bottom" },
+    { "id": "r15", "from": "more", "to": "greedy", "label": "ใช่", "fromPort": "left", "via": [[200,1160],[200,820]] },
+    { "id": "r16", "from": "more", "to": "end", "label": "ไม่", "fromPort": "bottom" }
+  ]
+}

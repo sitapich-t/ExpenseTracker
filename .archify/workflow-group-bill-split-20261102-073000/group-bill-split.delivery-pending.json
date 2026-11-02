@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "command": "deliver",
+  "status": "pending",
+  "receiptId": "83f21655-50cc-4057-8d39-d570d1b0e1f8",
+  "input": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\candidate.json",
+  "output": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\group-bill-split.html"
+}

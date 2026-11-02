@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>อัลกอริทึมการหารบิลภายในกลุ่ม</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px; }
+    h1 { text-align: center; margin-bottom: 10px; color: #f1f5f9; }
+    .subtitle { text-align: center; margin-bottom: 40px; color: #94a3b8; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    svg { width: 100%; height: auto; background: #1e293b; border-radius: 12px; border: 1px solid #334155; }
+    .legend { display: flex; gap: 24px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .legend-box { width: 20px; height: 20px; border-radius: 4px; }
+    .start { background: #10b981; }
+    .process { background: #3b82f6; }
+    .decision { background: #f59e0b; transform: rotate(45deg); width: 16px; height: 16px; }
+    .end { background: #ef4444; }
+    .data { background: #8b5cf6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>อัลกอริทึมการหารบิลภายในกลุ่ม (Group Bill Split)</h1>
+    <p class="subtitle">การคำนวณยอดที่แต่ละคนต้องจ่าย → คำนวณ Balance → ตัดหนี้ด้วย Greedy Algorithm</p>
+    
+    <svg viewBox="0 0 1200 1400" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+        </marker>
+        <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+        </marker>
+      </defs>
+      
+      <!-- Start -->
+      <ellipse cx="600" cy="60" rx="60" ry="30" fill="#10b981" stroke="#34d399" stroke-width="2"/>
+      <text x="600" y="68" text-anchor="middle" fill="#fff" font-size="14" font-weight="bold">เริ่มต้น</text>
+      <line x1="600" y1="90" x2="600" y2="120" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Input -->
+      <rect x="500" y="120" width="200" height="60" rx="8" fill="#8b5cf6" stroke="#a78bfa" stroke-width="2"/>
+      <text x="600" y="145" text-anchor="middle" fill="#fff" font-size="13">รับข้อมูลบิล</text>
+      <text x="600" y="165" text-anchor="middle" fill="#e9d5ff" font-size="11">items, paidBy, sharedBy, SC/VAT</text>
+      <line x1="600" y1="180" x2="600" y2="210" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Calculate SC/VAT -->
+      <rect x="500" y="210" width="200" height="60" rx="8" fill="#3b82f6" stroke="#60a5fa" stroke-width="2"/>
+      <text x="600" y="235" text-anchor="middle" fill="#fff" font-size="13">คำนวณ SC/VAT</text>
+      <text x="600" y="255" text-anchor="middle" fill="#bfdbfe" font-size="11">distributeSCVAT()</text>
+      <line x1="600" y1="270" x2="600" y2="300" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Split Bill -->
+      <rect x="500" y="300" width="200" height="60" rx="8" fill="#3b82f6" stroke="#60a5fa" stroke-width="2"/>
+      <text x="600" y="325" text-anchor="middle" fill="#fff" font-size="13">คำนวณยอดต่อรายการ</text>
+      <text x="600" y="345" text-anchor="middle" fill="#bfdbfe" font-size="11">แยก paid / owed ต่อคน</text>
+      <line x1="600" y1="360" x2="600" y2="390" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Calculate Balance -->
+      <rect x="500" y="390" width="200" height="60" rx="8" fill="#3b82f6" stroke="#60a5fa" stroke-width="2"/>
+      <text x="600" y="415" text-anchor="middle" fill="#fff" font-size="13">คำนวณ Balance</text>
+      <text x="600" y="435" text-anchor="middle" fill="#bfdbfe" font-size="11">balance = paid - owed</text>
+      <line x1="600" y1="450" x2="600" y2="480" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Check Sum -->
+      <polygon points="600,480 680,530 600,580 520,530" fill="#f59e0b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="600" y="525" text-anchor="middle" fill="#1e293b" font-size="12" font-weight="bold">ผลรวม = 0?</text>
+      <text x="600" y="542" text-anchor="middle" fill="#92400e" font-size="10">(พร้อมแก้เศษสตางค์)</text>
+      
+      <!-- Fix Residual -->
+      <rect x="750" y="500" width="180" height="60" rx="8" fill="#3b82f6" stroke="#60a5fa" stroke-width="2"/>
+      <text x="840" y="525" text-anchor="middle" fill="#fff" font-size="12">แก้เศษ Residual</text>
+      <text x="840" y="542" text-anchor="middle" fill="#bfdbfe" font-size="10">โยกให้คน balance สูงสุด</text>
+      <line x1="680" y1="530" x2="750" y2="530" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowhead-orange)"/>
+      <text x="710" y="520" fill="#fbbf24" font-size="11">ไม่ลงตัว</text>
+      
+      <!-- Separate -->
+      <rect x="500" y="620" width="200" height="60" rx="8" fill="#06b6d4" stroke="#22d3ee" stroke-width="2"/>
+      <text x="600" y="645" text-anchor="middle" fill="#fff" font-size="13">แยกกลุ่ม Debtor / Creditor</text>
+      <text x="600" y="665" text-anchor="middle" fill="#a5f3fc" font-size="11">Debtor (&lt; 0) | Creditor (&gt; 0)</text>
+      <line x1="600" y1="580" x2="600" y2="620" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <text x="610" y="600" fill="#94a3b8" font-size="11">ลงตัว</text>
+      <path d="M 840 560 Q 840 620 700 620" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+      
+      <!-- Greedy -->
+      <rect x="500" y="720" width="200" height="60" rx="8" fill="#ec4899" stroke="#f472b6" stroke-width="2"/>
+      <text x="600" y="745" text-anchor="middle" fill="#fff" font-size="13">Greedy Algorithm</text>
+      <text x="600" y="765" text-anchor="middle" fill="#fce7f3" font-size="11">จับคู่ debtor มากสุด - creditor มากสุด</text>
+      <line x1="600" y1="680" x2="600" y2="720" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Settle Pair -->
+      <rect x="500" y="820" width="200" height="60" rx="8" fill="#ec4899" stroke="#f472b6" stroke-width="2"/>
+      <text x="600" y="845" text-anchor="middle" fill="#fff" font-size="13">โอนเท่ากับค่าที่น้อยกว่า</text>
+      <text x="600" y="865" text-anchor="middle" fill="#fce7f3" font-size="11">ลดยอดทั้งสองฝ่าย</text>
+      <line x1="600" y1="780" x2="600" y2="820" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Check Zero -->
+      <polygon points="600,920 680,970 600,1020 520,970" fill="#f59e0b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="600" y="965" text-anchor="middle" fill="#1e293b" font-size="12" font-weight="bold">ฝ่ายใดฝ่ายหนึ่ง = 0?</text>
+      <line x1="600" y1="880" x2="600" y2="920" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      
+      <!-- Remove -->
+      <rect x="750" y="940" width="180" height="60" rx="8" fill="#ec4899" stroke="#f472b6" stroke-width="2"/>
+      <text x="840" y="965" text-anchor="middle" fill="#fff" font-size="12">ลบคนที่เคลียร์แล้ว</text>
+      <text x="840" y="982" text-anchor="middle" fill="#fce7f3" font-size="10">ออกจากรายการ</text>
+      <line x1="680" y1="970" x2="750" y2="970" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowhead-orange)"/>
+      <text x="710" y="960" fill="#fbbf24" font-size="11">ใช่</text>
+      
+      <!-- More Left -->
+      <polygon points="600,1080 700,1130 600,1180 500,1130" fill="#f59e0b" stroke="#fbbf24" stroke-width="2"/>
+      <text x="600" y="1125" text-anchor="middle" fill="#1e293b" font-size="12" font-weight="bold">ยังมี Debtor/Creditor?</text>
+      <line x1="600" y1="1020" x2="600" y2="1080" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <text x="610" y="1050" fill="#94a3b8" font-size="11">ไม่</text>
+      <path d="M 840 1000 Q 840 1130 700 1130" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
+      
+      <!-- Back to Greedy -->
+      <path d="M 500 1130 Q 400 1130 400 750 Q 400 720 500 750" stroke="#ef4444" stroke-width="2" fill="none" marker-end="url(#arrowhead)" stroke-dasharray="6,3"/>
+      <text x="360" y="940" fill="#f87171" font-size="11" transform="rotate(-90 360 940)">ใช่ - ทำซ้ำ</text>
+      
+      <!-- End -->
+      <ellipse cx="600" cy="1260" rx="80" ry="35" fill="#ef4444" stroke="#f87171" stroke-width="2"/>
+      <text x="600" y="1255" text-anchor="middle" fill="#fff" font-size="13" font-weight="bold">จบ</text>
+      <text x="600" y="1272" text-anchor="middle" fill="#fecaca" font-size="11">แสดงรายการโอนที่เหลือ</text>
+      <line x1="600" y1="1180" x2="600" y2="1225" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrowhead)"/>
+      <text x="610" y="1200" fill="#94a3b8" font-size="11">ไม่</text>
+      
+    </svg>
+    
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-box start"></div>
+        <span>เริ่มต้น/จบ</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-box data"></div>
+        <span>รับข้อมูล</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-box process"></div>
+        <span>กระบวนการ</span>
+      </div>
+      <div class="legend-item">
+        <div style="width: 16px; height: 16px; background: #f59e0b; transform: rotate(45deg);"></div>
+        <span>เงื่อนไข/ตัดสินใจ</span>
+      </div>
+      <div class="legend-item">
+        <div style="width: 20px; height: 20px; background: #ec4899; border-radius: 4px;"></div>
+        <span>Debt Simplification (Greedy)</span>
+      </div>
+    </div>
+    
+    <div style="margin-top: 40px; background: #1e293b; padding: 30px; border-radius: 12px; border: 1px solid #334155;">
+      <h2 style="margin-bottom: 20px; color: #f1f5f9;">คำอธิบายอัลกอริทึม</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+        <div style="background: #0f172a; padding: 20px; border-radius: 8px; border-left: 3px solid #3b82f6;">
+          <h3 style="color: #60a5fa; margin-bottom: 10px;">ขั้นตอนที่ 1: คำนวณยอด</h3>
+          <p style="color: #cbd5e1; line-height: 1.6;">คำนวณ SC/VAT ตามแต่ละรายการ, แยกว่าใครจ่าย (paidBy) ใครต้องจ่าย (sharedBy), คำนวณ balance = paid - owed</p>
+        </div>
+        <div style="background: #0f172a; padding: 20px; border-radius: 8px; border-left: 3px solid #f59e0b;">
+          <h3 style="color: #fbbf24; margin-bottom: 10px;">ขั้นตอนที่ 2: ปรับเศษ</h3>
+          <p style="color: #cbd5e1; line-height: 1.6;">ใช้หน่วยสตางค์ ป้องกันปัญหาทศนิยม และแก้ residual โดยโยกเศษให้คนที่มี balance มากที่สุด</p>
+        </div>
+        <div style="background: #0f172a; padding: 20px; border-radius: 8px; border-left: 3px solid #ec4899;">
+          <h3 style="color: #f472b6; margin-bottom: 10px;">ขั้นตอนที่ 3: ตัดหนี้ Greedy</h3>
+          <p style="color: #cbd5e1; line-height: 1.6;">จับคู่ debtor ที่ต้องจ่ายมากที่สุด กับ creditor ที่ได้เงินมากที่สุด โอนเท่ากับค่าที่น้อยกว่า ทำซ้ำจนเหลือรายการน้อยที่สุด</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -8,6 +8,8 @@ const { calculateSettlement } = require('../utils/settlementCalculator');
 const { slipPathOf, removeSlip } = require('../middlewares/uploadMiddleware');
 const { groups, members, transactions } = require('../repositories/groupRepository');
 const notificationRepo = require('../repositories/notificationRepository');
+const { splitBillForGroup, settleGroupBalances } = require('../services/billSplitService');
+const groupSettlementRepo = require('../repositories/groupSettlementRepository');
 
 // ตาราง group_payments / notifications ยังไม่ถูกสร้าง (ยังไม่รัน migration)
 const isMissingTable = (err) => {
@@ -407,32 +409,58 @@ exports.getGroupSettlement = async (req, res) => {
     const userId = req.user.id || req.user.user_id;
 
     if (!(await isGroupMember(id, userId))) {
-      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงกลุ่มนี้' });
     }
 
     const result = await computeGroupSettlement(id);
+
+    // บันทึกผลการตัดหนี้ลง group_settlements ทุกครั้ง (เพื่อให้มีข้อมูลในตาราง)
+    try {
+      const simplified = Array.isArray(result.transactions) ? result.transactions : [];
+      if (simplified.length > 0) {
+        await groupSettlementRepo.deletePendingByGroupId(id);
+        const toInsert = simplified
+          .map((s) => ({
+            group_id: id,
+            from_user_id: s.from || s.from_user_id,
+            to_user_id: s.to || s.to_user_id,
+            amount: Number(s.amount),
+            status: 'pending',
+          }))
+          .filter((s) => s.from_user_id && s.to_user_id && Number(s.amount) > 0);
+        if (toInsert.length > 0) {
+          await groupSettlementRepo.createMany(toInsert);
+          console.log('[SYNC_SETTLEMENTS] inserted', toInsert.length, 'for group', id);
+        }
+      } else {
+        console.log('[SYNC_SETTLEMENTS] simplified empty for group', id);
+      }
+    } catch (syncErr) {
+      console.error('sync group_settlements from getGroupSettlement error:', syncErr);
+    }
 
     return res.json({
       success: true,
       balances: result.balances,
       transactions: result.transactions,
-      // ประวัติ "ยืนยันรับเงินแล้ว" (หักออกจาก transactions ข้างบนแล้ว)
+      // รายการ "ใครต้องโอนใคร" หลังตัดหนี้ (เอา transactions ตรงนี้ไปแสดง)
       payments: result.payments || [],
-      // รายละเอียดต่อบิล เผื่อ UI อยากแสดงว่าใครโดนเท่าไร
+      // สัดส่วนต่อบิล (เพื่อแสดง breakdown ใน UI)
       per_bill: result.perBill.map((b) => ({
         bill_id: b.billId,
         method: b.method,
         payer: b.paidBy,
         shares: b.shares,
       })),
-      // บิลที่คำนวณไม่ได้ (split_data ไม่ครบ/เสีย) — ต้องให้ผู้ใช้รู้ ไม่เงียบทิ้ง
+      // รายการที่ข้ามการคำนวณ (กรณี split_data ไม่ตรง/ไม่ครบ) - ช่วยดีบักได้
       skipped: result.skipped,
     });
   } catch (err) {
-    console.error('❌ Get group settlement error:', err);
+    console.error('? Get group settlement error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };
+
 
 // ==========================================
 // ทวงเงิน + ยืนยันรับเงิน (ต้องรัน sql/create_debt_notifications.sql)
@@ -1087,6 +1115,95 @@ exports.updateGroupTransactionSplit = async (req, res) => {
     return res.json({ success: true, transaction: updated.data });
   } catch (err) {
     console.error('Update group transaction split error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// ==========================================
+// Group Settlements (บันทึกผลการตัดหนี้ลงตาราง)
+// ==========================================
+
+// GET /groups/:id/settlements
+exports.getGroupSettlements = async (req, res) => {
+  try {
+    const { id: groupId } = req.params;
+    const userId = req.user.id || req.user.user_id;
+
+    if (!(await isGroupMember(groupId, userId))) {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงกลุ่มนี้' });
+    }
+
+    const txList = await transactions.findByGroupId(groupId);
+    const memberList = await members.listMembershipsByGroupIds([groupId]);
+    const memberIds = (memberList || []).map((m) => m.user_id).filter(Boolean);
+
+    if (memberIds.length === 0) {
+      return res.json({ success: true, settlements: [], balances: [] });
+    }
+
+    const items = (txList || []).map((t) => ({
+      id: t.id,
+      price: Number(t.amount || t.subtotal || 0),
+      paidBy: t.paid_by || t.created_by,
+      sharedBy: memberIds,
+    }));
+
+    const { balances } = splitBillForGroup(items, 0, 0, { groupMembers: memberIds });
+    const simplified = settleGroupBalances(balances);
+
+    let pending = await groupSettlementRepo.findPendingByGroupId(groupId);
+
+    if (simplified.length > 0) {
+      await groupSettlementRepo.deletePendingByGroupId(groupId);
+
+      const toInsert = simplified
+        .map((s) => ({
+          group_id: groupId,
+          from_user_id: s.from || s.from_user_id,
+          to_user_id: s.to || s.to_user_id,
+          amount: Number(s.amount),
+          status: 'pending',
+        }))
+        .filter((s) => s.from_user_id && s.to_user_id && Number(s.amount) > 0);
+
+      if (toInsert.length > 0) {
+        pending = await groupSettlementRepo.createMany(toInsert);
+        console.log('[SYNC_SETTLEMENTS2] inserted', toInsert.length, 'for group', groupId);
+      }
+    } else {
+      console.log('[SYNC_SETTLEMENTS2] simplified empty for group', groupId);
+    }
+
+    return res.json({ success: true, settlements: pending, balances, transactions: simplified });
+  } catch (err) {
+    console.error('getGroupSettlements error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+// PATCH /groups/:id/settlements/:settlementId/paid
+exports.markSettlementPaid = async (req, res) => {
+  try {
+    const { id: groupId, settlementId } = req.params;
+    const userId = req.user.id || req.user.user_id;
+
+    if (!(await isGroupMember(groupId, userId))) {
+      return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงกลุ่มนี้' });
+    }
+
+    const settlement = await groupSettlementRepo.findById(settlementId);
+    if (!settlement || settlement.group_id !== groupId) {
+      return res.status(404).json({ success: false, error: 'ไม่พบรายการชำระเงินนี้' });
+    }
+
+    if (settlement.status === 'paid') {
+      return res.json({ success: true, settlement, message: 'รายการนี้ถูกชำระแล้ว' });
+    }
+
+    const updated = await groupSettlementRepo.markAsPaid(settlementId, userId);
+    return res.json({ success: true, settlement: updated });
+  } catch (err) {
+    console.error('markSettlementPaid error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };

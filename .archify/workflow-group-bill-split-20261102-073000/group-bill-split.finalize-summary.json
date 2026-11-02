@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "workflow",
+  "quality": "showcase",
+  "specification": {
+    "path": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\candidate.json",
+    "sha256": "f27d35eaaf9b3ed61dc01dac8bbc19073bea416cb583d5c8db8a3896470a34e7",
+    "bytes": 4317
+  },
+  "artifact": {
+    "path": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\group-bill-split.html"
+  },
+  "gates": {
+    "validate": "fail",
+    "deliver": "not-run",
+    "check": "not-run",
+    "browser-check": "not-run"
+  },
+  "failedStage": "validate",
+  "diagnostics": [
+    {
+      "code": "schema/maximum",
+      "severity": "error",
+      "message": "/nodes/6/col (id/label: \"fix_residual\") must be <= 5 {\"comparison\":\"<=\",\"limit\":5}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/6/col",
+        "identity": "fix_residual"
+      },
+      "evidence": {
+        "keyword": "maximum",
+        "comparison": "<=",
+        "limit": 5
+      },
+      "supportedFixes": [
+        "use a value <= 5"
+      ]
+    },
+    {
+      "code": "schema/enum",
+      "severity": "error",
+      "message": "/edges/14/route (id/label: \"e15\") must be equal to one of the allowed values {\"allowedValues\":[\"auto\",\"straight\",\"drop\",\"outside-right\",\"return-left\",\"bottom-channel\",\"up-channel\"]}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/edges/14/route",
+        "identity": "e15"
+      },
+      "evidence": {
+        "keyword": "enum",
+        "allowedValues": [
+          "auto",
+          "straight",
+          "drop",
+          "outside-right",
+          "return-left",
+          "bottom-channel",
+          "up-channel"
+        ]
+      },
+      "supportedFixes": [
+        "choose one of [\"auto\",\"straight\",\"drop\",\"outside-right\",\"return-left\",\"bottom-channel\",\"up-channel\"]"
+      ]
+    },
+    {
+      "code": "schema/maximum",
+      "severity": "error",
+      "message": "/nodes/13/col (id/label: \"end\") must be <= 5 {\"comparison\":\"<=\",\"limit\":5}",
+      "subject": {
+        "diagramType": "workflow",
+        "path": "/nodes/13/col",
+        "identity": "end"
+      },
+      "evidence": {
+        "keyword": "maximum",
+        "comparison": "<=",
+        "limit": 5
+      },
+      "supportedFixes": [
+        "use a value <= 5"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 3,
+    "shown": 3,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\group-bill-split.finalize.json",
+    "summaryReceipt": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\group-bill-split.finalize-summary.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-11-02T00:26:01.288Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-11-02T00:26:01.288Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 394,
+  "nextAction": {
+    "action": "edit-in-place",
+    "candidate": "E:\\expense-tracker\\.archify\\workflow-group-bill-split-20261102-073000\\candidate.json",
+    "constraint": "Preserve unaffected semantics and geometry; do not replace the whole candidate.",
+    "then": "finalize-once"
+  }
+}
