@@ -247,7 +247,7 @@ exports.createTransaction = async (req, res) => {
       title: transactionService.normalizeTitle(title),
       type: type || 'expense',
       amount: transactionService.parseAmount(amount),
-      merchant: merchant || 'General',
+      merchant: merchant ? String(merchant).normalize('NFC').trim() : 'General',
       category_id: transactionService.resolveCategoryId({ category_id, merchant, parsedText }),
       transaction_date: transactionService.resolveDate(date || transaction_date),
       items: Array.isArray(items) ? items : [],
@@ -299,7 +299,7 @@ exports.updateTransaction = async (req, res) => {
     if (title !== undefined) updateData.title = transactionService.normalizeTitle(title);
     if (type !== undefined) updateData.type = type;
     if (amount !== undefined) updateData.amount = transactionService.parseAmount(amount);
-    if (merchant !== undefined) updateData.merchant = merchant;
+    if (merchant !== undefined) updateData.merchant = merchant ? String(merchant).normalize('NFC').trim() : 'General';
     if (category_id !== undefined) updateData.category_id = transactionService.parseCategoryId(category_id);
     if (transaction_date !== undefined) updateData.transaction_date = transactionService.resolveDate(transaction_date);
 

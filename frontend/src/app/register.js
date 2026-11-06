@@ -46,7 +46,7 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
       const res = await api.post('/api/v1/auth/register/request-otp', {
-        name,
+        name: name.trim().normalize('NFC'),
         email: email.trim().toLowerCase(),
         password,
       });
@@ -94,6 +94,8 @@ export default function RegisterScreen() {
               placeholder="ชื่อ-นามสกุล"
               value={name}
               onChangeText={setName}
+              autoCapitalize="none"
+              autoCorrect={false}
               placeholderTextColor="#a0a0a0"
             />
           </View>

@@ -431,7 +431,7 @@ export default function AddGroupExpenseScreen() {
       }
 
       const result = await addGroupBill(groupId, {
-        title: title.trim(),
+        title: title.trim().normalize('NFC'),
         type: 'expense',
         amount: effectiveAmount,
         subtotal: numAmount,
@@ -514,10 +514,12 @@ export default function AddGroupExpenseScreen() {
           <Text style={styles.inputLabel}>ชื่อรายการค่าใช้จ่าย</Text>
           <TextInput
             style={styles.textInput}
-            placeholder="เช่น ค่าอาหาร, ค่าน้ำมัน"
+            placeholder="เช่น ค่าอาหาร, ค่าน้ำมัน, ชาบู"
             placeholderTextColor="#94A3B8"
             value={title}
             onChangeText={setTitle}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <Text style={[styles.inputLabel, { marginTop: 14 }]}>ยอดเงินทั้งหมด (บาท)</Text>
@@ -802,6 +804,8 @@ export default function AddGroupExpenseScreen() {
                           }
                           placeholder={`รายการที่ ${idx + 1}`}
                           placeholderTextColor="#94A3B8"
+                          autoCapitalize="none"
+                          autoCorrect={false}
                         />
                         <TextInput
                           style={styles.itemPriceInput}

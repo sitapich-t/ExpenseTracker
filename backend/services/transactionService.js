@@ -21,8 +21,8 @@ exports.parseCategoryId = (value) => {
 // กำหนด transaction_date จาก payload หรือใช้เวลาปัจจุบัน
 exports.resolveDate = (value) => value || new Date().toISOString();
 
-// ตัดช่องว่าง title (และกัน undefined)
-exports.normalizeTitle = (value) => String(value || '').trim();
+// ตัดช่องว่าง title (และ normalize NFC ป้องกัน unicode ผิดเพี้ยน)
+exports.normalizeTitle = (value) => String(value || '').normalize('NFC').trim();
 
 // เติม category_id อัตโนมัติถ้าผู้ใช้ยังไม่เลือกเอง — นี่คือ "Auto-fill Logic"
 exports.resolveCategoryId = (payload) => {

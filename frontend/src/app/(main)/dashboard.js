@@ -112,17 +112,33 @@ export default function DashboardScreen() {
     fetchData();
   };
 
-  const getCategoryIcon = (cat) => {
-    switch (cat?.toLowerCase()) {
-      case 'food': return { icon: 'restaurant', bg: '#fff3e0', color: '#e65100' };
-      case 'transport': return { icon: 'bus', bg: '#e3f2fd', color: '#1565c0' };
-      case 'shopping': return { icon: 'bag-handle', bg: '#fce4ec', color: '#c62828' };
-      case 'study': return { icon: 'book', bg: '#e8f5e9', color: '#2e7d32' };
-      case 'entertainment': return { icon: 'game-controller', bg: '#f3e5f5', color: '#7b1fa2' };
-      case 'health': return { icon: 'medkit', bg: '#e0f7fa', color: '#00838f' };
-      case 'bills': return { icon: 'receipt', bg: '#fff8e1', color: '#f57f17' };
-      default: return { icon: 'wallet', bg: '#f5f5f5', color: '#616161' };
+  const getCategoryIcon = (cat, title = '') => {
+    const raw = `${cat || ''} ${title || ''}`.normalize('NFC').toLowerCase();
+    if (raw.includes('food') || raw.includes('อาหาร') || raw.includes('กิน') || raw.includes('ข้าว') || raw.includes('กาแฟ')) {
+      return { icon: 'restaurant', bg: '#fff3e0', color: '#e65100' };
     }
+    if (raw.includes('transport') || raw.includes('เดินทาง') || raw.includes('รถ') || raw.includes('bts') || raw.includes('mrt')) {
+      return { icon: 'bus', bg: '#e3f2fd', color: '#1565c0' };
+    }
+    if (raw.includes('shopping') || raw.includes('ช้อป') || raw.includes('ช็อป') || raw.includes('ซื้อของ')) {
+      return { icon: 'bag-handle', bg: '#fce4ec', color: '#c62828' };
+    }
+    if (raw.includes('study') || raw.includes('education') || raw.includes('เรียน') || raw.includes('ศึกษา') || raw.includes('หนังสือ')) {
+      return { icon: 'book', bg: '#e8f5e9', color: '#2e7d32' };
+    }
+    if (raw.includes('entertainment') || raw.includes('บันเทิง') || raw.includes('เกม') || raw.includes('หนัง')) {
+      return { icon: 'game-controller', bg: '#f3e5f5', color: '#7b1fa2' };
+    }
+    if (raw.includes('health') || raw.includes('สุขภาพ') || raw.includes('ยา') || raw.includes('หมอ') || raw.includes('คลินิก')) {
+      return { icon: 'medkit', bg: '#e0f7fa', color: '#00838f' };
+    }
+    if (raw.includes('bills') || raw.includes('บิล') || raw.includes('ไฟ') || raw.includes('น้ำ') || raw.includes('เน็ต')) {
+      return { icon: 'receipt', bg: '#fff8e1', color: '#f57f17' };
+    }
+    if (raw.includes('salary') || raw.includes('เงินเดือน') || raw.includes('รายได้')) {
+      return { icon: 'cash-outline', bg: '#dcfce7', color: '#16a34a' };
+    }
+    return { icon: 'wallet', bg: '#f5f5f5', color: '#616161' };
   };
 
   const balance = totalIncome - totalExpense;
@@ -262,7 +278,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           transactions.map((tx) => {
-            const cat = getCategoryIcon(tx.categories?.name || tx.category);
+            const cat = getCategoryIcon(tx.categories?.name || tx.category, tx.title || tx.merchant);
             const isIncome = tx.type === 'income';
             return (
               <View key={tx.id} style={styles.txCard}>

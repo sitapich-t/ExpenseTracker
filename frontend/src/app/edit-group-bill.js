@@ -203,6 +203,9 @@ export default function EditGroupBillScreen() {
                       value={it.name}
                       onChangeText={(v) => updateItem(it.key, 'name', v)}
                       placeholder="ชื่อรายการ"
+                      placeholderTextColor="#94A3B8"
+                      autoCapitalize="none"
+                      autoCorrect={false}
                     />
                     <TextInput
                       style={styles.itemPriceInput}

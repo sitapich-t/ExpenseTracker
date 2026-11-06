@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -279,6 +278,8 @@ export default function GroupDetailScreen() {
             placeholderTextColor="#94A3B8"
             value={note}
             onChangeText={setNote}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
       </ScrollView>

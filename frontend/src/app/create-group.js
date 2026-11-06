@@ -56,8 +56,8 @@ export default function CreateGroupScreen() {
     try {
       setSaving(true);
       const created = await addGroup({
-        name: name.trim(),
-        description: description.trim(),
+        name: name.trim().normalize('NFC'),
+        description: description.trim().normalize('NFC'),
         category: CATEGORY_MAP[category] || 'General',
         color: selectedColor,
       });
@@ -106,6 +106,8 @@ export default function CreateGroupScreen() {
               placeholderTextColor="#94A3B8"
               value={name}
               onChangeText={setName}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
 
@@ -120,6 +122,8 @@ export default function CreateGroupScreen() {
               onChangeText={setDescription}
               multiline
               numberOfLines={3}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
 

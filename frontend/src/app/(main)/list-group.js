@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,8 @@ export default function GroupListScreen() {
   const router = useRouter();
   const { groups, me, loading, fetchSettlement } = useGroup();
   const [settlementBalances, setSettlementBalances] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -90,26 +93,63 @@ export default function GroupListScreen() {
     .filter((g) => g.net < -0.01)
     .reduce((sum, g) => sum + Math.abs(g.net), 0);
 
+  const normQuery = (searchQuery || '').trim().normalize('NFC').toLowerCase();
+  const queryTokens = normQuery ? normQuery.split(/\s+/).filter(Boolean) : [];
+  const filteredGroups = queryTokens.length === 0
+    ? processedGroups
+    : processedGroups.filter((g) => {
+        const name = (g.name || '').normalize('NFC').toLowerCase();
+        const desc = (g.description || '').normalize('NFC').toLowerCase();
+        const cat = (g.category || '').normalize('NFC').toLowerCase();
+        const code = (g.invite_code || '').normalize('NFC').toLowerCase();
+        const target = `${name} ${desc} ${cat} ${code}`;
+        return queryTokens.every((t) => target.includes(t));
+      });
+
   return (
     <>
       <SafeAreaView style={styles.safeArea}>
         {/* Header Bar */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>
-                  {(me?.name || 'B').trim().charAt(0).toUpperCase() || 'B'}
-                </Text>
-              </View>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>
+                {(me?.name || 'B').trim().charAt(0).toUpperCase() || 'B'}
+              </Text>
+            </View>
             <Text style={styles.headerTitle}>กลุ่มแชร์บิลของฉัน</Text>
           </View>
-          {/* <TouchableOpacity 
-            style={styles.searchPill}
-            onPress={() => Alert.alert('ค้นหา', 'ค้นหากลุ่มหรือสมาชิก')}
+          <TouchableOpacity 
+            style={styles.searchIconButton}
+            onPress={() => setShowSearch(!showSearch)}
+            activeOpacity={0.8}
           >
-            <Text style={styles.searchText}>ค้นหา</Text>
-          </TouchableOpacity> */}
+            <Ionicons name="search" size={20} color="#6D28D9" />
+          </TouchableOpacity>
         </View>
+
+        {/* Search Bar */}
+        {showSearch && (
+          <View style={styles.searchBarContainer}>
+            <Ionicons name="search" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.searchBarInput}
+              placeholder="ค้นหากลุ่มตามชื่อ หมวดหมู่ หรือรหัสเชิญ..."
+              placeholderTextColor="#94A3B8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              autoFocus
+            />
+            {searchQuery !== '' && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color="#94A3B8" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         <ScrollView 
           showsVerticalScrollIndicator={false}
@@ -158,7 +198,9 @@ export default function GroupListScreen() {
 
           {/* Section Title */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>กลุ่มทั้งหมด ({processedGroups.length})</Text>
+            <Text style={styles.sectionTitle}>
+              กลุ่มทั้งหมด ({filteredGroups.length}{searchQuery ? ` / ${processedGroups.length}` : ''})
+            </Text>
           </View>
 
             {/* Group Cards */}
@@ -167,16 +209,18 @@ export default function GroupListScreen() {
                 <ActivityIndicator size="large" color="#6D28D9" />
                 <Text style={styles.emptyText}>กำลังโหลดกลุ่ม...</Text>
               </View>
-            ) : processedGroups.length === 0 ? (
+            ) : filteredGroups.length === 0 ? (
               <View style={styles.emptyBox}>
-                <Ionicons name="people-outline" size={44} color="#C4B5FD" />
-                <Text style={styles.emptyText}>ยังไม่มีกลุ่ม</Text>
+                <Ionicons name={searchQuery ? 'search-outline' : 'people-outline'} size={44} color="#C4B5FD" />
+                <Text style={styles.emptyText}>{searchQuery ? 'ไม่พบกลุ่มที่ค้นหา' : 'ยังไม่มีกลุ่ม'}</Text>
                 <Text style={styles.emptyHint}>
-                  สร้างกลุ่มใหม่ หรือเข้าร่วมกลุ่มของเพื่อนด้วยรหัสเชิญ
+                  {searchQuery
+                    ? `ไม่พบกลุ่มที่ตรงกับ "${searchQuery}"`
+                    : 'สร้างกลุ่มใหม่ หรือเข้าร่วมกลุ่มของเพื่อนด้วยรหัสเชิญ'}
                 </Text>
               </View>
             ) : (
-              processedGroups.map((item) => (
+              filteredGroups.map((item) => (
             <TouchableOpacity 
               key={item.id}
               style={styles.groupCard}
@@ -307,6 +351,34 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#1E293B',
+  },
+  searchIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EDE9FE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...SHADOWS.small,
+  },
+  searchBarInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1E293B',
+    padding: 0,
   },
   searchPill: {
     backgroundColor: '#EDE9FE',

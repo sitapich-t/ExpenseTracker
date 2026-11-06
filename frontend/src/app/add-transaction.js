@@ -182,14 +182,14 @@ export default function AddTransactionScreen() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          title: merchant.trim() || catInfo.name,
+          title: String(merchant.trim() || catInfo.name).normalize('NFC'),
           amount: numAmount,
           type,
           category_id: CATEGORY_ID_MAP[category] ?? 9,
-          merchant: merchant.trim() || 'General',
+          merchant: String(merchant.trim() || 'General').normalize('NFC'),
           transaction_date: toLocalDateString(date),
           paymentMethod: payment,
-          note: note.trim(),
+          note: String(note || '').trim().normalize('NFC'),
         }),
       });
 
@@ -387,8 +387,10 @@ export default function AddTransactionScreen() {
                   style={styles.textInputFull}
                   value={merchant}
                   onChangeText={setMerchant}
-                  placeholder="e.g. Campus Cafe"
+                  placeholder="เช่น Campus Cafe, เซเว่น, ตลาดนัด"
                   placeholderTextColor="#9CA3AF"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
             </View>
@@ -403,6 +405,8 @@ export default function AddTransactionScreen() {
                   onChangeText={setNote}
                   placeholder={isIncome ? "ของขวัญวันปีใหม่ย้อนหลังจากญาติผู้ใหญ่" : "ค่าขนม ค่าเสื้อผ้า"}
                   placeholderTextColor="#9CA3AF"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
               </View>
             </View>
@@ -480,10 +484,12 @@ export default function AddTransactionScreen() {
               <View style={styles.addPaymentRow}>
                 <TextInput
                   style={styles.addPaymentInput}
-                  placeholder="เช่น KBank, SCB, TrueMoney"
+                  placeholder="เช่น KBank, SCB, TrueMoney, เงินสด"
                   placeholderTextColor="#9CA3AF"
                   value={newPaymentName}
                   onChangeText={setNewPaymentName}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                   autoFocus
                 />
                 <TouchableOpacity
