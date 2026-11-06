@@ -230,9 +230,17 @@ export function GroupProvider({ children }) {
   // (เท่ากัน / เปอร์เซ็นต์ / item-based / amount-based)
   // ถ้าคำนวณเองในหน้าจอจะได้ผิดทันทีที่บิลไม่ได้หารเท่ากัน
   const fetchSettlement = useCallback(
-    async (groupId) => {
+    async (groupId, options = {}) => {
       const headers = await authHeaders();
-      const res = await http.get(`/groups/${groupId}/settlement`, headers);
+      const params = new URLSearchParams();
+      const strategy = String(options?.strategy || '').toLowerCase();
+      const hubPerson = options?.hubPerson ? String(options.hubPerson) : null;
+      if (strategy) params.append('strategy', strategy);
+      if (hubPerson) params.append('hubPerson', hubPerson);
+      let qs = '';
+      if (strategy) qs += `strategy=${encodeURIComponent(strategy)}`;
+      if (hubPerson) qs += (qs ? '&' : '') + `hubPerson=${encodeURIComponent(hubPerson)}`;
+      const res = await http.get(`/groups/${groupId}/settlement${qs ? '?' + qs : ''}`, headers);
       if (!res.data?.success) throw new Error(res.data?.error || 'คำนวณยอดสะสดไม่สำเร็จ');
       return {
         balances: Array.isArray(res.data.balances) ? res.data.balances : [],

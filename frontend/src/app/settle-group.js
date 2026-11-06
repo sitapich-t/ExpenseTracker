@@ -21,6 +21,101 @@ const baht = (n) =>
     maximumFractionDigits: 2,
   });
 
+const numOf = (v) => Number(String(v == null ? '' : v).replace(/,/g, '')) || 0;
+const satangOf = (v) => Math.round(numOf(v) * 100);
+const getBillMethod = (b) => String((b && (b.splitData || b.split_data || {}).method) || 'equal').toLowerCase();
+const getBillPayer = (b) => {
+  const p = b && (b.payer != null ? b.payer : (b.paidBy != null ? b.paidBy : (b.paid_by != null ? b.paid_by : '')));
+  return String(p);
+};
+const getBillSharedIds = (b, fallbackMembers) => {
+  const split = (b && (b.splitData || b.split_data)) || {};
+  const method = String(split.method || 'equal').toLowerCase();
+  let ids = [];
+  if (Array.isArray(split.memberIds) && split.memberIds.length > 0) ids = split.memberIds.map(String);
+  else if (split.shares && typeof split.shares === 'object') ids = Object.keys(split.shares).map(String);
+  else if (split.amounts && typeof split.amounts === 'object') ids = Object.keys(split.amounts).map(String);
+  if (method === 'item') {
+    const set = new Set();
+    (split.items || []).forEach((it) => {
+      const list = (it && it.sharedBy) || [];
+      list.forEach((sid) => { const k = String(sid || ''); if (k) set.add(k); });
+    });
+    ids = Array.from(set);
+  }
+  const list = ids.length > 0 ? ids : (fallbackMembers || []).map((m) => String(m.id == null ? m.user_id : m.id)).filter(Boolean);
+  return list.map((x) => String(x)).filter((x) => x && x !== 'undefined' && x !== 'null');
+};
+const computeBillOwedMap = (b, fallbackMembers) => {
+  const method = getBillMethod(b);
+  const payer = getBillPayer(b);
+  const sc = numOf(b && (b.scAmount != null ? b.scAmount : b.sc_amount));
+  const vat = numOf(b && (b.vatAmount != null ? b.vatAmount : b.vat_amount));
+  const grandSatang = Math.round((numOf(b && b.amount) || 0) * 100);
+  const fallbackGrand = Math.round(((numOf(b && b.subtotal) || 0) + sc + vat) * 100);
+  const totalSatang = grandSatang > 0 ? grandSatang : fallbackGrand;
+  const owed = {};
+  const add = (sid, satang) => {
+    const key = String(sid == null ? '' : sid);
+    if (!key || key === 'undefined' || key === 'null') return;
+    owed[key] = (owed[key] || 0) + satang;
+  };
+  const settleOwed = (sid, satang) => {
+    if (String(sid) !== String(payer) && satang > 0) add(sid, Math.round(satang));
+  };
+  const split = (b && (b.splitData || b.split_data)) || {};
+  const sharedIds = getBillSharedIds(b, fallbackMembers);
+  if (method === 'percent') {
+    const shares = split.shares || {};
+    Object.keys(shares).forEach((sid) => {
+      const pct = Number(shares[sid]) || 0;
+      if (pct <= 0) return;
+      settleOwed(sid, (totalSatang * pct) / 100);
+    });
+  } else if (method === 'amount') {
+    const amounts = split.amounts || {};
+    Object.keys(amounts).forEach((sid) => {
+      settleOwed(sid, satangOf(Number(amounts[sid]) || 0));
+    });
+  } else if (method === 'item') {
+    const items = split.items || [];
+    const weights = {};
+    const weightIds = [];
+    items.forEach((it) => {
+      const price = Number(it && it.price) || 0;
+      const priceSatang = Math.round(price * 100);
+      const clean = [];
+      const list = (it && it.sharedBy) || [];
+      list.forEach((sid) => { const k = String(sid || ''); if (k) clean.push(k); });
+      if (clean.length === 0) return;
+      const per = priceSatang / clean.length;
+      clean.forEach((sid) => {
+        const key = String(sid);
+        if (!Object.prototype.hasOwnProperty.call(weights, key)) weightIds.push(key);
+        weights[key] = (weights[key] || 0) + per;
+      });
+    });
+    const totalW = weightIds.reduce((s, k) => s + (weights[k] || 0), 0);
+    if (weightIds.length > 0) {
+      const alloc = weightIds.map((k) => ({ id: k, w: weights[k] }));
+      const rawVals = alloc.map((r) => ({ id: r.id, v: (totalSatang * r.w) / (totalW || 1) }));
+      const floors = rawVals.map((r) => Math.floor(r.v));
+      let diff = totalSatang - floors.reduce((s, v) => s + v, 0);
+      const order = rawVals.map((r, i) => ({ i: i, rem: r.v - Math.floor(r.v) })).sort((a, b) => b.rem - a.rem);
+      const resultArr = floors.slice();
+      for (let i = 0; i < diff; i++) resultArr[order[i % order.length].i] += 1;
+      resultArr.forEach((v, i) => settleOwed(alloc[i].id, v));
+    }
+  } else {
+    const ids = sharedIds.length > 0 ? sharedIds : (fallbackMembers || []).map((m) => String(m.id == null ? m.user_id : m.id)).filter(Boolean);
+    const n = ids.length || 1;
+    const base = Math.floor(totalSatang / n);
+    const rem = totalSatang - base * n;
+    ids.forEach((id, i) => settleOwed(id, base + (i < rem ? 1 : 0)));
+  }
+  return owed;
+};
+
 const EMPTY = [];
 
 export default function GroupSettleScreen() {
@@ -51,7 +146,8 @@ export default function GroupSettleScreen() {
 
   const [remindedList, setRemindedList] = useState([]);
   const [simplifiedDebts, setSimplifiedDebts] = useState([]);
-  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcLoading, setCalcLoading] = useState(true);
+  const [settlement, setSettlement] = useState(null);
   const [saving, setSaving] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [sendingAllReminders, setSendingAllReminders] = useState(false);
@@ -74,154 +170,51 @@ export default function GroupSettleScreen() {
   // รายการชำระย่อยตามบิล (Raw Transactions)
   const rawTransactions = [];
   bills.forEach((b, bIdx) => {
-    const total = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
+    const payer = getBillPayer(b);
+    const totalSatang = Math.round((numOf(b && b.amount) || 0) * 100);
+    const fallbackSatang = Math.round(
+      ((numOf(b && b.subtotal) || 0) + numOf(b && (b.scAmount != null ? b.scAmount : b.sc_amount)) + numOf(b && (b.vatAmount != null ? b.vatAmount : b.vat_amount))) * 100
+    );
+    const total = totalSatang > 0 ? totalSatang : fallbackSatang;
     if (total <= 0) return;
+    if (String((b && b.type) || 'expense').toLowerCase() === 'income') return;
 
-    const payer = String(b.payer ?? b.paidBy ?? '');
-    const method = b.splitData?.method || 'equal';
-
-    if (method === 'percent' && b.splitData?.shares) {
-      Object.entries(b.splitData.shares).forEach(([sid, pct], mIdx) => {
-        if (sid === payer) return;
-        const share = Math.round((total * (parseFloat(pct) || 0) / 100) * 100) / 100;
-        if (share <= 0) return;
-        rawTransactions.push({
-          id: `r_${b.id || bIdx}_${mIdx}`,
-          from: nameOf(sid),
-          to: nameOf(payer),
-          note: b.title || 'บิล',
-          amount: baht(share),
-        });
+    const owedMap = computeBillOwedMap(b, members);
+    Object.keys(owedMap).forEach((sid) => {
+      const satang = owedMap[sid];
+      if (!sid || sid === payer || !(satang > 0)) return;
+      rawTransactions.push({
+        id: 'r_' + (b.id || bIdx) + '_' + sid,
+        from: nameOf(sid),
+        to: nameOf(payer),
+        note: b.title || 'expense',
+        amount: baht(satang / 100),
+        rawAmount: satang / 100,
       });
-    } else if (method === 'amount' && b.splitData?.amounts) {
-      Object.entries(b.splitData.amounts).forEach(([sid, val], mIdx) => {
-        if (sid === payer) return;
-        const share = parseFloat(val) || 0;
-        if (share <= 0) return;
-        rawTransactions.push({
-          id: `r_${b.id || bIdx}_${mIdx}`,
-          from: nameOf(sid),
-          to: nameOf(payer),
-          note: b.title || 'บิล',
-          amount: baht(share),
-        });
-      });
-    } else {
-      let sharedIds = [];
-      if (Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0) {
-        sharedIds = b.splitData.memberIds.map(String);
-      } else if (b.splitData?.shares && typeof b.splitData.shares === 'object') {
-        sharedIds = Object.keys(b.splitData.shares).map(String);
-      } else if (b.splitData?.amounts && typeof b.splitData.amounts === 'object') {
-        sharedIds = Object.keys(b.splitData.amounts).map(String);
-      } else {
-        sharedIds = members.map((m) => String(m.id ?? m.user_id));
-      }
-      sharedIds = sharedIds.filter((sid) => sid && sid !== 'undefined' && sid !== 'null');
-      if (sharedIds.length === 0) sharedIds = members.map((m) => String(m.id ?? m.user_id));
-
-      const n = sharedIds.length || 1;
-      const per = Math.round((total / n) * 100) / 100;
-
-      sharedIds.forEach((sid, mIdx) => {
-        if (String(sid) === String(payer)) return;
-        rawTransactions.push({
-          id: `r_${b.id || bIdx}_${mIdx}`,
-          from: nameOf(sid),
-          to: nameOf(payer),
-          note: b.title || 'ค่าใช้จ่าย',
-          amount: baht(per),
-        });
-      });
-    }
+    });
   });
 
-  // คำนวณยอด Net Balance ของสมาชิกแต่ละคน
-  const memberBalances = useMemo(() => {
-    const balanceSatang = {};
-    members.forEach((m) => {
-      balanceSatang[String(m.id ?? m.user_id)] = 0;
-    });
-
-    bills.forEach((b) => {
-      const totalSatang = Math.round(
-        (parseFloat(String(b.amount).replace(/,/g, '')) || 0) * 100
-      );
-      if (totalSatang <= 0) return;
-
-      const payer = String(b.payer ?? b.paidBy ?? '');
-      if (payer in balanceSatang) balanceSatang[payer] += totalSatang;
-
-      const method = b.splitData?.method || 'equal';
-
-      if (method === 'percent' && b.splitData?.shares) {
-        Object.entries(b.splitData.shares).forEach(([sid, pct]) => {
-          const share = Math.round((totalSatang * (parseFloat(pct) || 0)) / 100);
-          if (sid in balanceSatang) balanceSatang[sid] -= share;
-        });
-      } else if (method === 'amount' && b.splitData?.amounts) {
-        Object.entries(b.splitData.amounts).forEach(([sid, val]) => {
-          const share = Math.round((parseFloat(val) || 0) * 100);
-          if (sid in balanceSatang) balanceSatang[sid] -= share;
-        });
-      } else {
-        const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
-          ? b.splitData.memberIds.map(String)
-          : members.map((m) => String(m.id ?? m.user_id));
-
-        const n = sharedIds.length || 1;
-        const base = Math.floor(totalSatang / n);
-        const remainder = totalSatang - base * n;
-
-        sharedIds.forEach((sid, i) => {
-          const share = base + (i < remainder ? 1 : 0);
-          if (sid in balanceSatang) balanceSatang[sid] -= share;
-        });
-      }
-    });
-
-    return balanceSatang;
-  }, [members, bills]);
-
-  // รายชื่อเจ้าหนี้ (มียอดสุทธิ > 0) สำหรับใช้เลือกเป็น Hub Person
   const creditorMembers = useMemo(() => {
-    return members.filter((m) => {
-      const id = String(m.id ?? m.user_id);
-      return (memberBalances[id] || 0) > 0;
+    const balanceMap = {};
+    (settlement && settlement.balances ? settlement.balances : []).forEach((bb) => {
+      balanceMap[String(bb.person)] = Number(bb.amount) || 0;
     });
-  }, [members, memberBalances]);
+    return members.filter((m) => (balanceMap[String(m.id ?? m.user_id)] || 0) > 0);
+  }, [members, settlement]);
 
   const loadSettlement = useCallback(async () => {
-    if (members.length === 0 || bills.length === 0) {
-      setSimplifiedDebts([]);
-      return;
-    }
-
-    setCalcLoading(true);
-
-    const payload = Object.entries(memberBalances).map(([person, satang]) => ({
-      person,
-      amount: satang / 100,
-    }));
-
     try {
-      const token = await getToken();
-      const res = await http.post(
-        '/bill-split/simplify-debts',
-        {
-          balances: payload,
-          options: {
-            strategy,
-            hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
-          },
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const result = await fetchSettlement(groupId, {
+        strategy,
+        hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
+      });
 
-      const txs = res.data?.transactions || [];
+      setCalcLoading(false);
+      setSettlement(result);
+      const txs = result?.transactions || [];
       setSimplifiedDebts(
         txs.map((t, i) => ({
-          id: `s_${i + 1}`,
+          id: 's_' + (i + 1),
           fromId: String(t.from),
           toId: String(t.to),
           from: nameOf(t.from),
@@ -231,15 +224,47 @@ export default function GroupSettleScreen() {
         }))
       );
     } catch (_err) {
-      setSimplifiedDebts([]);
-    } finally {
       setCalcLoading(false);
+      setSettlement(null);
+      setSimplifiedDebts([]);
     }
-  }, [members, bills, memberBalances, nameOf, strategy, selectedHubPerson]);
+  }, [groupId, nameOf, strategy, selectedHubPerson, fetchSettlement]);
 
   useEffect(() => {
-    loadSettlement();
-  }, [loadSettlement]);
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const result = await fetchSettlement(groupId, {
+          strategy,
+          hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
+        });
+        if (cancelled) return;
+        setCalcLoading(false);
+        setSettlement(result);
+        const txs = result?.transactions || [];
+        setSimplifiedDebts(
+          txs.map((t, i) => ({
+            id: 's_' + (i + 1),
+            fromId: String(t.from),
+            toId: String(t.to),
+            from: nameOf(t.from),
+            to: nameOf(t.to),
+            amount: baht(t.amount),
+            rawAmount: t.amount,
+          }))
+        );
+      } catch (_err) {
+        if (cancelled) return;
+        setCalcLoading(false);
+        setSettlement(null);
+        setSimplifiedDebts([]);
+      }
+    };
+    run().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [groupId, nameOf, strategy, selectedHubPerson, fetchSettlement]);
 
   const handleSendReminder = async (debt) => {
     try {
