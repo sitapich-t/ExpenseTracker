@@ -125,8 +125,8 @@ function splitBillForGroup(items, scRate = 0, vatRate = 0, options = {}) {
  * @param {Array<{person: string, amount: number}>} balances
  * @returns {Array<{from: string, to: string, amount: number}>}
  */
-function settleGroupBalances(balances) {
-  return simplifyDebts(balances);
+function settleGroupBalances(balances, options = {}) {
+  return simplifyDebts(balances, options);
 }
 
 /**
@@ -221,7 +221,7 @@ function splitBillAndSettle(items, scRate = 0, vatRate = 0, options = {}) {
     vatRate,
     options
   );
-  const transactions = settleGroupBalances(balances);
+  const transactions = settleGroupBalances(balances, options);
 
   return {
     items: detailedItems,
@@ -239,7 +239,7 @@ function splitBillAndSettle(items, scRate = 0, vatRate = 0, options = {}) {
  */
 function splitByMethodAndSettle(params = {}) {
   const result = splitBillByMethod(params);
-  return { ...result, transactions: settleGroupBalances(result.balances) };
+  return { ...result, transactions: settleGroupBalances(result.balances, params.options) };
 }
 
 module.exports = {

@@ -69,7 +69,7 @@ function prepareBill(tx, memberIds) {
  * @param {string[]} memberIds สมาชิกทั้งกลุ่ม
  * @returns {{balances:Array, transactions:Array, perBill:Array, skipped:Array}}
  */
-function calculateSettlement(transactions, memberIds = [], payments = []) {
+function calculateSettlement(transactions, memberIds = [], payments = [], options = {}) {
   const prepared = [];
   const skipped = [];
 
@@ -94,7 +94,7 @@ function calculateSettlement(transactions, memberIds = [], payments = []) {
 
   // หักยอดที่เจ้าหนี้ยืนยันรับเงินแล้ว (group_payments) ก่อนตัดหนี้
   const balances = applyPayments(calculateGroupBalances(prepared), payments);
-  const settlements = prepared.length > 0 ? simplifyDebts(balances) : [];
+  const settlements = prepared.length > 0 ? simplifyDebts(balances, options) : [];
 
   // เติมยอด 0 ให้สมาชิกที่ยังไม่มีภาระ เพื่อให้ UI แสดงครบทุกคน
   const seen = new Set(balances.map((b) => b.person));

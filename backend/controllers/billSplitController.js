@@ -76,13 +76,13 @@ async function previewBillSplit(req, res) {
  */
 async function simplifyDebtsHandler(req, res) {
   try {
-    const { balances } = req.body;
+    const { balances, options = {} } = req.body || {};
 
     if (!Array.isArray(balances) || balances.length === 0) {
       return res.status(400).json({ error: 'balances ต้องเป็น array ที่มีอย่างน้อย 1 รายการ' });
     }
 
-    const transactions = settleGroupBalances(balances);
+    const transactions = settleGroupBalances(balances, options);
     return res.status(200).json({ transactions });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -110,7 +110,7 @@ async function simplifyDebtsHandler(req, res) {
  */
 async function split(req, res) {
   try {
-    const { split: splitConfig, paidBy, items, subtotal, scRate = 0, vatRate = 0, groupMembers = [], vatBase } = req.body || {};
+    const { split: splitConfig, paidBy, items, subtotal, scRate = 0, vatRate = 0, groupMembers = [], vatBase, options = {} } = req.body || {};
 
     if (!splitConfig || typeof splitConfig !== 'object') {
       return res.status(400).json({ error: 'split ต้องเป็น object ที่ระบุ method' });
@@ -132,7 +132,12 @@ async function split(req, res) {
       subtotal,
       scRate,
       vatRate,
-      options: { groupMembers, ...(vatBase ? { vatBase } : {}) },
+      options: {
+        groupMembers,
+        ...(vatBase ? { vatBase } : {}),
+        strategy: options.strategy || req.body?.strategy,
+        hubPerson: options.hubPerson || req.body?.hubPerson,
+      },
     });
 
     return res.status(200).json(result);

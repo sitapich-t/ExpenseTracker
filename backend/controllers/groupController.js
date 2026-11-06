@@ -28,12 +28,12 @@ async function listGroupPayments(groupId) {
 }
 
 // คำนวณ settlement ของกลุ่ม (บิลทั้งหมด − ยอดที่ยืนยันรับเงินแล้ว) ใช้ร่วมกันทุก endpoint
-async function computeGroupSettlement(groupId) {
+async function computeGroupSettlement(groupId, options = {}) {
   const memberIds = await getGroupMemberIds(groupId);
   const { data, error } = await transactions.listForSettlement(groupId);
   if (error) throw error;
   const payments = await listGroupPayments(groupId);
-  return { ...calculateSettlement(data || [], memberIds, payments), payments };
+  return { ...calculateSettlement(data || [], memberIds, payments, options), payments };
 }
 
 // ชื่อสมาชิกในกลุ่ม: Map<user_id, name>
@@ -412,7 +412,13 @@ exports.getGroupSettlement = async (req, res) => {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงกลุ่มนี้' });
     }
 
-    const result = await computeGroupSettlement(id);
+    const settleOptions = {};
+    const strategyParam = String(req.query?.strategy || req.body?.strategy || '').toLowerCase();
+    const hubPersonParam = req.query?.hubPerson || req.body?.hubPerson;
+    if (strategyParam) settleOptions.strategy = strategyParam;
+    if (hubPersonParam) settleOptions.hubPerson = String(hubPersonParam);
+
+    const result = await computeGroupSettlement(id, settleOptions);
 
     // บันทึกผลการตัดหนี้ลง group_settlements ทุกครั้ง (เพื่อให้มีข้อมูลในตาราง)
     try {
@@ -1149,7 +1155,10 @@ exports.getGroupSettlements = async (req, res) => {
     }));
 
     const { balances } = splitBillForGroup(items, 0, 0, { groupMembers: memberIds });
-    const simplified = settleGroupBalances(balances);
+    const simplified = settleGroupBalances(balances, {
+      strategy: String(req.query?.strategy || req.body?.strategy || 'greedy'),
+      hubPerson: req.query?.hubPerson || req.body?.hubPerson,
+    });
 
     let pending = await groupSettlementRepo.findPendingByGroupId(groupId);
 
