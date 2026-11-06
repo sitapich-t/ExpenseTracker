@@ -141,7 +141,7 @@ export default function CreateGroupScreen() {
           </View>
 
           {/* Field: ไอคอนและสีประจำกลุ่ม */}
-          <View style={styles.fieldGroup}>
+          {/* <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>ไอคอนและสีประจำกลุ่ม</Text>
             <View style={styles.colorsRow}>
               {GROUP_COLORS_6.map((color) => {
@@ -160,10 +160,10 @@ export default function CreateGroupScreen() {
                 );
               })}
             </View>
-          </View>
+          </View> */}
 
           {/* Field: งบประมาณกลุ่ม (บาท) */}
-          <View style={styles.fieldGroup}>
+          {/* <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>งบประมาณกลุ่ม (บาท)</Text>
             <View style={styles.budgetInputContainer}>
               <TextInput
@@ -176,7 +176,7 @@ export default function CreateGroupScreen() {
               />
               <Text style={styles.budgetSuffix}>บาท</Text>
             </View>
-          </View>
+          </View> */}
 
           {/* Bottom Purple Button */}
           <TouchableOpacity

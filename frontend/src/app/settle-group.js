@@ -21,7 +21,6 @@ const baht = (n) =>
     maximumFractionDigits: 2,
   });
 
-// array ว่างที่ reference เดิมทุกครั้ง (ไม่ให้ useCallback/useMemo คำนวณใหม่ทุก render)
 const EMPTY = [];
 
 export default function GroupSettleScreen() {
@@ -35,16 +34,21 @@ export default function GroupSettleScreen() {
   const members = useMemo(() => (Array.isArray(ctx?.members) ? ctx.members : EMPTY), [ctx]);
   const bills = useMemo(() => (Array.isArray(ctx?.bills) ? ctx.bills : EMPTY), [ctx]);
 
-    const nameOf = useCallback(
-      (id) => {
-        const m = members.find((mm) => String(mm.id) === String(id) || String(mm.user_id) === String(id));
-        return m?.name || 'สมาชิก';
-      },
-      [members]
-    );
+  const nameOf = useCallback(
+    (id) => {
+      const m = members.find((mm) => String(mm.id) === String(id) || String(mm.user_id) === String(id));
+      return m?.name || 'สมาชิก';
+    },
+    [members]
+  );
 
-  // 2 modes: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
+  // 2 modes หลัก: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
   const [activeTab, setActiveTab] = useState('summary');
+  
+  // Strategy สำหรับการตัดหนี้: 'greedy' (คู่ต่อคู่) vs 'hub' (โอนผ่านศูนย์กลาง)
+  const [strategy, setStrategy] = useState('greedy');
+  const [selectedHubPerson, setSelectedHubPerson] = useState(null);
+
   const [remindedList, setRemindedList] = useState([]);
   const [simplifiedDebts, setSimplifiedDebts] = useState([]);
   const [calcLoading, setCalcLoading] = useState(false);
@@ -55,7 +59,6 @@ export default function GroupSettleScreen() {
 
   const myId = String(me?.id || '');
 
-  // ดึงข้อมูลกลุ่มใหม่ทุกครั้งที่กลับมาหน้านี้ (เผื่อเพิ่งเพิ่มบิล/สมาชิก)
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -68,7 +71,7 @@ export default function GroupSettleScreen() {
     }, [refresh])
   );
 
-  // รายการ "ต้องจ่ายให้ใคร" ต่อบิล (รองรับทั้ง equal, percent, amount)
+  // รายการชำระย่อยตามบิล (Raw Transactions)
   const rawTransactions = [];
   bills.forEach((b, bIdx) => {
     const total = parseFloat(String(b.amount).replace(/,/g, '')) || 0;
@@ -112,62 +115,32 @@ export default function GroupSettleScreen() {
       } else if (b.splitData?.amounts && typeof b.splitData.amounts === 'object') {
         sharedIds = Object.keys(b.splitData.amounts).map(String);
       } else {
-          sharedIds = members.map((m) => String(m.id ?? m.user_id));
-        }
-        sharedIds = sharedIds.filter((sid) => sid && sid !== 'undefined' && sid !== 'null');
-        if (sharedIds.length === 0) sharedIds = members.map((m) => String(m.id ?? m.user_id));
+        sharedIds = members.map((m) => String(m.id ?? m.user_id));
+      }
+      sharedIds = sharedIds.filter((sid) => sid && sid !== 'undefined' && sid !== 'null');
+      if (sharedIds.length === 0) sharedIds = members.map((m) => String(m.id ?? m.user_id));
 
-        const n = sharedIds.length || 1;
-        const per = Math.round((total / n) * 100) / 100;
+      const n = sharedIds.length || 1;
+      const per = Math.round((total / n) * 100) / 100;
 
-        sharedIds.forEach((sid, mIdx) => {
-          if (String(sid) === String(payer)) return;
-          rawTransactions.push({
-            id: `r_${b.id || bIdx}_${mIdx}`,
-            from: nameOf(sid),
-            to: nameOf(payer),
-            note: b.title || 'ค่าใช้จ่าย',
-            amount: baht(per),
-          });
+      sharedIds.forEach((sid, mIdx) => {
+        if (String(sid) === String(payer)) return;
+        rawTransactions.push({
+          id: `r_${b.id || bIdx}_${mIdx}`,
+          from: nameOf(sid),
+          to: nameOf(payer),
+          note: b.title || 'ค่าใช้จ่าย',
+          amount: baht(per),
         });
+      });
     }
   });
 
-  const loadSettlement = useCallback(async () => {
-    if (members.length === 0 || bills.length === 0) {
-      setSimplifiedDebts([]);
-      return;
-    }
-
-    setCalcLoading(true);
-
-    try {
-      if (groupId && typeof fetchSettlement === 'function') {
-        const res = await fetchSettlement(groupId);
-        if (res && Array.isArray(res.transactions)) {
-          setSimplifiedDebts(
-            res.transactions.map((t, i) => ({
-              id: `s_${i + 1}`,
-              fromId: String(t.from),
-              toId: String(t.to),
-              from: nameOf(t.from),
-              to: nameOf(t.to),
-              amount: baht(t.amount),
-              rawAmount: t.amount,
-            }))
-          );
-          setCalcLoading(false);
-          return;
-        }
-      }
-    } catch (_fetchErr) {
-      // fallback สู่การคำนวณ local
-    }
-
-    // fallback: ยอดคงเหลือต่อคน หน่วยสตางค์
+  // คำนวณยอด Net Balance ของสมาชิกแต่ละคน
+  const memberBalances = useMemo(() => {
     const balanceSatang = {};
     members.forEach((m) => {
-      balanceSatang[String(m.id)] = 0;
+      balanceSatang[String(m.id ?? m.user_id)] = 0;
     });
 
     bills.forEach((b) => {
@@ -194,7 +167,7 @@ export default function GroupSettleScreen() {
       } else {
         const sharedIds = Array.isArray(b.splitData?.memberIds) && b.splitData.memberIds.length > 0
           ? b.splitData.memberIds.map(String)
-          : members.map((m) => String(m.id));
+          : members.map((m) => String(m.id ?? m.user_id));
 
         const n = sharedIds.length || 1;
         const base = Math.floor(totalSatang / n);
@@ -207,7 +180,26 @@ export default function GroupSettleScreen() {
       }
     });
 
-    const payload = Object.entries(balanceSatang).map(([person, satang]) => ({
+    return balanceSatang;
+  }, [members, bills]);
+
+  // รายชื่อเจ้าหนี้ (มียอดสุทธิ > 0) สำหรับใช้เลือกเป็น Hub Person
+  const creditorMembers = useMemo(() => {
+    return members.filter((m) => {
+      const id = String(m.id ?? m.user_id);
+      return (memberBalances[id] || 0) > 0;
+    });
+  }, [members, memberBalances]);
+
+  const loadSettlement = useCallback(async () => {
+    if (members.length === 0 || bills.length === 0) {
+      setSimplifiedDebts([]);
+      return;
+    }
+
+    setCalcLoading(true);
+
+    const payload = Object.entries(memberBalances).map(([person, satang]) => ({
       person,
       amount: satang / 100,
     }));
@@ -216,7 +208,13 @@ export default function GroupSettleScreen() {
       const token = await getToken();
       const res = await http.post(
         '/bill-split/simplify-debts',
-        { balances: payload },
+        {
+          balances: payload,
+          options: {
+            strategy,
+            hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
+          },
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -237,14 +235,12 @@ export default function GroupSettleScreen() {
     } finally {
       setCalcLoading(false);
     }
-  }, [members, bills, nameOf, groupId, fetchSettlement]);
+  }, [members, bills, memberBalances, nameOf, strategy, selectedHubPerson]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadSettlement();
   }, [loadSettlement]);
 
-  // ส่งแจ้งเตือนทวงเงินรายบุคคล
   const handleSendReminder = async (debt) => {
     try {
       const token = await getToken();
@@ -269,7 +265,6 @@ export default function GroupSettleScreen() {
     }
   };
 
-  // ส่งแจ้งเตือนทวงเงินอัตโนมัติให้ทุกคนในกลุ่ม
   const handleSendAllReminders = async () => {
     if (simplifiedDebts.length === 0) {
       Alert.alert('แจ้งเตือน', 'ไม่มีรายการค้างชำระในกลุ่มนี้');
@@ -315,7 +310,6 @@ export default function GroupSettleScreen() {
     );
   };
 
-  // คนที่ต้องได้เงินคืน (เจ้าหนี้) กดยืนยันว่าได้รับเงินแล้ว
   const handleConfirmReceived = (debt) => {
     Alert.alert(
       'ยืนยันได้รับเงินแล้ว',
@@ -404,7 +398,7 @@ export default function GroupSettleScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        {/* Sub-header badges: Location & Member count */}
+        {/* Sub-header badges */}
         <View style={styles.badgeRow}>
           <View style={styles.metaBadge}>
             <Ionicons name="location-sharp" size={14} color="#6D28D9" />
@@ -485,12 +479,90 @@ export default function GroupSettleScreen() {
             </View>
           )}
 
-          {/* View 2: จ่าย (Simplified Net Debts with Auto-Remind & Confirm Buttons) */}
+          {/* View 2: จ่าย (Simplified Net Debts with Strategy Switching) */}
           {activeTab === 'summary' && (
             <View>
+              {/* Strategy Selector Box */}
+              <View style={styles.strategyBox}>
+                <Text style={styles.strategyTitle}>รูปแบบการคำนวณเงินคืน:</Text>
+                
+                <View style={styles.strategyBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.strategyOptionBtn, strategy === 'greedy' && styles.strategyOptionBtnActive]}
+                    onPress={() => setStrategy('greedy')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="git-compare-outline"
+                      size={14}
+                      color={strategy === 'greedy' ? '#FFFFFF' : '#6D28D9'}
+                    />
+                    <Text style={[styles.strategyOptionText, strategy === 'greedy' && styles.strategyOptionTextActive]}>
+                      จับคู่ตามหนี้ (Greedy)
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.strategyOptionBtn, strategy === 'hub' && styles.strategyOptionBtnActive]}
+                    onPress={() => setStrategy('hub')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name="person-circle-outline"
+                      size={14}
+                      color={strategy === 'hub' ? '#FFFFFF' : '#6D28D9'}
+                    />
+                    <Text style={[styles.strategyOptionText, strategy === 'hub' && styles.strategyOptionTextActive]}>
+                      โอนผ่านศูนย์กลาง (Hub)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Hub Person Selection (แสดงเฉพาะเมื่อเลือก strategy = 'hub') */}
+                {strategy === 'hub' && (
+                  <View style={styles.hubSelectionContainer}>
+                    <Text style={styles.hubSelectionLabel}>เลือกคนกลางรับเงินคืน (Hub Person):</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hubChipScroll}>
+                      <TouchableOpacity
+                        style={[
+                          styles.hubChip,
+                          selectedHubPerson === null && styles.hubChipActive,
+                        ]}
+                        onPress={() => setSelectedHubPerson(null)}
+                      >
+                        <Text
+                          style={[
+                            styles.hubChipText,
+                            selectedHubPerson === null && styles.hubChipTextActive,
+                          ]}
+                        >
+                          อัตโนมัติ (ยอดมากสุด)
+                        </Text>
+                      </TouchableOpacity>
+
+                      {creditorMembers.map((m) => {
+                        const mId = String(m.id ?? m.user_id);
+                        const isSelected = selectedHubPerson === mId;
+                        return (
+                          <TouchableOpacity
+                            key={mId}
+                            style={[styles.hubChip, isSelected && styles.hubChipActive]}
+                            onPress={() => setSelectedHubPerson(mId)}
+                          >
+                            <Text style={[styles.hubChipText, isSelected && styles.hubChipTextActive]}>
+                              {m.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
               <View style={styles.summaryHeaderRow}>
                 <Text style={styles.sectionSubtitle}>
-                  สรุปยอดรวมสุทธิแบบหักลบกันแล้ว ({simplifiedDebts.length} รายการ)
+                  สรุปยอดรวมสุทธิ ({simplifiedDebts.length} รายการ)
                 </Text>
 
                 {simplifiedDebts.length > 0 && (
@@ -544,7 +616,6 @@ export default function GroupSettleScreen() {
 
                         <Text style={styles.settleAmount}>฿{item.amount}</Text>
 
-                        {/* ปุ่มยืนยันได้รับเงินแล้ว (สำหรับเจ้าหนี้ที่ต้องได้เงินคืน) */}
                         {isCreditor && (
                           <TouchableOpacity
                             style={styles.confirmReceivedBtn}
@@ -564,7 +635,6 @@ export default function GroupSettleScreen() {
                         )}
                       </View>
 
-                      {/* ปุ่มกระดิ่งทวงเงินรายบุคคล */}
                       <TouchableOpacity
                         style={[styles.bellBtn, isReminded && styles.bellBtnReminded]}
                         onPress={() => handleSendReminder(item)}
@@ -584,7 +654,7 @@ export default function GroupSettleScreen() {
           )}
         </ScrollView>
 
-        {/* Bottom Button: บันทึกการเคลียร์บิล */}
+        {/* Bottom Button */}
         <View style={styles.bottomBar}>
           <TouchableOpacity
             style={[styles.saveSettleBtn, (saving || simplifiedDebts.length === 0) && { opacity: 0.6 }]}
@@ -677,6 +747,82 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 110,
+  },
+  strategyBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...SHADOWS.small,
+  },
+  strategyTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 8,
+  },
+  strategyBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  strategyOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  strategyOptionBtnActive: {
+    backgroundColor: '#6D28D9',
+    borderColor: '#6D28D9',
+  },
+  strategyOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6D28D9',
+  },
+  strategyOptionTextActive: {
+    color: '#FFFFFF',
+  },
+  hubSelectionContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  hubSelectionLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    marginBottom: 6,
+  },
+  hubChipScroll: {
+    flexDirection: 'row',
+  },
+  hubChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    marginRight: 6,
+  },
+  hubChipActive: {
+    backgroundColor: '#10B981',
+  },
+  hubChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  hubChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   summaryHeaderRow: {
     flexDirection: 'row',

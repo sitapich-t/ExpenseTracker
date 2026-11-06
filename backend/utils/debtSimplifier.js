@@ -2,58 +2,29 @@
  * debtSimplifier.js
  * -----------------
  * Core algorithm สำหรับลดจำนวนธุรกรรมการโอนเงินให้น้อยที่สุด (Debt Simplification)
- * ระยะที่ 1: ใช้ Greedy Algorithm (จับคู่ผู้เป็นหนี้มากสุด กับ ผู้ควรได้รับเงินคืนมากสุด)
- *
- * หมายเหตุ: การหาคำตอบที่ optimal ที่สุด (จำนวนธุรกรรมน้อยที่สุดเท่าที่เป็นไปได้)
- * เป็นปัญหา NP-hard (คล้าย subset-sum) การใช้ Greedy จะได้คำตอบที่ดีมากในทางปฏิบัติ
- * แต่ไม่การันตี optimal 100% — หากต้องการ optimal จริง ให้พิจารณาทำใน Phase ถัดไป
- * (เช่น backtracking / ILP) เมื่อจำนวนคนในกลุ่มไม่มากเกินไป
+ * 
+ * Strategies:
+ * - 'greedy' (Default): จับคู่ลูกหนี้มากสุด กับ เจ้าหนี้มากสุด เพื่อให้จำนวนธุรกรรมน้อยที่สุด
+ * - 'hub': ให้ลูกหนี้ทุกคนโอนไปที่เจ้าหนี้ (Hub) แล้ว Hub ค่อยกระจายให้เจ้าหนี้คนอื่น
  */
 
 const DEFAULT_TOLERANCE = 0.01; // บาท
 
-/** แปลงบาท -> สตางค์ (integer) เพื่อเลี่ยงปัญหา floating point */
+/**
+ * แปลงบาท -> สตางค์ (integer) เพื่อเลี่ยงปัญหา floating point
+ * @param {number} baht
+ * @returns {number}
+ */
 function toSatang(baht) {
   return Math.round(baht * 100);
 }
 
 /**
- * ลดจำนวนธุรกรรมการโอนเงินระหว่างสมาชิกในกลุ่ม
- *
- * @param {Array<{person: string, amount: number}>} balances
- *        - person: ชื่อ/id ของสมาชิก
- *        - amount: ยอดสุทธิ (บาท) โดย
- *            amount > 0  หมายถึง "ควรได้รับเงินคืน" (เป็นเจ้าหนี้)
- *            amount < 0  หมายถึง "ต้องจ่ายเงิน" (เป็นลูกหนี้)
- * @param {Object} [options]
- * @param {number} [options.tolerance=0.01] - ค่าความคลาดเคลื่อนที่ยอมรับได้ (บาท)
- *        สำหรับตรวจสอบว่าผลรวม balances ทั้งหมดควรเท่ากับ 0
- * @returns {Array<{from: string, to: string, amount: number}>} รายการธุรกรรมที่ต้องโอน
+ * เคลียร์เศษสตางค์ส่วนเกินที่เกิดจากการปัดเศษรายบุคคล
+ * @param {Array<{person: string, amount: number}>} people
+ * @returns {Array<{person: string, amount: number}>}
  */
-function simplifyDebts(balances, options = {}) {
-  const { tolerance = DEFAULT_TOLERANCE } = options;
-
-  if (!Array.isArray(balances) || balances.length === 0) {
-    return [];
-  }
-
-  // 1) ตรวจสอบว่าผลรวม balance ทั้งหมดใกล้เคียง 0 (หนี้ต้องสมดุลกันเสมอ)
-  const sumBaht = balances.reduce((s, b) => s + b.amount, 0);
-  if (Math.abs(sumBaht) > tolerance) {
-    throw new Error(
-      `ผลรวม balances ต้องเท่ากับ 0 (คลาดเคลื่อนได้ไม่เกิน ${tolerance} บาท) ` +
-        `แต่พบผลรวม = ${sumBaht}`
-    );
-  }
-
-  // 2) แปลงเป็นหน่วยสตางค์ (integer) และตัดคนที่ยอดใกล้ 0 ทิ้ง
-  let people = balances
-    .map((b) => ({ person: b.person, amount: toSatang(b.amount) }))
-    .filter((p) => Math.abs(p.amount) >= 1);
-  // 2.1) แก้ residual จากการปัดเศษแยกทีละคน (Math.round ต่อคน อาจทำให้
-  //      ผลรวมสตางค์คลาดเคลื่อน ±1..n satang แม้ระดับบาทจะสมดุลตาม tolerance แล้ว)
-  //      เติม/หักส่วนต่างนี้กับคนที่มียอดสูงสุด เพื่อให้ผลรวมสตางค์ = 0 เป๊ะ
-  //      ก่อนเข้า greedy matching — ป้องกันสตางค์ตกหล่นเงียบๆ ท้ายลูป
+function adjustResidual(people) {
   const residual = people.reduce((s, p) => s + p.amount, 0);
   if (residual !== 0 && people.length > 0) {
     const target = people.reduce((max, p) =>
@@ -61,15 +32,17 @@ function simplifyDebts(balances, options = {}) {
     );
     target.amount -= residual;
   }
+  return people.filter((p) => Math.abs(p.amount) >= 1);
+}
 
-  people = people.filter((p) => Math.abs(p.amount) >= 1);
-
+/**
+ * Strategy 1: Greedy Direct Matching
+ * @param {Array<{person: string, amount: number}>} people
+ * @returns {Array<{from: string, to: string, amount: number}>}
+ */
+function solveGreedy(people) {
   const transactions = [];
 
-
-  // 3) วนจับคู่ "เจ้าหนี้มากสุด" กับ "ลูกหนี้มากสุด" ทีละรอบ จนกว่าจะหมด
-  //    (O(n) ต่อรอบในการหาค่ามากสุด, O(n) รอบ รวม O(n^2) ซึ่งเพียงพอสำหรับ Phase 1
-  //    ถ้ากลุ่มมีสมาชิกจำนวนมาก ค่อยเปลี่ยนไปใช้ max-heap เพื่อลดเป็น O(n log n))
   while (true) {
     let maxCreditor = null;
     let maxDebtor = null;
@@ -83,24 +56,130 @@ function simplifyDebts(balances, options = {}) {
       }
     }
 
-    if (!maxCreditor || !maxDebtor) break; // ไม่มีใครค้างจ่าย/ค้างรับแล้ว
+    if (!maxCreditor || !maxDebtor) break;
 
     const settleAmount = Math.min(maxCreditor.amount, -maxDebtor.amount);
 
     transactions.push({
       from: maxDebtor.person,
       to: maxCreditor.person,
-      amount: settleAmount / 100, // แปลงกลับเป็นบาท
+      amount: settleAmount / 100,
     });
 
     maxCreditor.amount -= settleAmount;
     maxDebtor.amount += settleAmount;
 
-    // ตัดคนที่ยอดหมดแล้วออก (เหลือ < 1 สตางค์)
     people = people.filter((p) => Math.abs(p.amount) >= 1);
   }
 
   return transactions;
+}
+
+/**
+ * Strategy 2: Hub / Centralized Clearing
+ * @param {Array<{person: string, amount: number}>} people
+ * @param {string} [customHubPerson] ชื่อ person ที่ต้องการให้เป็น Hub
+ * @returns {Array<{from: string, to: string, amount: number}>}
+ */
+function solveHub(people, customHubPerson) {
+  const debtors = people.filter((p) => p.amount < 0);
+  const creditors = people.filter((p) => p.amount > 0);
+
+  if (debtors.length === 0 || creditors.length === 0) {
+    return [];
+  }
+
+  let hub = null;
+
+  if (customHubPerson) {
+    hub = creditors.find((c) => c.person === customHubPerson);
+
+    if (!hub) {
+      const isDebtor = debtors.some((d) => d.person === customHubPerson);
+      const reason = isDebtor
+        ? `เป็นลูกหนี้ (ยอดสุทธิ < 0)`
+        : `ไม่มีชื่ออยู่ในรายการยอดสุทธิ`;
+
+      throw new Error(
+        `Hub Person '${customHubPerson}' ไม่สามารถเป็น Hub ได้เนื่องจาก${reason} (Hub ต้องเป็นผู้ได้รับเงินคืนที่มียอดสุทธิ > 0 เท่านั้น)`
+      );
+    }
+  } else {
+    // หากไม่ได้ระบุ ให้เลือกเจ้าหนี้รายใหญ่ที่สุดโดยอัตโนมัติ
+    hub = creditors.reduce((max, c) => (c.amount > max.amount ? c : max));
+  }
+
+  const transactions = [];
+
+  // Step 1: ลูกหนี้ทุกคนโอนตรงเข้า Hub
+  for (const debtor of debtors) {
+    transactions.push({
+      from: debtor.person,
+      to: hub.person,
+      amount: Math.abs(debtor.amount) / 100,
+    });
+  }
+
+  // Step 2: Hub โอนกระจายไปให้เจ้าหนี้ท่านอื่น (ยกเว้นตัวเอง)
+  for (const creditor of creditors) {
+    if (creditor.person !== hub.person) {
+      transactions.push({
+        from: hub.person,
+        to: creditor.person,
+        amount: creditor.amount / 100,
+      });
+    }
+  }
+
+  return transactions;
+}
+
+/**
+ * ลดจำนวนธุรกรรมการโอนเงินระหว่างสมาชิกในกลุ่ม
+ *
+ * @param {Array<{person: string, amount: number}>} balances
+ *        - person: ชื่อ/id ของสมาชิก
+ *        - amount: ยอดสุทธิ (บาท) โดย
+ *            amount > 0  หมายถึง "ควรได้รับเงินคืน" (เจ้าหนี้)
+ *            amount < 0  หมายถึง "ต้องจ่ายเงิน" (ลูกหนี้)
+ * @param {Object} [options]
+ * @param {number} [options.tolerance=0.01] ค่าความคลาดเคลื่อนที่ยอมรับได้ (บาท)
+ * @param {'greedy'|'hub'} [options.strategy='greedy'] อัลกอริทึมที่ต้องการใช้
+ * @param {string} [options.hubPerson] กำหนด Hub Person เอง (ใช้คู่กับ strategy='hub', ต้องเป็นผู้มียอดสุทธิ > 0)
+ * @returns {Array<{from: string, to: string, amount: number}>} รายการธุรกรรมที่ต้องโอน
+ */
+function simplifyDebts(balances, options = {}) {
+  const { tolerance = DEFAULT_TOLERANCE, strategy = 'greedy', hubPerson } = options;
+
+  if (!Array.isArray(balances) || balances.length === 0) {
+    return [];
+  }
+
+  if (!['greedy', 'hub'].includes(strategy)) {
+    throw new Error(`Strategy ไม่ถูกต้อง: '${strategy}' (รองรับเฉพาะ 'greedy' หรือ 'hub')`);
+  }
+
+  // 1) ตรวจสอบว่าผลรวม balance ทั้งหมดใกล้เคียง 0
+  const sumBaht = balances.reduce((s, b) => s + b.amount, 0);
+  if (Math.abs(sumBaht) > tolerance) {
+    throw new Error(
+      `ผลรวม balances ต้องเท่ากับ 0 (คลาดเคลื่อนได้ไม่เกิน ${tolerance} บาท) แต่พบผลรวม = ${sumBaht}`
+    );
+  }
+
+  // 2) แปลงเป็นสตางค์และปรับเศษ residual
+  let people = balances
+    .map((b) => ({ person: b.person, amount: toSatang(b.amount) }))
+    .filter((p) => Math.abs(p.amount) >= 1);
+
+  people = adjustResidual(people);
+
+  // 3) คำนวณตาม Strategy ที่เลือก
+  if (strategy === 'hub') {
+    return solveHub(people, hubPerson);
+  }
+
+  return solveGreedy(people);
 }
 
 module.exports = {
