@@ -230,17 +230,20 @@ export default function ConfirmReceiptScreen() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          title: merchant,
+          title: String(merchant || 'General').trim().normalize('NFC'),
           amount: parseFloat(amount) || 0,
           netAmount: (parseFloat(amount) || 0) - (parseFloat(vat) || 0) - (parseFloat(serviceCharge) || 0),
           vat: parseFloat(vat) || 0,
           serviceCharge: parseFloat(serviceCharge) || 0,
           type: 'expense',
           category_id: categoryId,
-          merchant: merchant,
+          merchant: String(merchant || 'General').trim().normalize('NFC'),
           transaction_date: displayDateToIso(date) || new Date().toISOString(),
           paymentMethod: paymentMethod,
-          items: lineItems,
+          items: (lineItems || []).map((it) => ({
+            ...it,
+            name: String(it.name || '').trim().normalize('NFC'),
+          })),
         }),
       });
 
@@ -329,6 +332,8 @@ export default function ConfirmReceiptScreen() {
             style={styles.inputText}
             value={merchant}
             onChangeText={setMerchant}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
 
@@ -374,6 +379,8 @@ export default function ConfirmReceiptScreen() {
                     placeholder="ชื่อรายการ"
                     placeholderTextColor="#aaa"
                     onChangeText={(val) => handleUpdateItem(index, 'name', val)}
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
 
                   {/* ราคา */}

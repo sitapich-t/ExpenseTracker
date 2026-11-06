@@ -92,7 +92,7 @@ export default function EditProfileScreen() {
       const user = await getCurrentUser();
       const updated = {
         ...(user || {}),
-        name: form.name.trim(),
+        name: form.name.trim().normalize('NFC'),
         email: form.email.trim(),
         phone: form.phone.trim(),
         avatar,
@@ -155,7 +155,8 @@ export default function EditProfileScreen() {
                       placeholder={field.placeholder}
                       placeholderTextColor="#94A3B8"
                       keyboardType={field.keyboardType}
-                      autoCapitalize={field.autoCapitalize}
+                      autoCapitalize={field.autoCapitalize || 'none'}
+                      autoCorrect={false}
                     />
                   </View>
                   <Ionicons name="create-outline" size={18} color="#7C3AED" />

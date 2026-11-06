@@ -291,7 +291,7 @@ exports.createGroup = async (req, res) => {
 
     const newGroup = {
       id: uuidv4(),
-      name: name.trim(),
+      name: String(name || '').normalize('NFC').trim(),
       category: category || 'General',
       created_by: userId,
       members_count: 1,
