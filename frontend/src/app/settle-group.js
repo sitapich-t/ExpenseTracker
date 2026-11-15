@@ -352,6 +352,8 @@ export default function GroupSettleScreen() {
                 {
                   from_user: debt.fromId,
                   amount: debt.rawAmount,
+                  strategy,
+                  hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
                 },
                 { headers: { Authorization: `Bearer ${token}` } }
               );

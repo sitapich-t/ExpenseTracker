@@ -376,6 +376,27 @@ exports.deleteGroup = async (req, res) => {
 };
 
 // ==========================================
+// ลบรายการบิล/ธุรกรรมของกลุ่ม
+exports.deleteGroupTransaction = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { id, transactionId } = req.params;
+
+    if (!(await isGroupMember(id, userId))) {
+      return res.status(403).json({ success: false, error: "ข้อความผู้ใช้ไม่ใช่สมาชิกของกลุ่มนี้" });
+    }
+
+    const { error } = await transactions.deleteByGroupAndId(id, transactionId);
+    if (error) throw error;
+
+    return res.json({ success: true, message: "ลบรายการสำเร็จ" });
+  } catch (err) {
+    console.error("Delete Group Transaction Error:", err);
+    return res.status(500).json({ success: false, error: "Database Error: " + err.message });
+  }
+};
+
+// ==========================================
 // Group Transactions Controllers
 // ==========================================
 
@@ -488,7 +509,9 @@ exports.sendDebtReminders = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const { transactions: debts } = await computeGroupSettlement(id);
+    const effectiveStrategy = String(req.body?.strategy || '').toLowerCase() === 'hub' ? 'hub' : 'greedy';
+    const effectiveHubPerson = req.body?.hubPerson ? String(req.body.hubPerson) : null;
+    const { transactions: debts } = await computeGroupSettlement(id, { strategy: effectiveStrategy, hubPerson: effectiveHubPerson });
     // ไม่ทวงตัวเอง
     const targets = debts.filter(
       (d) => String(d.from) !== userId && (!debtorId || String(d.from) === debtorId)
@@ -557,7 +580,9 @@ exports.confirmPaymentReceived = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const { transactions: debts } = await computeGroupSettlement(id);
+    const effectiveStrategy = String(req.body?.strategy || '').toLowerCase() === 'hub' ? 'hub' : 'greedy';
+    const effectiveHubPerson = req.body?.hubPerson ? String(req.body.hubPerson) : null;
+    const { transactions: debts } = await computeGroupSettlement(id, { strategy: effectiveStrategy, hubPerson: effectiveHubPerson });
     const debt = debts.find((d) => String(d.from) === fromUser && String(d.to) === userId);
     if (!debt) {
       return res.status(404).json({ success: false, error: 'ไม่พบยอดค้างชำระจากสมาชิกคนนี้ถึงคุณ' });
@@ -869,7 +894,7 @@ exports.getGroupMembers = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { data, error } = await members.listMembers(id);
+    const { data, error } = await members.listMembershipsByGroupIds([id]);
 
     if (error) throw error;
     return res.json({ success: true, members: data || [] });

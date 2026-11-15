@@ -17,13 +17,15 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getCurrentUser } from '@/lib/groups';
-
+import { API_URL, getToken } from '@/lib/api';
+const SUPABASE_URL = 'https://nblmukddcldheegwpytc.supabase.co'; // ดูจาก URL แท็บเบราว์เซอร์ของคุณ
+const SUPABASE_KEY = 'sb_publishable_E2ySkDrbwW_n4OwnHKmRXQ_iBMJEytQ';
 const DEFAULT_AVATAR =
   'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80';
 
 const FIELDS = [
   { key: 'name', label: 'ชื่อ-นามสกุล', placeholder: 'ระบุชื่อ-นามสกุล' },
-  { key: 'email', label: 'อีเมล', placeholder: 'ระบุอีเมล', keyboardType: 'email-address', autoCapitalize: 'none' },
+  { key: 'email', label: 'อีเมล', placeholder: 'ระบุอีเมล', keyboardType: 'email-address', autoCapitalize: 'none', editable: false },
   { key: 'phone', label: 'เบอร์โทรศัพท์', placeholder: 'ระบุเบอร์โทรศัพท์', keyboardType: 'phone-pad' },
 ];
 
@@ -48,7 +50,7 @@ export default function EditProfileScreen() {
         email: user?.email ?? '',
         phone: user?.phone ?? '',
       });
-      setAvatar(user?.avatar || DEFAULT_AVATAR);
+      setAvatar(user?.avatar_url || user?.avatar || DEFAULT_AVATAR);
       setLoading(false);
     })();
     return () => {
@@ -90,18 +92,78 @@ export default function EditProfileScreen() {
     setSaving(true);
     try {
       const user = await getCurrentUser();
+      const token = await getToken();
+      const cleanName = form.name.trim().normalize('NFC');
+      const cleanPhone = form.phone.trim();
+      let finalAvatarUrl = avatar;
+
+      // 1. ถ้ามีการเลือกรูปใหม่จากในเครื่อง (uri ขึ้นต้นด้วย file://) ให้อัปโหลดขึ้น Supabase Storage
+      if (avatar && avatar.startsWith('file://')) {
+        const fileExt = avatar.split('.').pop()?.toLowerCase() || 'jpg';
+        const fileName = `${user?.id || 'user'}_${Date.now()}.${fileExt}`;
+        const mimeType = fileExt === 'png' ? 'image/png' : 'image/jpeg';
+
+        // แปลงไฟล์รูปในเครื่องเป็น ArrayBuffer (Binary) แทนการใช้ FormData
+        const fileResponse = await fetch(avatar);
+        const arrayBuffer = await fileResponse.arrayBuffer();
+
+        const uploadRes = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/avatar/${fileName}`,
+          {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_KEY,
+              'Content-Type': mimeType,
+              'x-upsert': 'true',
+            },
+            body: arrayBuffer,
+          }
+        );
+
+        if (!uploadRes.ok) {
+          const errText = await uploadRes.text();
+          throw new Error(`อัปโหลดรูปไม่สำเร็จ: ${errText}`);
+        }
+
+        // สร้าง Public URL สำหรับบันทึกลง Database
+        finalAvatarUrl = `${SUPABASE_URL}/storage/v1/object/public/avatar/${fileName}`;
+      }
+
+      // 2. ยิง API ไปอัปเดตข้อมูล + URL รูปภาพ ลงตาราง users ผ่าน Backend
+      const response = await fetch(`${API_URL}/api/v1/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          userId: user?.id,
+          name: cleanName,
+          phone: cleanPhone,
+          avatar_url: finalAvatarUrl,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถอัปเดตข้อมูลบนเซิร์ฟเวอร์ได้');
+      }
+
+      // 3. อัปเดตลง AsyncStorage เพื่อให้หน้า Profile แสดงผลทันที
       const updated = {
         ...(user || {}),
-        name: form.name.trim().normalize('NFC'),
+        ...(result.user || {}),
+        name: cleanName,
         email: form.email.trim(),
-        phone: form.phone.trim(),
-        avatar,
+        phone: cleanPhone,
+        avatar: finalAvatarUrl,
+        avatar_url: finalAvatarUrl,
       };
       await AsyncStorage.setItem('user', JSON.stringify(updated));
 
       Alert.alert(
         'บันทึกสำเร็จ',
-        'บันทึกข้อมูลส่วนตัวไว้ในเครื่องเรียบร้อยแล้ว (ระบบยังไม่มีเซิร์ฟเวอร์เก็บโปรไฟล์)',
+        'บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว',
         [{ text: 'ตกลง', onPress: () => router.back() }]
       );
     } catch (err) {
@@ -143,27 +205,31 @@ export default function EditProfileScreen() {
           </View>
 
           <View style={styles.formCard}>
-            {FIELDS.map((field, index) => (
-              <View key={field.key}>
-                <View style={styles.fieldRow}>
-                  <View style={styles.fieldTextCol}>
-                    <Text style={styles.fieldLabel}>{field.label}</Text>
-                    <TextInput
-                      style={styles.fieldInput}
-                      value={form[field.key]}
-                      onChangeText={(value) => setField(field.key, value)}
-                      placeholder={field.placeholder}
-                      placeholderTextColor="#94A3B8"
-                      keyboardType={field.keyboardType}
-                      autoCapitalize={field.autoCapitalize || 'none'}
-                      autoCorrect={false}
-                    />
+            {FIELDS.map((field, index) => {
+              const isEditable = field.editable !== false;
+              return (
+                  <View key={field.key}>
+                    <View style={styles.fieldRow}>
+                      <View style={styles.fieldTextCol}>
+                        <Text style={styles.fieldLabel}>{field.label}</Text>
+                        <TextInput
+                          style={styles.fieldInput}
+                          value={form[field.key]}
+                          onChangeText={(value) => setField(field.key, value)}
+                          placeholder={field.placeholder}
+                          placeholderTextColor="#94A3B8"
+                          keyboardType={field.keyboardType}
+                          autoCapitalize={field.autoCapitalize || 'none'}
+                          autoCorrect={false}
+                          editable={isEditable}
+                        />
+                      </View>
+                      {isEditable && <Ionicons name="create-outline" size={18} color="#7C3AED" />}
+                    </View>
+                    {index < FIELDS.length - 1 && <View style={styles.fieldDivider} />}
                   </View>
-                  <Ionicons name="create-outline" size={18} color="#7C3AED" />
-                </View>
-                {index < FIELDS.length - 1 && <View style={styles.fieldDivider} />}
-              </View>
-            ))}
+              );
+            })}
           </View>
 
           <TouchableOpacity

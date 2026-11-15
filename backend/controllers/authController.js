@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const supabase = require('../config/supabase'); // 1. เพิ่มการเชื่อมต่อ Supabase (เช็กชื่อตัวแปร export ใน config/supabase.js ด้วยนะครับ)
 const { findUserByEmail } = require('../services/userService');
 const { signAccessToken } = require('../utils/jwt');
 const { recordFailedLogin, clearLoginAttempts } = require('../middlewares/rateLimitMiddleware');
@@ -8,7 +9,7 @@ function generateToken(user) {
     id: user.id,
     name: user.name,
     email: user.email,
-    ver: user.token_version || 0
+    avatar_url: user.avatar_url || null    
   });
 }
 
@@ -52,7 +53,14 @@ exports.login = async (req, res) => {
       success: true,
       message: 'เข้าสู่ระบบสำเร็จ',
       token,
-      user: { id: user.id, email: user.email, name: user.name }
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        phone: user.phone || '',
+        ver: user.token_version ?? user.ver ?? 1,
+        avatar_url: user.avatar_url || null // <-- เพิ่มบรรทัดนี้
+      }
     });
   } catch (err) {
     console.error('❌ Login Error:', err);
@@ -74,3 +82,46 @@ function sendLoginError(res, attemptsLeft) {
     error: `อีเมลหรือรหัสผ่านไม่ถูกต้อง (เหลือโอกาสลองอีก ${attemptsLeft} ครั้ง)`
   });
 }
+
+// 2. ใช้ exports.updateProfile เพื่อให้ไฟล์ route เรียกใช้ได้
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.body.userId;
+    const { name, phone, avatar_url } = req.body; // 3. ใช้ name ให้ตรงกับ user.name ในระบบเดิม
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'ไม่พบข้อมูลผู้ใช้งาน' });
+    }
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, error: 'กรุณากรอกชื่อ-นามสกุล' });
+    }
+
+    const updatePayload = {
+      name: String(name).trim(),
+      phone: phone ? String(phone).trim() : null,
+    };
+    if (avatar_url) {
+      updatePayload.avatar_url = avatar_url;
+    }
+
+    // อัปเดตข้อมูลลงตาราง users ใน Supabase
+    const { data, error } = await supabase
+      .from('users')
+      .update(updatePayload)
+      .eq('id', userId)
+      .select('id, email, name, phone, avatar_url')
+      .single();
+
+    if (error) throw error;
+
+    return res.status(200).json({
+      success: true,
+      message: 'อัปเดตข้อมูลส่วนตัวเรียบร้อยแล้ว',
+      user: data
+    });
+  } catch (error) {
+    console.error('❌ Update Profile Error:', error);
+    return res.status(500).json({ success: false, error: `เกิดข้อผิดพลาดในการบันทึกข้อมูล: ${error.message}` });
+  }
+};

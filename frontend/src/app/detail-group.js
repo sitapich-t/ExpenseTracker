@@ -7,11 +7,14 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SHADOWS } from '@/lib/theme';
+import { getToken, http } from '@/lib/api';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useGroup } from './context/GroupContext';
 
 // ดึงข้อมูลใหม่ทุกครั้งที่หน้านี้ถูกโฟกัส
@@ -40,6 +43,7 @@ export default function GroupDetailScreen() {
 
   const groupName = group?.name || params.groupName || 'กลุ่มของฉัน';
   const [note, setNote] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
   // 1. รายการบิลและสมาชิก
   const bills = group?.bills || group?.transactions || [];
@@ -245,10 +249,77 @@ export default function GroupDetailScreen() {
             const payerMember = members.find((m) => String(m.id) === String(payerId));
             const payerName = payerMember ? payerMember.name : (bill.merchant || 'ไม่ระบุ');
 
-            return (
-              <TouchableOpacity
+            const isDeletingBill = deletingId === bill.id;
+
+            const renderBillActions = (progress, translation, swipeableMethods) => (
+              <View style={styles.swipeActions}>
+                <TouchableOpacity
+                  style={[styles.swipeActionButton, isDeletingBill && styles.swipeActionDisabled]}
+                  activeOpacity={0.8}
+                  disabled={isDeletingBill}
+                  onPress={() => {
+                    swipeableMethods.close();
+                    handleDeleteBill(bill);
+                  }}
+                >
+                  {isDeletingBill ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Ionicons name="trash-outline" size={22} color="#ffffff" />
+                  )}
+                  <Text style={styles.swipeActionText}>{isDeletingBill ? 'กำลังลบ' : 'ลบ'}</Text>
+                </TouchableOpacity>
+              </View>
+            );
+
+            const performDeleteBill = async (bill) => {
+    try {
+      setDeletingId(bill.id);
+      const token = await getToken();
+      if (!token) {
+        Alert.alert('ข้อผิดพลาด', 'กรุณาเข้าสู่ระบบอีกครั้ง');
+        return;
+      }
+
+      const res = await http.delete("/groups/" + groupId + "/transactions/" + bill.id, {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+
+      if (res.data?.success) {
+        await refresh();
+      } else {
+        Alert.alert('ข้อผิดพลาด', res.data?.error || 'ไม่สามารถลบรายการได้');
+      }
+    } catch (err) {
+      console.error('Delete group transaction error:', err);
+      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteBill = (bill) => {
+    Alert.alert(
+      'ยืนยันการลบรายการ',
+      'ต้องการลบบิล ' + bill.title + ' ใช่หรือไม่?',
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        { text: 'ลบรายการ', style: 'destructive', onPress: () => performDeleteBill(bill) },
+      ]
+    );
+  };
+
+  return (
+              <ReanimatedSwipeable
                 key={bill.id}
-                style={styles.billCard}
+                friction={2}
+                rightThreshold={40}
+                overshootRight={false}
+                renderRightActions={renderBillActions}
+                containerStyle={styles.swipeableContainer}
+              >
+                <TouchableOpacity
+                  style={styles.billCard}
                 onPress={() => router.push({ pathname: '/edit-group-bill', params: { groupId, billId: bill.id, groupName } })}
                 activeOpacity={0.75}
               >
@@ -264,7 +335,8 @@ export default function GroupDetailScreen() {
                 </View>
 
                 <Text style={styles.billAmount}>{bill.amount}</Text>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              </ReanimatedSwipeable>
             );
           })
         )}
@@ -282,6 +354,7 @@ export default function GroupDetailScreen() {
             autoCorrect={false}
           />
         </View>
+
       </ScrollView>
 
       {/* ปิดกลุ่มที่เคลียร์แล้วเพื่อไม่ให้ยอดสะสางเปลี่ยนหลังยืนยัน */}
@@ -532,5 +605,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
     elevation: 6,
+  },
+  swipeableContainer: {
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  swipeActions: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: 'flex-end',
+  },
+  swipeActionButton: {
+    width: 92,
+    backgroundColor: '#e53935',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  swipeActionDisabled: {
+    backgroundColor: '#b71c1c',
+  },
+  swipeActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

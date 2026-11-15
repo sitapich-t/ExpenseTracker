@@ -39,8 +39,11 @@ export default function ProfileScreen() {
     const name = user?.name || user?.username || "ผู้ใช้งาน";
     const email = user?.email || "peet@email.com";
     const studentId = user?.studentId || "pt1569";
-    const avatar = user?.avatar || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80";
-
+    const avatar =
+      user?.avatar_url ||
+      user?.avatar ||
+      "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80";
+      
     const handleLogout = () => {
         Alert.alert(
             "ออกจากระบบ",

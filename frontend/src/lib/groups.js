@@ -55,11 +55,17 @@ export function currentUserId(user) {
   return user?.id ?? user?.user_id ?? null;
 }
 
-export function displayNameFor(userId, currentUser) {
+export function displayNameFor(userId, currentUser, members) {
   if (!userId) return 'สมาชิก';
   if (currentUser && String(userId) === String(currentUserId(currentUser))) {
     return currentUser.name ? `${currentUser.name} (ฉัน)` : 'ฉัน';
   }
+  const list = Array.isArray(members) ? members : [];
+  const found = list.find(
+    (m) => String(m?.user_id ?? m?.id) === String(userId) || String(m?.id) === String(userId)
+  );
+  const name = found?.name || found?.users?.name || found?.display_name || found?.email;
+  if (name) return name;
   const raw = String(userId);
   return raw.length > 10 ? `${raw.slice(0, 8)}…` : raw;
 }

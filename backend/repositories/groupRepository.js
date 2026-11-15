@@ -193,6 +193,15 @@ const transactions = {
   async deleteByGroup(groupId) {
     return supabase.from('group_transactions').delete().eq('group_id', groupId);
   },
+
+  async deleteByGroupAndId(groupId, transactionId) {
+    return supabase
+      .from('group_transactions')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('id', transactionId)
+      .select();
+  },
 };
 
 module.exports = { groups, members, transactions };

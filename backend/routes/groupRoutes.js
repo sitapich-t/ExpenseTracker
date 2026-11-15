@@ -249,6 +249,7 @@ router.post('/:id/transactions', authenticate, slipUpload, groupController.creat
 
 // แก้สัดส่วนของบิลที่มีอยู่ เพื่อแก้ยอดเคลียร์บิลโดยไม่เปลี่ยนยอดรวมกลุ่ม
 router.patch('/:id/transactions/:transactionId/split', authenticate, groupController.updateGroupTransactionSplit);
+router.delete('/:id/transactions/:transactionId', authenticate, groupController.deleteGroupTransaction);
 
 /**
  * @openapi

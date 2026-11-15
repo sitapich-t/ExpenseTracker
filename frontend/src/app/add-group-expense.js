@@ -256,7 +256,7 @@ export default function AddGroupExpenseScreen() {
 
   const payerLabel = useMemo(() => {
     const found = members.find((m) => String(m.user_id) === String(payerId));
-    if (found) return displayNameFor(found.user_id, currentUser);
+    if (found) return displayNameFor(found.user_id, currentUser, members);
     return currentUser?.name ? `${currentUser.name} (ฉัน)` : 'ฉัน';
   }, [members, payerId, currentUser]);
 
@@ -346,7 +346,7 @@ export default function AddGroupExpenseScreen() {
 
     const nameOf = (id) => {
       const m = members.find((x) => String(x.user_id) === String(id));
-      return m ? displayNameFor(m.user_id, currentUser) : 'สมาชิก';
+      return m ? displayNameFor(m.user_id, currentUser, members) : 'สมาชิก';
     };
 
     if (splitMethod === 'equal') {
@@ -719,7 +719,7 @@ export default function AddGroupExpenseScreen() {
                           {on && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
                         </View>
                         <Text style={styles.memberPickName} numberOfLines={1}>
-                          {displayNameFor(member.user_id, currentUser)}
+                          {displayNameFor(member.user_id, currentUser, members)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -736,7 +736,7 @@ export default function AddGroupExpenseScreen() {
                       <View key={id} style={styles.inputRow}>
                         <View style={[styles.memberDot, { backgroundColor: memberColor(index) }]} />
                         <Text style={styles.inputRowName} numberOfLines={1}>
-                          {displayNameFor(member.user_id, currentUser)}
+                          {displayNameFor(member.user_id, currentUser, members)}
                         </Text>
                         <TextInput
                           style={styles.smallInput}
@@ -770,7 +770,7 @@ export default function AddGroupExpenseScreen() {
                       <View key={id} style={styles.inputRow}>
                         <View style={[styles.memberDot, { backgroundColor: memberColor(index) }]} />
                         <Text style={styles.inputRowName} numberOfLines={1}>
-                          {displayNameFor(member.user_id, currentUser)}
+                          {displayNameFor(member.user_id, currentUser, members)}
                         </Text>
                         <TextInput
                           style={styles.smallInput}
@@ -858,7 +858,7 @@ export default function AddGroupExpenseScreen() {
                                 style={[styles.itemMemberChipText, on && { color: '#FFFFFF' }]}
                                 numberOfLines={1}
                               >
-                                {displayNameFor(member.user_id, currentUser)}
+                                {displayNameFor(member.user_id, currentUser, members)}
                               </Text>
                             </TouchableOpacity>
                           );
@@ -988,7 +988,7 @@ export default function AddGroupExpenseScreen() {
               >
                 <View style={[styles.memberDot, { backgroundColor: memberColor(index) }]} />
                 <Text style={styles.modalOptionText} numberOfLines={1}>
-                  {displayNameFor(member.user_id, currentUser)}
+                  {displayNameFor(member.user_id, currentUser, members)}
                 </Text>
                 {String(member.user_id) === String(payerId) && (
                   <Ionicons name="checkmark" size={18} color="#6D28D9" />
