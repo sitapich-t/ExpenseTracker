@@ -40,6 +40,8 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [avatarBase64, setAvatarBase64] = useState(null);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -72,11 +74,13 @@ export default function EditProfileScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.7,
+        base64: true, // เพิ่มบรรทัดนี้
       });
 
       if (!result.canceled && result.assets?.[0]?.uri) {
         setAvatar(result.assets[0].uri);
+        setAvatarBase64(result.assets[0].base64 || null); // เพิ่มบรรทัดนี้
       }
     } catch (err) {
       Alert.alert('เลือกรูปไม่สำเร็จ', err.message || 'ไม่สามารถเปิดคลังภาพได้');
@@ -99,13 +103,29 @@ export default function EditProfileScreen() {
 
       // 1. ถ้ามีการเลือกรูปใหม่จากในเครื่อง (uri ขึ้นต้นด้วย file://) ให้อัปโหลดขึ้น Supabase Storage
       if (avatar && avatar.startsWith('file://')) {
+        if (!avatarBase64) {
+          throw new Error('ไม่พบข้อมูลไฟล์รูปภาพ กรุณาเลือกรูปใหม่อีกครั้ง');
+        }
+
         const fileExt = avatar.split('.').pop()?.toLowerCase() || 'jpg';
         const fileName = `${user?.id || 'user'}_${Date.now()}.${fileExt}`;
         const mimeType = fileExt === 'png' ? 'image/png' : 'image/jpeg';
 
-        // แปลงไฟล์รูปในเครื่องเป็น ArrayBuffer (Binary) แทนการใช้ FormData
-        const fileResponse = await fetch(avatar);
-        const arrayBuffer = await fileResponse.arrayBuffer();
+        // แปลงสตริง Base64 เป็น Binary (Uint8Array) โดยตรง (ไม่ต้องใช้ fetch)
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const cleanB64 = avatarBase64.replace(/[^A-Za-z0-9+/]/g, '');
+        const byteLength = Math.floor((cleanB64.length * 3) / 4);
+        const bytes = new Uint8Array(byteLength);
+        let p = 0;
+        for (let i = 0; i < cleanB64.length; i += 4) {
+          const e1 = chars.indexOf(cleanB64[i]);
+          const e2 = chars.indexOf(cleanB64[i + 1]);
+          const e3 = chars.indexOf(cleanB64[i + 2]);
+          const e4 = chars.indexOf(cleanB64[i + 3]);
+          bytes[p++] = (e1 << 2) | (e2 >> 4);
+          if (e3 !== -1) bytes[p++] = ((e2 & 15) << 4) | (e3 >> 2);
+          if (e4 !== -1) bytes[p++] = ((e3 & 3) << 6) | e4;
+        }
 
         const uploadRes = await fetch(
           `${SUPABASE_URL}/storage/v1/object/avatar/${fileName}`,
@@ -116,7 +136,7 @@ export default function EditProfileScreen() {
               'Content-Type': mimeType,
               'x-upsert': 'true',
             },
-            body: arrayBuffer,
+            body: bytes, // <-- ส่ง bytes แทน arrayBuffer
           }
         );
 
@@ -125,7 +145,6 @@ export default function EditProfileScreen() {
           throw new Error(`อัปโหลดรูปไม่สำเร็จ: ${errText}`);
         }
 
-        // สร้าง Public URL สำหรับบันทึกลง Database
         finalAvatarUrl = `${SUPABASE_URL}/storage/v1/object/public/avatar/${fileName}`;
       }
 

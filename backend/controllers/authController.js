@@ -9,7 +9,8 @@ function generateToken(user) {
     id: user.id,
     name: user.name,
     email: user.email,
-    avatar_url: user.avatar_url || null    
+    phone: user.phone || null,
+    ver: user.token_version ?? 0,
   });
 }
 
