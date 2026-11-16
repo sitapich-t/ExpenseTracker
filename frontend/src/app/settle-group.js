@@ -138,12 +138,12 @@ export default function GroupSettleScreen() {
     [members]
   );
 
-  // 2 modes หลัก: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
   const [activeTab, setActiveTab] = useState('summary');
 
-  // Strategy สำหรับการตัดหนี้: 'greedy' (คู่ต่อคู่) vs 'hub' (โอนผ่านศูนย์กลาง)
   const [strategy, setStrategy] = useState(ctx?.settle_strategy || 'greedy');
   const [selectedHubPerson, setSelectedHubPerson] = useState(ctx?.hub_person || null);
+  const [isStrategyLocked, setIsStrategyLocked] = useState(Boolean(ctx?.strategy_locked || ctx?.settle_strategy));
+  const [confirmingStrategy, setConfirmingStrategy] = useState(false);
 
   const [remindedList, setRemindedList] = useState([]);
   const [simplifiedDebts, setSimplifiedDebts] = useState([]);
@@ -153,15 +153,36 @@ export default function GroupSettleScreen() {
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [sendingAllReminders, setSendingAllReminders] = useState(false);
   const [confirmingPaymentId, setConfirmingPaymentId] = useState(null);
+  const [localSettled, setLocalSettled] = useState(false);
 
-  const myId = String(me?.id || '');
+  const isGroupSettled = Boolean(localSettled || ctx?.settled || ctx?.status_type === 'settled');
 
-  // โหลดค่า strategy และ hubPerson ที่บันทึกไว้ (จาก Database หรือ AsyncStorage)
+  const myId = useMemo(() => {
+    const raw = me?.id || me?.user_id || me?.user?.id || me?.sub || '';
+    if (raw) return String(raw).trim().toLowerCase();
+
+    const matched = members.find(
+      (m) =>
+        (me?.email && String(m.email || '').toLowerCase() === String(me.email).toLowerCase()) ||
+        (me?.name && String(m.name || '').trim().toLowerCase() === String(me.name).trim().toLowerCase())
+    );
+    return matched ? String(matched.user_id ?? matched.id ?? '').trim().toLowerCase() : '';
+  }, [me, members]);
+
+  const myName = useMemo(() => {
+    if (me?.name) return String(me.name).trim().toLowerCase();
+    const matched = members.find(
+      (m) => String(m.user_id ?? m.id ?? '').trim().toLowerCase() === myId
+    );
+    return matched?.name ? String(matched.name).trim().toLowerCase() : '';
+  }, [me, members, myId]);
+
   useEffect(() => {
     if (!groupId) return;
     if (ctx?.settle_strategy) {
       setStrategy(ctx.settle_strategy);
       setSelectedHubPerson(ctx.hub_person || null);
+      setIsStrategyLocked(true);
       return;
     }
     AsyncStorage.getItem(`settle_pref_${groupId}`).then((saved) => {
@@ -170,38 +191,40 @@ export default function GroupSettleScreen() {
           const parsed = JSON.parse(saved);
           if (parsed.strategy) setStrategy(parsed.strategy);
           if (parsed.hubPerson !== undefined) setSelectedHubPerson(parsed.hubPerson);
+          if (parsed.locked) setIsStrategyLocked(true);
         } catch {}
       }
     });
-  }, [groupId, ctx?.settle_strategy, ctx?.hub_person]);
+  }, [groupId, ctx?.settle_strategy, ctx?.hub_person, ctx?.strategy_locked]);
 
-  // เปลี่ยนรูปแบบการตัดหนี้และบันทึกลง Backend + เครื่องทันที
-  const handleSelectStrategy = async (newStrategy, newHubPerson = null) => {
-    setStrategy(newStrategy);
-    setSelectedHubPerson(newHubPerson);
-
+  const handleConfirmStrategy = async () => {
     if (!groupId) return;
-
-    // 1. บันทึกลงเครื่องสำรองไว้ทันที
-    AsyncStorage.setItem(
-      `settle_pref_${groupId}`,
-      JSON.stringify({ strategy: newStrategy, hubPerson: newHubPerson })
-    ).catch(() => {});
-
-    // 2. ยิง API บันทึกลงฐานข้อมูลของกลุ่ม
+    setConfirmingStrategy(true);
     try {
+      const payload = {
+        strategy,
+        hubPerson: strategy === 'hub' ? selectedHubPerson : null,
+      };
+
+      await AsyncStorage.setItem(
+        `settle_pref_${groupId}`,
+        JSON.stringify({ ...payload, locked: true })
+      );
+
       const token = await getToken();
       await http.patch(
         `/groups/${groupId}/settle-strategy`,
-        {
-          strategy: newStrategy,
-          hubPerson: newStrategy === 'hub' ? newHubPerson : null,
-        },
+        payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      setIsStrategyLocked(true);
       await refresh();
     } catch (err) {
-      console.warn('Save settle strategy warning:', err.response?.data || err.message);
+      setIsStrategyLocked(true);
+      console.warn('Confirm strategy warning:', err.response?.data || err.message);
+    } finally {
+      setConfirmingStrategy(false);
     }
   };
 
@@ -217,7 +240,6 @@ export default function GroupSettleScreen() {
     }, [refresh])
   );
 
-  // รายการชำระย่อยตามบิล (Raw Transactions)
   const rawTransactions = [];
   bills.forEach((b, bIdx) => {
     const payer = getBillPayer(b);
@@ -253,6 +275,11 @@ export default function GroupSettleScreen() {
   }, [members, settlement]);
 
   const loadSettlement = useCallback(async () => {
+    if (isGroupSettled) {
+      setCalcLoading(false);
+      setSimplifiedDebts([]);
+      return;
+    }
     try {
       const result = await fetchSettlement(groupId, {
         strategy,
@@ -278,9 +305,14 @@ export default function GroupSettleScreen() {
       setSettlement(null);
       setSimplifiedDebts([]);
     }
-  }, [groupId, nameOf, strategy, selectedHubPerson, fetchSettlement]);
+  }, [groupId, nameOf, strategy, selectedHubPerson, fetchSettlement, isGroupSettled]);
 
   useEffect(() => {
+    if (isGroupSettled) {
+      setCalcLoading(false);
+      setSimplifiedDebts([]);
+      return;
+    }
     let cancelled = false;
     const run = async () => {
       try {
@@ -314,7 +346,7 @@ export default function GroupSettleScreen() {
     return () => {
       cancelled = true;
     };
-  }, [groupId, nameOf, strategy, selectedHubPerson, fetchSettlement]);
+  }, [groupId, nameOf, strategy, selectedHubPerson, fetchSettlement, isGroupSettled]);
 
   const handleSendReminder = async (debt) => {
     try {
@@ -404,7 +436,7 @@ export default function GroupSettleScreen() {
             setConfirmingPaymentId(debt.id);
             try {
               const token = await getToken();
-              await http.post(
+              const res = await http.post(
                 `/groups/${groupId}/payments/confirm`,
                 {
                   from_user: debt.fromId,
@@ -415,6 +447,9 @@ export default function GroupSettleScreen() {
                 { headers: { Authorization: `Bearer ${token}` } }
               );
 
+              if (res.data?.all_settled) {
+                setLocalSettled(true);
+              }
               Alert.alert('สำเร็จ', `ยืนยันการรับเงินจาก "${debt.from}" เรียบร้อยแล้ว`);
               await loadSettlement();
               await refresh();
@@ -431,6 +466,7 @@ export default function GroupSettleScreen() {
   };
 
   const handleSaveSettle = () => {
+    if (isGroupSettled) return;
     Alert.alert(
       'ยืนยันการเคลียร์บิล',
       'คุณต้องการบันทึกการเคลียร์บิลทั้งหมดใช่หรือไม่? สถานะจะถูกเปลี่ยนเป็น "ชำระเรียบร้อย"',
@@ -442,20 +478,12 @@ export default function GroupSettleScreen() {
             if (!groupId) return;
             try {
               setSaving(true);
-              const token = await getToken();
-              await http.patch(
-                `/groups/${groupId}/settle-strategy`,
-                {
-                  strategy,
-                  hubPerson: strategy === 'hub' ? selectedHubPerson : null,
-                },
-                { headers: { Authorization: `Bearer ${token}` } }
-              ).catch(() => {});
-
               await settleGroup(groupId, {
                 strategy,
                 hubPerson: strategy === 'hub' ? selectedHubPerson : null,
               });
+              setLocalSettled(true);
+              setSimplifiedDebts([]);
               Alert.alert('สำเร็จ', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
                 { text: 'ตกลง', onPress: () => router.back() },
               ]);
@@ -535,7 +563,7 @@ export default function GroupSettleScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* View 1: ทั้งหมด (Raw Split Transactions) */}
+          {/* View 1: ทั้งหมด */}
           {activeTab === 'all' && (
             <View>
               <Text style={styles.sectionSubtitle}>
@@ -576,93 +604,122 @@ export default function GroupSettleScreen() {
             </View>
           )}
 
-          {/* View 2: จ่าย (Simplified Net Debts with Strategy Switching) */}
+          {/* View 2: จ่าย */}
           {activeTab === 'summary' && (
             <View>
-              {/* Strategy Selector Box */}
-              <View style={styles.strategyBox}>
-                <Text style={styles.strategyTitle}>รูปแบบการคำนวณเงินคืน:</Text>
+              {!isStrategyLocked && !isGroupSettled && simplifiedDebts.length > 0 && (
+                <View style={styles.strategyBox}>
+                  <Text style={styles.strategyTitle}>เลือกวิธีเคลียร์บิล (เลือกแล้วกดยืนยัน):</Text>
 
-                <View style={styles.strategyBtnRow}>
-                  <TouchableOpacity
-                    style={[styles.strategyOptionBtn, strategy === 'greedy' && styles.strategyOptionBtnActive]}
-                    onPress={() => handleSelectStrategy('greedy', null)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons
-                      name="git-compare-outline"
-                      size={14}
-                      color={strategy === 'greedy' ? '#FFFFFF' : '#6D28D9'}
-                    />
-                    <Text style={[styles.strategyOptionText, strategy === 'greedy' && styles.strategyOptionTextActive]}>
-                      จับคู่ตามหนี้ (Greedy)
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={styles.strategyBtnRow}>
+                    <TouchableOpacity
+                      style={[styles.strategyOptionBtn, strategy === 'greedy' && styles.strategyOptionBtnActive]}
+                      onPress={() => {
+                        setStrategy('greedy');
+                        setSelectedHubPerson(null);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name="git-compare-outline"
+                        size={14}
+                        color={strategy === 'greedy' ? '#FFFFFF' : '#6D28D9'}
+                      />
+                      <Text style={[styles.strategyOptionText, strategy === 'greedy' && styles.strategyOptionTextActive]}>
+                        จับคู่ตามหนี้ (Greedy)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.strategyOptionBtn, strategy === 'hub' && styles.strategyOptionBtnActive]}
+                      onPress={() => setStrategy('hub')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name="person-circle-outline"
+                        size={14}
+                        color={strategy === 'hub' ? '#FFFFFF' : '#6D28D9'}
+                      />
+                      <Text style={[styles.strategyOptionText, strategy === 'hub' && styles.strategyOptionTextActive]}>
+                        โอนผ่านศูนย์กลาง (Hub)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {strategy === 'hub' && (
+                    <View style={styles.hubSelectionContainer}>
+                      <Text style={styles.hubSelectionLabel}>เลือกคนกลางรับเงินคืน (Hub Person):</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hubChipScroll}>
+                        <TouchableOpacity
+                          style={[
+                            styles.hubChip,
+                            selectedHubPerson === null && styles.hubChipActive,
+                          ]}
+                          onPress={() => setSelectedHubPerson(null)}
+                        >
+                          <Text
+                            style={[
+                              styles.hubChipText,
+                              selectedHubPerson === null && styles.hubChipTextActive,
+                            ]}
+                          >
+                            อัตโนมัติ (ยอดมากสุด)
+                          </Text>
+                        </TouchableOpacity>
+
+                        {creditorMembers.map((m) => {
+                          const mId = String(m.id ?? m.user_id);
+                          const isSelected = selectedHubPerson === mId;
+                          return (
+                            <TouchableOpacity
+                              key={mId}
+                              style={[styles.hubChip, isSelected && styles.hubChipActive]}
+                              onPress={() => setSelectedHubPerson(mId)}
+                            >
+                              <Text style={[styles.hubChipText, isSelected && styles.hubChipTextActive]}>
+                                {m.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
 
                   <TouchableOpacity
-                    style={[styles.strategyOptionBtn, strategy === 'hub' && styles.strategyOptionBtnActive]}
-                    onPress={() => handleSelectStrategy('hub', selectedHubPerson)}
-                    activeOpacity={0.8}
+                    style={styles.confirmStrategyBtn}
+                    onPress={handleConfirmStrategy}
+                    disabled={confirmingStrategy}
+                    activeOpacity={0.85}
                   >
-                    <Ionicons
-                      name="person-circle-outline"
-                      size={14}
-                      color={strategy === 'hub' ? '#FFFFFF' : '#6D28D9'}
-                    />
-                    <Text style={[styles.strategyOptionText, strategy === 'hub' && styles.strategyOptionTextActive]}>
-                      โอนผ่านศูนย์กลาง (Hub)
-                    </Text>
+                    {confirmingStrategy ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.confirmStrategyBtnText}>ยืนยันรูปแบบนี้</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
+              )}
 
-                {/* Hub Person Selection (แสดงเฉพาะเมื่อเลือก strategy = 'hub') */}
-                {strategy === 'hub' && (
-                  <View style={styles.hubSelectionContainer}>
-                    <Text style={styles.hubSelectionLabel}>เลือกคนกลางรับเงินคืน (Hub Person):</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hubChipScroll}>
-                      <TouchableOpacity
-                        style={[
-                          styles.hubChip,
-                          selectedHubPerson === null && styles.hubChipActive,
-                        ]}
-                        onPress={() => handleSelectStrategy('hub', null)}
-                      >
-                        <Text
-                          style={[
-                            styles.hubChipText,
-                            selectedHubPerson === null && styles.hubChipTextActive,
-                          ]}
-                        >
-                          อัตโนมัติ (ยอดมากสุด)
-                        </Text>
-                      </TouchableOpacity>
-
-                      {creditorMembers.map((m) => {
-                        const mId = String(m.id ?? m.user_id);
-                        const isSelected = selectedHubPerson === mId;
-                        return (
-                          <TouchableOpacity
-                            key={mId}
-                            style={[styles.hubChip, isSelected && styles.hubChipActive]}
-                            onPress={() => handleSelectStrategy('hub', mId)}
-                          >
-                            <Text style={[styles.hubChipText, isSelected && styles.hubChipTextActive]}>
-                              {m.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
+              {isStrategyLocked && simplifiedDebts.length > 0 && (
+                <View style={styles.lockedModeBar}>
+                  <Text style={styles.lockedModeText}>
+                    รูปแบบ: {strategy === 'hub' ? `โอนผ่านศูนย์กลาง (${selectedHubPerson ? nameOf(selectedHubPerson) : 'อัตโนมัติ'})` : 'จับคู่ตามหนี้'}
+                  </Text>
+                  {!isGroupSettled && (
+                    <TouchableOpacity onPress={() => setIsStrategyLocked(false)}>
+                      <Text style={styles.changeModeText}>เปลี่ยนวิธี</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
 
               <View style={styles.summaryHeaderRow}>
                 <Text style={styles.sectionSubtitle}>
                   สรุปยอดรวมสุทธิ ({simplifiedDebts.length} รายการ)
                 </Text>
 
-                {simplifiedDebts.length > 0 && (
+                {simplifiedDebts.length > 0 && !isGroupSettled && (
                   <TouchableOpacity
                     style={styles.autoRemindAllBtn}
                     onPress={handleSendAllReminders}
@@ -695,8 +752,12 @@ export default function GroupSettleScreen() {
               ) : (
                 simplifiedDebts.map((item) => {
                   const isReminded = remindedList.includes(item.id);
-                  const isCreditor = myId && item.toId === myId;
                   const isConfirming = confirmingPaymentId === item.id;
+                  const toIdClean = String(item.toId || '').trim().toLowerCase();
+                  const toNameClean = String(item.to || '').trim().toLowerCase();
+                  const isCreditor =
+                    (myId && toIdClean === myId) ||
+                    (myName && toNameClean === myName);
 
                   return (
                     <View key={item.id} style={styles.settleRowCard}>
@@ -754,13 +815,23 @@ export default function GroupSettleScreen() {
         {/* Bottom Button */}
         <View style={styles.bottomBar}>
           <TouchableOpacity
-            style={[styles.saveSettleBtn, (saving || simplifiedDebts.length === 0) && { opacity: 0.6 }]}
+            style={[
+              styles.saveSettleBtn,
+              (saving || isGroupSettled || simplifiedDebts.length === 0) && {
+                backgroundColor: isGroupSettled ? '#10B981' : '#94A3B8',
+                opacity: 0.85,
+              },
+            ]}
             onPress={handleSaveSettle}
             activeOpacity={0.85}
-            disabled={saving || simplifiedDebts.length === 0}
+            disabled={saving || isGroupSettled || simplifiedDebts.length === 0}
           >
             <Text style={styles.saveSettleBtnText}>
-              {saving ? 'กำลังบันทึก...' : 'ยืนยันการเคลียร์บิล'}
+              {isGroupSettled
+                ? 'เคลียร์บิลเรียบร้อยแล้ว'
+                : saving
+                  ? 'กำลังบันทึก...'
+                  : 'ยืนยันการเคลียร์บิล'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -770,10 +841,7 @@ export default function GroupSettleScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
+  safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -782,14 +850,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: '#FFFFFF',
   },
-  backButton: {
-    padding: 6,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
+  backButton: { padding: 6 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B' },
   badgeRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -808,11 +870,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     gap: 4,
   },
-  metaBadgeText: {
-    fontSize: 13,
-    color: '#6D28D9',
-    fontWeight: '600',
-  },
+  metaBadgeText: { fontSize: 13, color: '#6D28D9', fontWeight: '600' },
   segmentContainer: {
     flexDirection: 'row',
     backgroundColor: '#EDE9FE',
@@ -822,116 +880,82 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     padding: 4,
   },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 20,
-  },
-  segmentBtnActive: {
-    backgroundColor: '#5B21B6',
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6D28D9',
-  },
-  segmentTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 110,
-  },
+  segmentBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 20 },
+  segmentBtnActive: { backgroundColor: '#5B21B6' },
+  segmentText: { fontSize: 14, fontWeight: '600', color: '#6D28D9' },
+  segmentTextActive: { color: '#FFFFFF', fontWeight: '700' },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 110 },
   strategyBox: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 12,
+    padding: 14,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     ...SHADOWS.small,
   },
-  strategyTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-  },
-  strategyBtnRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  strategyTitle: { fontSize: 13, fontWeight: '700', color: '#334155', marginBottom: 10 },
+  strategyBtnRow: { flexDirection: 'row', gap: 8 },
   strategyOptionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: '#F5F3FF',
     borderWidth: 1,
     borderColor: '#DDD6FE',
   },
-  strategyOptionBtnActive: {
-    backgroundColor: '#6D28D9',
-    borderColor: '#6D28D9',
-  },
-  strategyOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6D28D9',
-  },
-  strategyOptionTextActive: {
-    color: '#FFFFFF',
-  },
+  strategyOptionBtnActive: { backgroundColor: '#6D28D9', borderColor: '#6D28D9' },
+  strategyOptionText: { fontSize: 12, fontWeight: '600', color: '#6D28D9' },
+  strategyOptionTextActive: { color: '#FFFFFF' },
   hubSelectionContainer: {
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-  hubSelectionLabel: {
-    fontSize: 11,
-    color: '#64748B',
-    marginBottom: 6,
-  },
-  hubChipScroll: {
-    flexDirection: 'row',
-  },
+  hubSelectionLabel: { fontSize: 11, color: '#64748B', marginBottom: 6 },
+  hubChipScroll: { flexDirection: 'row' },
   hubChip: {
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 12,
     backgroundColor: '#F1F5F9',
     marginRight: 6,
   },
-  hubChipActive: {
+  hubChipActive: { backgroundColor: '#10B981' },
+  hubChipText: { fontSize: 12, color: '#475569', fontWeight: '500' },
+  hubChipTextActive: { color: '#FFFFFF', fontWeight: '700' },
+  confirmStrategyBtn: {
+    marginTop: 12,
     backgroundColor: '#10B981',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-  hubChipText: {
-    fontSize: 12,
-    color: '#475569',
-    fontWeight: '500',
+  confirmStrategyBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  lockedModeBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F5F3FF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 12,
   },
-  hubChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
+  lockedModeText: { fontSize: 12, fontWeight: '600', color: '#5B21B6' },
+  changeModeText: { fontSize: 12, fontWeight: '700', color: '#7C3AED', textDecorationLine: 'underline' },
   summaryHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    flex: 1,
-  },
+  sectionSubtitle: { fontSize: 12, color: '#94A3B8', flex: 1 },
   autoRemindAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -941,11 +965,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 4,
   },
-  autoRemindAllText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  autoRemindAllText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   rawCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -958,60 +978,17 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9',
     ...SHADOWS.small,
   },
-  rawCardContent: {
-    flex: 1,
-  },
-  personFlowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  personPillPurple: {
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  personTextPurple: {
-    color: '#7C3AED',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  personPillGreen: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  personTextGreen: {
-    color: '#059669',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  subNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  subNoteText: {
-    fontSize: 11,
-    color: '#94A3B8',
-  },
-  rawCardRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  rawAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  settleRowCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
+  rawCardContent: { flex: 1 },
+  personFlowRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  personPillPurple: { backgroundColor: '#F5F3FF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  personTextPurple: { color: '#7C3AED', fontSize: 12, fontWeight: '700' },
+  personPillGreen: { backgroundColor: '#ECFDF5', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  personTextGreen: { color: '#059669', fontSize: 12, fontWeight: '700' },
+  subNoteRow: { flexDirection: 'row', alignItems: 'center' },
+  subNoteText: { fontSize: 11, color: '#94A3B8' },
+  rawCardRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rawAmount: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
+  settleRowCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   settleLeftBox: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -1022,12 +999,7 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9',
     ...SHADOWS.small,
   },
-  settleAmount: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1E293B',
-    marginVertical: 4,
-  },
+  settleAmount: { fontSize: 17, fontWeight: '800', color: '#1E293B', marginVertical: 4 },
   confirmReceivedBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1040,11 +1012,7 @@ const styles = StyleSheet.create({
     gap: 4,
     alignSelf: 'flex-start',
   },
-  confirmReceivedBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  confirmReceivedBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   bellBtn: {
     width: 48,
     height: 48,
@@ -1054,9 +1022,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...SHADOWS.small,
   },
-  bellBtnReminded: {
-    backgroundColor: '#10B981',
-  },
+  bellBtnReminded: { backgroundColor: '#10B981' },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -1075,24 +1041,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...SHADOWS.small,
   },
-  saveSettleBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  emptyContainer: {
-    paddingVertical: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptySuccessTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#059669',
-    marginBottom: 4,
-  },
-  emptyText: {
-    color: '#94A3B8',
-    fontSize: 14,
-  },
+  saveSettleBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  emptyContainer: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center' },
+  emptySuccessTitle: { fontSize: 16, fontWeight: '700', color: '#059669', marginBottom: 4 },
+  emptyText: { color: '#94A3B8', fontSize: 14 },
 });

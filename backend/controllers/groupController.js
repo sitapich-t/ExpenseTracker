@@ -537,7 +537,7 @@ exports.confirmPaymentReceived = async (req, res) => {
     });
     const debt = debts.find((d) => String(d.from) === fromUser && String(d.to) === userId);
     if (!debt) {
-      return res.status(404).json({ success: false, error: 'ไม่พบยอดค้างชำระจากสมาชิกคนนี้ถึงคุณ' });
+      return res.status(404).json({ success: false, error: 'ไม่พบยอดค้างชำระจากสมาชิกคนนี้ถึงคุณ (หรือยืนยันรับเงินไปแล้ว)' });
     }
 
     let amount = req.body?.amount !== undefined ? Number(req.body.amount) : Number(debt.amount);
@@ -580,7 +580,6 @@ exports.confirmPaymentReceived = async (req, res) => {
       console.warn('⚠️ แจ้งเตือนการยืนยันรับเงินไม่สำเร็จ:', notifyErr.message);
     }
 
-    // บันทึกรายรับเข้าบัญชีส่วนบุคคลของเจ้าหนี้ (ตรงตาม Schema ตาราง personal_transactions)
     try {
       const payerName = names.get(fromUser) || 'เพื่อน';
       const groupLabel = groupMeta?.name ? ` (${groupMeta.name})` : '';
@@ -809,7 +808,6 @@ exports.createGroupTransaction = async (req, res) => {
       console.warn('⚠️ แจ้งเตือนบิลใหม่ไม่สำเร็จ:', nErr.message);
     }
 
-    // บันทึกลงรายจ่ายส่วนบุคคลอัตโนมัติ สำหรับคนที่เป็นคนจ่ายบิลนี้ก่อน (paid_by)
     try {
       const payerId = String(newTransaction.paid_by || userId);
       const groupLabel = group?.name ? ` (${group.name})` : '';
@@ -820,7 +818,7 @@ exports.createGroupTransaction = async (req, res) => {
           user_id: payerId,
           category_id: null,
           title: `[กลุ่ม${groupLabel}] ${newTransaction.title}`,
-          type: newTransaction.type, // 'expense'
+          type: newTransaction.type,
           amount: summary.grandTotal,
           net_amount: baseAmount,
           vat: summary.totalVAT,
@@ -1045,45 +1043,51 @@ exports.updateGroupStatus = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    // เมื่อปิดกลุ่มเป็น settled -> บันทึกรายรับคืนเงินเข้าบัญชีส่วนตัวของเจ้าหนี้ที่ค้างรับอยู่ทุกคน
-    if (status_type === 'settled') {
+    // ป้องกันการกดเคลียร์บิลซ้ำถ้ากลุ่มถูก settled ไปแล้ว
+    const { data: groupMeta } = await groups.findById(id, 'name, status_type, settle_strategy, hub_person');
+    if (groupMeta?.status_type === 'settled' && status_type === 'settled') {
+      return res.json({
+        success: true,
+        message: 'กลุ่มนี้ถูกเคลียร์บิลเรียบร้อยแล้ว',
+        group: groupMeta,
+      });
+    }
+
+    if (status_type === 'settled' && groupMeta) {
       try {
-        const { data: groupMeta } = await groups.findById(id, 'name, status_type, settle_strategy, hub_person');
-        if (groupMeta && groupMeta.status_type !== 'settled') {
-          const settlementResult = await computeGroupSettlement(id, {
-            strategy: groupMeta.settle_strategy || 'greedy',
-            hubPerson: groupMeta.hub_person || undefined,
-          });
-          const remainingDebts = settlementResult.transactions || [];
-          const names = await memberNameMap(id);
-          const groupLabel = groupMeta.name ? ` (${groupMeta.name})` : '';
+        const settlementResult = await computeGroupSettlement(id, {
+          strategy: groupMeta.settle_strategy || 'greedy',
+          hubPerson: groupMeta.hub_person || undefined,
+        });
+        const remainingDebts = settlementResult.transactions || [];
+        const names = await memberNameMap(id);
+        const groupLabel = groupMeta.name ? ` (${groupMeta.name})` : '';
 
-          for (const debt of remainingDebts) {
-            const payerName = names.get(String(debt.from)) || 'เพื่อน';
-            await notificationRepo.payments.insert({
-              group_id: id,
-              from_user: String(debt.from),
-              to_user: String(debt.to),
+        for (const debt of remainingDebts) {
+          const payerName = names.get(String(debt.from)) || 'เพื่อน';
+          await notificationRepo.payments.insert({
+            group_id: id,
+            from_user: String(debt.from),
+            to_user: String(debt.to),
+            amount: Number(debt.amount),
+            confirmed_by: userId,
+          }).catch(() => {});
+
+          await supabase.from('personal_transactions').insert([
+            {
+              id: uuidv4(),
+              user_id: String(debt.to),
+              category_id: null,
+              title: `รับเงินคืนจาก ${payerName}${groupLabel}`,
+              type: 'income',
               amount: Number(debt.amount),
-              confirmed_by: userId,
-            }).catch(() => {});
-
-            await supabase.from('personal_transactions').insert([
-              {
-                id: uuidv4(),
-                user_id: String(debt.to),
-                category_id: null,
-                title: `รับเงินคืนจาก ${payerName}${groupLabel}`,
-                type: 'income',
-                amount: Number(debt.amount),
-                net_amount: Number(debt.amount),
-                vat: 0,
-                service_charge: 0,
-                merchant: 'Group Settlement',
-                transaction_date: new Date().toISOString(),
-              },
-            ]);
-          }
+              net_amount: Number(debt.amount),
+              vat: 0,
+              service_charge: 0,
+              merchant: 'Group Settlement',
+              transaction_date: new Date().toISOString(),
+            },
+          ]);
         }
       } catch (settleSyncErr) {
         console.warn('⚠️ บันทึกรายรับตอนปิดกลุ่มไม่สำเร็จ:', settleSyncErr.message);
@@ -1117,7 +1121,11 @@ exports.updateGroupSettleStrategy = async (req, res) => {
 
     const { data, error } = await groups.updateById(
       id,
-      { settle_strategy: strategy, hub_person: hubPerson },
+      {
+        settle_strategy: strategy,
+        hub_person: hubPerson,
+        strategy_locked: true,
+      },
       { select: '*', single: true }
     );
     if (error) throw error;
