@@ -582,9 +582,12 @@ exports.confirmPaymentReceived = async (req, res) => {
 
     try {
       const payerName = names.get(fromUser) || 'เพื่อน';
+      const receiverName = names.get(userId) || 'เพื่อน';
       const groupLabel = groupMeta?.name ? ` (${groupMeta.name})` : '';
+      const nowIso = new Date().toISOString();
 
-      const { error: incomeInsertErr } = await supabase.from('personal_transactions').insert([
+      const { error: personalTxErr } = await supabase.from('personal_transactions').insert([
+        // 1. บันทึกรายรับเข้าบัญชีคนรับเงิน (เจ้าหนี้)
         {
           id: uuidv4(),
           user_id: userId,
@@ -596,12 +599,26 @@ exports.confirmPaymentReceived = async (req, res) => {
           vat: 0,
           service_charge: 0,
           merchant: 'Group Settlement',
-          transaction_date: new Date().toISOString(),
+          transaction_date: nowIso,
+        },
+        // 2. หักรายจ่ายออกจากบัญชีคนจ่ายเงิน (ลูกหนี้)
+        {
+          id: uuidv4(),
+          user_id: fromUser,
+          category_id: null,
+          title: `จ่ายค่าบิลกลุ่มคืนให้ ${receiverName}${groupLabel}`,
+          type: 'expense',
+          amount: amount,
+          net_amount: amount,
+          vat: 0,
+          service_charge: 0,
+          merchant: 'Group Settlement',
+          transaction_date: nowIso,
         },
       ]);
-      if (incomeInsertErr) throw incomeInsertErr;
-    } catch (incomeErr) {
-      console.warn('⚠️ บันทึกรายรับคืนเงินลงบัญชีส่วนบุคคลไม่สำเร็จ:', incomeErr.message);
+      if (personalTxErr) throw personalTxErr;
+    } catch (personalErr) {
+      console.warn('⚠️ บันทึกรายรับ/รายจ่ายคืนเงินลงบัญชีส่วนบุคคลไม่สำเร็จ:', personalErr.message);
     }
 
     const after = await computeGroupSettlement(id, {
@@ -1062,35 +1079,56 @@ exports.updateGroupStatus = async (req, res) => {
         const remainingDebts = settlementResult.transactions || [];
         const names = await memberNameMap(id);
         const groupLabel = groupMeta.name ? ` (${groupMeta.name})` : '';
+        const nowIso = new Date().toISOString();
 
         for (const debt of remainingDebts) {
-          const payerName = names.get(String(debt.from)) || 'เพื่อน';
+          const payerId = String(debt.from);
+          const receiverId = String(debt.to);
+          const payerName = names.get(payerId) || 'เพื่อน';
+          const receiverName = names.get(receiverId) || 'เพื่อน';
+          const debtAmount = Number(debt.amount);
+
           await notificationRepo.payments.insert({
             group_id: id,
-            from_user: String(debt.from),
-            to_user: String(debt.to),
-            amount: Number(debt.amount),
+            from_user: payerId,
+            to_user: receiverId,
+            amount: debtAmount,
             confirmed_by: userId,
           }).catch(() => {});
 
           await supabase.from('personal_transactions').insert([
+            // 1. เพิ่มรายรับให้ฝั่งผู้รับเงิน
             {
               id: uuidv4(),
-              user_id: String(debt.to),
+              user_id: receiverId,
               category_id: null,
               title: `รับเงินคืนจาก ${payerName}${groupLabel}`,
               type: 'income',
-              amount: Number(debt.amount),
-              net_amount: Number(debt.amount),
+              amount: debtAmount,
+              net_amount: debtAmount,
               vat: 0,
               service_charge: 0,
               merchant: 'Group Settlement',
-              transaction_date: new Date().toISOString(),
+              transaction_date: nowIso,
+            },
+            // 2. หักรายจ่ายจากฝั่งผู้โอนเงิน
+            {
+              id: uuidv4(),
+              user_id: payerId,
+              category_id: null,
+              title: `จ่ายค่าบิลกลุ่มคืนให้ ${receiverName}${groupLabel}`,
+              type: 'expense',
+              amount: debtAmount,
+              net_amount: debtAmount,
+              vat: 0,
+              service_charge: 0,
+              merchant: 'Group Settlement',
+              transaction_date: nowIso,
             },
           ]);
         }
       } catch (settleSyncErr) {
-        console.warn('⚠️ บันทึกรายรับตอนปิดกลุ่มไม่สำเร็จ:', settleSyncErr.message);
+        console.warn('⚠️ บันทึกรายรับ/รายจ่ายตอนปิดกลุ่มไม่สำเร็จ:', settleSyncErr.message);
       }
     }
 
@@ -1297,10 +1335,13 @@ exports.markSettlementPaid = async (req, res) => {
       const names = await memberNameMap(groupId);
       const { data: grpInfo } = await groups.findById(groupId, 'name');
       const payerName = names.get(payerId) || 'เพื่อน';
+      const receiverName = names.get(receiverId) || 'เพื่อน';
       const groupLabel = grpInfo?.name ? ` (${grpInfo.name})` : '';
       const paidAmt = Number(settlement.amount);
+      const nowIso = new Date().toISOString();
 
-      const { error: incomeInsertErr } = await supabase.from('personal_transactions').insert([
+      const { error: personalTxErr } = await supabase.from('personal_transactions').insert([
+        // 1. บันทึกรายรับเข้าบัญชีคนรับเงิน
         {
           id: uuidv4(),
           user_id: receiverId,
@@ -1312,12 +1353,26 @@ exports.markSettlementPaid = async (req, res) => {
           vat: 0,
           service_charge: 0,
           merchant: 'Group Settlement',
-          transaction_date: new Date().toISOString(),
+          transaction_date: nowIso,
+        },
+        // 2. หักรายจ่ายออกจากบัญชีคนจ่ายเงิน
+        {
+          id: uuidv4(),
+          user_id: payerId,
+          category_id: null,
+          title: `จ่ายค่าบิลกลุ่มคืนให้ ${receiverName}${groupLabel}`,
+          type: 'expense',
+          amount: paidAmt,
+          net_amount: paidAmt,
+          vat: 0,
+          service_charge: 0,
+          merchant: 'Group Settlement',
+          transaction_date: nowIso,
         },
       ]);
-      if (incomeInsertErr) throw incomeInsertErr;
-    } catch (incomeErr) {
-      console.warn('⚠️ บันทึกรายรับคืนเงินลงบัญชีส่วนบุคคลไม่สำเร็จ:', incomeErr.message);
+      if (personalTxErr) throw personalTxErr;
+    } catch (personalErr) {
+      console.warn('⚠️ บันทึกรายรับ/รายจ่ายคืนเงินลงบัญชีส่วนบุคคลไม่สำเร็จ:', personalErr.message);
     }
 
     return res.json({ success: true, settlement: updated });
