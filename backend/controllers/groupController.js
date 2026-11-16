@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const supabase = require('../config/supabase'); // ตรวจสอบ path ให้ตรงกับโปรเจกต์ของคุณ (เช่น ../config/supabase หรือ ../lib/supabase)
+const supabase = require('../config/supabase');
 const transactionService = require('../services/transactionService');
 const ocrService = require('../services/ocrService');
 const { classifyCategory } = require('../services/categoryService');
@@ -12,13 +12,11 @@ const notificationRepo = require('../repositories/notificationRepository');
 const { splitBillForGroup, settleGroupBalances } = require('../services/billSplitService');
 const groupSettlementRepo = require('../repositories/groupSettlementRepository');
 
-// ตาราง group_payments / notifications ยังไม่ถูกสร้าง (ยังไม่รัน migration)
 const isMissingTable = (err) => {
   const msg = String(err?.message || '');
   return err?.code === '42P01' || err?.code === 'PGRST205' || /relation .* does not exist|could not find the table/i.test(msg);
 };
 
-// รายการ "ยืนยันรับเงินแล้ว" ของกลุ่ม — ถ้ายังไม่รัน migration ให้ถือว่าไม่มี (settlement ยังทำงานได้)
 async function listGroupPayments(groupId) {
   const { data, error } = await notificationRepo.payments.listByGroup(groupId);
   if (error) {
@@ -28,7 +26,6 @@ async function listGroupPayments(groupId) {
   return data || [];
 }
 
-// คำนวณ settlement ของกลุ่ม (บิลทั้งหมด − ยอดที่ยืนยันรับเงินแล้ว) ใช้ร่วมกันทุก endpoint
 async function computeGroupSettlement(groupId, options = {}) {
   const memberIds = await getGroupMemberIds(groupId);
   const { data, error } = await transactions.listForSettlement(groupId);
@@ -37,7 +34,6 @@ async function computeGroupSettlement(groupId, options = {}) {
   return { ...calculateSettlement(data || [], memberIds, payments, options), payments };
 }
 
-// ชื่อสมาชิกในกลุ่ม: Map<user_id, name>
 async function memberNameMap(groupId) {
   const { data } = await members.listMembershipsByGroupIds([groupId]);
   return new Map((data || []).map((m) => [String(m.user_id), m.users?.name || m.users?.email || 'สมาชิก']));
@@ -46,8 +42,6 @@ async function memberNameMap(groupId) {
 const fmtBaht = (n) =>
   Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
-// อ่านข้อมูลจากรูปสลิป/ใบเสร็จด้วย OCR (รูปแบบเดียวกับ personal scan-receipt)
-// ถ้าอ่านไม่ได้ไม่ทำให้ flow ล้มเหลว — คืน null แล้วหน้าจอยังเก็บรูปสลิปได้ตามเดิม
 async function readSlipOcr(file) {
   if (!file) return null;
   try {
@@ -78,47 +72,38 @@ async function readSlipOcr(file) {
 }
 
 // ==========================================
-// Groups Controllers (feature/group-management)
+// Groups Controllers
 // ==========================================
 
-// ดึงรายการกลุ่มทั้งหมดของผู้ใช้
-// สีประจำสมาชิก (หน้าจอคาดว่า member.color เป็น hex)
 const MEMBER_COLORS = ['#EF4444', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#EC4899'];
 
 exports.getMyGroups = async (req, res) => {
   try {
     const userId = req.user.id || req.user.user_id;
 
-    // 1) กลุ่มที่ฉันเป็นสมาชิก
     const { data: memberships, error: mErr } = await members.listMembershipsByUser(userId);
-
     if (mErr) throw mErr;
 
-    const groups = (memberships || []).map((m) => m.groups).filter(Boolean);
-    if (groups.length === 0) {
+    const groupsList = (memberships || []).map((m) => m.groups).filter(Boolean);
+    if (groupsList.length === 0) {
       return res.json({ success: true, groups: [] });
     }
 
-    const groupIds = groups.map((g) => g.id);
+    const groupIds = groupsList.map((g) => g.id);
 
-    // 2) สมาชิกทั้งหมด (เอาชื่อจริงมาด้วย)
     const { data: memberRows, error: memErr } = await members.listMembershipsByGroupIds(groupIds);
-
     if (memErr) throw memErr;
 
-    // 3) บิล/ธุรกรรมของทุกกลุ่ม
     const { data: txRows, error: txErr } = await transactions.listByGroupIds(groupIds);
-
     if (txErr) throw txErr;
 
-    const nameOf = (groupId, userId) => {
-      const row = (memberRows || []).find((m) => m.group_id === groupId && m.user_id === userId);
+    const nameOf = (groupId, uid) => {
+      const row = (memberRows || []).find((m) => m.group_id === groupId && m.user_id === uid);
       return row?.users?.name || row?.users?.email || 'สมาชิก';
     };
 
-    // 4) ประกอบเป็นรูปแบบที่หน้าจอคาด (members / bills / settled / color)
-    const enriched = groups.map((g) => {
-      const members = (memberRows || [])
+    const enriched = groupsList.map((g) => {
+      const groupMembers = (memberRows || [])
         .filter((m) => m.group_id === g.id)
         .map((m, i) => ({
           id: m.user_id,
@@ -153,7 +138,7 @@ exports.getMyGroups = async (req, res) => {
         color: g.icon_color,
         description: g.category,
         settled: g.status_type === 'settled',
-        members,
+        members: groupMembers,
         bills,
       };
     });
@@ -165,14 +150,11 @@ exports.getMyGroups = async (req, res) => {
   }
 };
 
-// สร้างกลุ่มใหม่
-// สร้างรหัสเชิญ 6 ตัว เช่น GR829A (ไม่ใช้ 0/O/1/I ที่อ่านยาก)
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const genInviteCode = (prefix = 'GR') =>
   prefix +
   Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
 
-// สุ่มรหัสที่ยังไม่ถูกใช้ (เผื่อชนกัน)
 const genUniqueInviteCode = async () => {
   for (let i = 0; i < 8; i += 1) {
     const code = genInviteCode();
@@ -209,18 +191,14 @@ const missingColumnOf = (err) => {
   return match ? match[1] : null;
 };
 
-// เป็นสมาชิกของกลุ่มนี้หรือไม่ — ใช้กันคนนอกกลุ่มอ่าน/เขียนบิลของกลุ่ม
 const isGroupMember = async (groupId, userId) => {
   const { data, error } = await members.memberExists(groupId, userId);
-
   if (error) throw error;
   return Boolean(data);
 };
 
-// รายชื่อสมาชิกทั้งหมดของกลุ่ม (user_id)
 const getGroupMemberIds = async (groupId) => {
   const { data, error } = await members.listMemberIds(groupId);
-
   if (error) throw error;
   return (data || []).map((m) => String(m.user_id));
 };
@@ -230,7 +208,7 @@ const early = (res, status, error) => {
     try {
       removeSlip(slipPathOf(res.req.file));
     } catch {
-      /* ลบไฟล์ไม่สำเร็จก็ปล่อยไป ไม่ควรทำให้ response พัง */
+      /* ignore */
     }
   }
   return res.status(status).json({ success: false, error });
@@ -297,10 +275,6 @@ exports.createGroup = async (req, res) => {
     ({ data, error } = await groups.insert(newGroup));
 
     if (error && isMissingColumn(error) && newGroup.invite_code) {
-      console.warn(
-        '⚠️  groups.invite_code ยังไม่มีในฐานข้อมูล — สร้างกลุ่มโดยไม่ใส่รหัสเชิญ ' +
-          '(รัน backend/sql/add_group_bill_split_columns.sql เพื่อเปิดใช้รหัสเชิญ)'
-      );
       markInviteCodeUnavailable();
       delete newGroup.invite_code;
       ({ data, error } = await groups.insert(newGroup));
@@ -327,14 +301,12 @@ exports.createGroup = async (req, res) => {
   }
 };
 
-// ลบกลุ่ม (เฉพาะผู้สร้าง) — ลบสมาชิก + ธุรกรรมของกลุ่มตามไปด้วย
 exports.deleteGroup = async (req, res) => {
   try {
     const userId = req.user.id || req.user.user_id;
     const { id } = req.params;
 
     const { data: group } = await groups.findOwned(id, userId);
-
     if (!group) {
       return res.status(404).json({ success: false, error: 'ไม่พบกลุ่มหรือคุณไม่มีสิทธิ์ลบกลุ่มนี้' });
     }
@@ -355,24 +327,22 @@ exports.deleteGroup = async (req, res) => {
   }
 };
 
-// ==========================================
-// ลบรายการบิล/ธุรกรรมของกลุ่ม
 exports.deleteGroupTransaction = async (req, res) => {
   try {
     const userId = req.user.id || req.user.user_id;
     const { id, transactionId } = req.params;
 
     if (!(await isGroupMember(id, userId))) {
-      return res.status(403).json({ success: false, error: "ข้อความผู้ใช้ไม่ใช่สมาชิกของกลุ่มนี้" });
+      return res.status(403).json({ success: false, error: 'ข้อความผู้ใช้ไม่ใช่สมาชิกของกลุ่มนี้' });
     }
 
     const { error } = await transactions.deleteByGroupAndId(id, transactionId);
     if (error) throw error;
 
-    return res.json({ success: true, message: "ลบรายการสำเร็จ" });
+    return res.json({ success: true, message: 'ลบรายการสำเร็จ' });
   } catch (err) {
-    console.error("Delete Group Transaction Error:", err);
-    return res.status(500).json({ success: false, error: "Database Error: " + err.message });
+    console.error('Delete Group Transaction Error:', err);
+    return res.status(500).json({ success: false, error: 'Database Error: ' + err.message });
   }
 };
 
@@ -380,7 +350,6 @@ exports.deleteGroupTransaction = async (req, res) => {
 // Group Transactions Controllers
 // ==========================================
 
-// ดึงรายการธุรกรรมของกลุ่ม
 exports.getGroupTransactions = async (req, res) => {
   try {
     const { id } = req.params;
@@ -391,7 +360,6 @@ exports.getGroupTransactions = async (req, res) => {
     }
 
     const { data, error } = await transactions.listByGroup(id);
-
     if (error) throw error;
     return res.json({ success: true, transactions: data || [] });
   } catch (err) {
@@ -411,14 +379,22 @@ exports.getGroupSettlement = async (req, res) => {
     }
 
     const settleOptions = {};
-    const strategyParam = String(req.query?.strategy || req.body?.strategy || '').toLowerCase();
-    const hubPersonParam = req.query?.hubPerson || req.body?.hubPerson;
+    const { data: groupMeta } = await groups.findById(id, 'settle_strategy, hub_person');
+    const strategyParam = String(
+      req.query?.strategy || req.body?.strategy || groupMeta?.settle_strategy || 'greedy'
+    ).toLowerCase();
+    const hubPersonParam =
+      req.query?.hubPerson !== undefined
+        ? req.query.hubPerson
+        : req.body?.hubPerson !== undefined
+          ? req.body.hubPerson
+          : groupMeta?.hub_person;
+
     if (strategyParam) settleOptions.strategy = strategyParam;
     if (hubPersonParam) settleOptions.hubPerson = String(hubPersonParam);
 
     const result = await computeGroupSettlement(id, settleOptions);
 
-    // บันทึกผลการตัดหนี้ลง group_settlements ทุกครั้ง (เพื่อให้มีข้อมูลในตาราง)
     try {
       const simplified = Array.isArray(result.transactions) ? result.transactions : [];
       if (simplified.length > 0) {
@@ -434,10 +410,7 @@ exports.getGroupSettlement = async (req, res) => {
           .filter((s) => s.from_user_id && s.to_user_id && Number(s.amount) > 0);
         if (toInsert.length > 0) {
           await groupSettlementRepo.createMany(toInsert);
-          console.log('[SYNC_SETTLEMENTS] inserted', toInsert.length, 'for group', id);
         }
-      } else {
-        console.log('[SYNC_SETTLEMENTS] simplified empty for group', id);
       }
     } catch (syncErr) {
       console.error('sync group_settlements from getGroupSettlement error:', syncErr);
@@ -457,19 +430,18 @@ exports.getGroupSettlement = async (req, res) => {
       skipped: result.skipped,
     });
   } catch (err) {
-    console.error('? Get group settlement error:', err);
+    console.error('❌ Get group settlement error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };
 
 // ==========================================
-// ทวงเงิน + ยืนยันรับเงิน (ต้องรัน sql/create_debt_notifications.sql)
+// ทวงเงิน + ยืนยันรับเงิน
 // ==========================================
 
 const MIGRATION_HINT =
   'ระบบแจ้งเตือนยังไม่พร้อม (ผู้ดูแลต้องรัน backend/sql/create_debt_notifications.sql)';
 
-// POST /:id/reminders   body: { debtor_id? }
 exports.sendDebtReminders = async (req, res) => {
   try {
     const { id } = req.params;
@@ -480,9 +452,16 @@ exports.sendDebtReminders = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const effectiveStrategy = String(req.body?.strategy || '').toLowerCase() === 'hub' ? 'hub' : 'greedy';
-    const effectiveHubPerson = req.body?.hubPerson ? String(req.body.hubPerson) : null;
-    const { transactions: debts } = await computeGroupSettlement(id, { strategy: effectiveStrategy, hubPerson: effectiveHubPerson });
+    const { data: groupMeta } = await groups.findById(id, 'name, settle_strategy, hub_person');
+    const effectiveStrategy = String(req.body?.strategy || groupMeta?.settle_strategy || 'greedy').toLowerCase() === 'hub' ? 'hub' : 'greedy';
+    const effectiveHubPerson = req.body?.hubPerson !== undefined
+      ? (req.body.hubPerson ? String(req.body.hubPerson) : null)
+      : (groupMeta?.hub_person ? String(groupMeta.hub_person) : null);
+
+    const { transactions: debts } = await computeGroupSettlement(id, {
+      strategy: effectiveStrategy,
+      hubPerson: effectiveHubPerson,
+    });
     const targets = debts.filter(
       (d) => String(d.from) !== userId && (!debtorId || String(d.from) === debtorId)
     );
@@ -492,8 +471,7 @@ exports.sendDebtReminders = async (req, res) => {
     }
 
     const names = await memberNameMap(id);
-    const { data: group } = await groups.findById(id, 'name');
-    const groupName = group?.name || 'กลุ่ม';
+    const groupName = groupMeta?.name || 'กลุ่ม';
     const senderName = names.get(userId) || 'สมาชิก';
 
     const rows = targets.map((d) => {
@@ -531,7 +509,6 @@ exports.sendDebtReminders = async (req, res) => {
   }
 };
 
-// POST /:id/payments/confirm   body: { from_user, amount? }
 exports.confirmPaymentReceived = async (req, res) => {
   try {
     const { id } = req.params;
@@ -548,9 +525,16 @@ exports.confirmPaymentReceived = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
-    const effectiveStrategy = String(req.body?.strategy || '').toLowerCase() === 'hub' ? 'hub' : 'greedy';
-    const effectiveHubPerson = req.body?.hubPerson ? String(req.body.hubPerson) : null;
-    const { transactions: debts } = await computeGroupSettlement(id, { strategy: effectiveStrategy, hubPerson: effectiveHubPerson });
+    const { data: groupMeta } = await groups.findById(id, 'name, settle_strategy, hub_person');
+    const effectiveStrategy = String(req.body?.strategy || groupMeta?.settle_strategy || 'greedy').toLowerCase() === 'hub' ? 'hub' : 'greedy';
+    const effectiveHubPerson = req.body?.hubPerson !== undefined
+      ? (req.body.hubPerson ? String(req.body.hubPerson) : null)
+      : (groupMeta?.hub_person ? String(groupMeta.hub_person) : null);
+
+    const { transactions: debts } = await computeGroupSettlement(id, {
+      strategy: effectiveStrategy,
+      hubPerson: effectiveHubPerson,
+    });
     const debt = debts.find((d) => String(d.from) === fromUser && String(d.to) === userId);
     if (!debt) {
       return res.status(404).json({ success: false, error: 'ไม่พบยอดค้างชำระจากสมาชิกคนนี้ถึงคุณ' });
@@ -577,17 +561,17 @@ exports.confirmPaymentReceived = async (req, res) => {
       throw error;
     }
 
-    // แจ้งลูกหนี้ว่าเจ้าหนี้ยืนยันแล้ว (ล้มเหลวก็ไม่ทำให้การยืนยันล้ม)
+    const names = await memberNameMap(id);
+    const groupName = groupMeta?.name || 'กลุ่ม';
+
     try {
-      const names = await memberNameMap(id);
-      const { data: group } = await groups.findById(id, 'name');
       await notificationRepo.notifications.insertMany([
         {
           user_id: fromUser,
           sender_id: userId,
           group_id: id,
           type: 'payment_confirmed',
-          title: `ยืนยันรับเงินแล้ว — กลุ่ม "${group?.name || 'กลุ่ม'}"`,
+          title: `ยืนยันรับเงินแล้ว — กลุ่ม "${groupName}"`,
           message: `${names.get(userId) || 'สมาชิก'} ยืนยันว่าได้รับเงิน ฿${fmtBaht(amount)} จากคุณเรียบร้อยแล้ว`,
           amount,
         },
@@ -596,23 +580,24 @@ exports.confirmPaymentReceived = async (req, res) => {
       console.warn('⚠️ แจ้งเตือนการยืนยันรับเงินไม่สำเร็จ:', notifyErr.message);
     }
 
-    // [เพิ่มใหม่] บันทึกเป็น "รายรับ (income)" ในบัญชีส่วนบุคคลของเจ้าหนี้ (userId) ที่กดยืนยันรับเงิน
+    // บันทึกรายรับเข้าบัญชีส่วนบุคคลของเจ้าหนี้ (ตรงตาม Schema ตาราง personal_transactions)
     try {
-      const names = await memberNameMap(id);
-      const { data: grpInfo } = await groups.findById(id, 'name');
       const payerName = names.get(fromUser) || 'เพื่อน';
-      const groupLabel = grpInfo?.name ? ` (${grpInfo.name})` : '';
+      const groupLabel = groupMeta?.name ? ` (${groupMeta.name})` : '';
 
       const { error: incomeInsertErr } = await supabase.from('personal_transactions').insert([
         {
           id: uuidv4(),
           user_id: userId,
+          category_id: null,
           title: `รับเงินคืนจาก ${payerName}${groupLabel}`,
-          amount: amount,
           type: 'income',
-          category: 'Group Settlement',
-          transaction_date: new Date().toISOString().split('T')[0],
-          note: `รับโอนคืนยอดค้างชำระในกลุ่มจาก ${payerName}`,
+          amount: amount,
+          net_amount: amount,
+          vat: 0,
+          service_charge: 0,
+          merchant: 'Group Settlement',
+          transaction_date: new Date().toISOString(),
         },
       ]);
       if (incomeInsertErr) throw incomeInsertErr;
@@ -620,8 +605,10 @@ exports.confirmPaymentReceived = async (req, res) => {
       console.warn('⚠️ บันทึกรายรับคืนเงินลงบัญชีส่วนบุคคลไม่สำเร็จ:', incomeErr.message);
     }
 
-    // ถ้าไม่เหลือหนี้แล้ว -> ปิดกลุ่มเป็น settled อัตโนมัติ
-    const after = await computeGroupSettlement(id);
+    const after = await computeGroupSettlement(id, {
+      strategy: effectiveStrategy,
+      hubPerson: effectiveHubPerson,
+    });
     const allSettled = after.transactions.length === 0;
     if (allSettled) {
       await groups.updateById(id, { status_type: 'settled' });
@@ -640,7 +627,6 @@ exports.confirmPaymentReceived = async (req, res) => {
   }
 };
 
-// อัปโหลดรูปสลิปล่วงหน้า
 exports.uploadGroupSlip = async (req, res) => {
   try {
     const { id } = req.params;
@@ -672,7 +658,6 @@ exports.uploadGroupSlip = async (req, res) => {
   }
 };
 
-// สร้างธุรกรรมใหม่ในกลุ่ม
 exports.createGroupTransaction = async (req, res) => {
   try {
     const { id } = req.params;
@@ -691,7 +676,7 @@ exports.createGroupTransaction = async (req, res) => {
       return early(res, 403, 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้');
     }
 
-    const { data: group, error: groupLookupError } = await groups.findById(id, 'status_type');
+    const { data: group, error: groupLookupError } = await groups.findById(id, 'status_type, name');
     if (groupLookupError) throw groupLookupError;
     if (!group) return early(res, 404, 'ไม่พบกลุ่มนี้');
     if (group.status_type === 'settled') {
@@ -799,23 +784,14 @@ exports.createGroupTransaction = async (req, res) => {
       throw saveError;
     }
 
-    if (droppedFields.length > 0) {
-      console.warn(
-        '⚠️  group_transactions ยังไม่มีคอลัมน์: ' +
-          `${droppedFields.join(', ')} — รัน backend/sql/add_group_bill_split_columns.sql เพื่อเปิดใช้งาน`
-      );
-    }
-
     const delta = newTransaction.type === 'income' ? -summary.grandTotal : summary.grandTotal;
     const { error: groupError } = await groups.updateSpend(id, delta);
     if (groupError) console.error('❌ Update group total_spend error:', groupError);
 
-    // ส่งการแจ้งเตือนบิลใหม่เข้ากระดิ่งของสมาชิกคนอื่นๆ ในกลุ่ม
     try {
       const memberIds = await getGroupMemberIds(id);
       const otherMembers = memberIds.filter((mid) => String(mid) !== String(userId));
       if (otherMembers.length > 0) {
-        const { data: grp } = await groups.findById(id, 'name');
         const names = await memberNameMap(id);
         const payerName = names.get(String(userId)) || 'สมาชิก';
         const notifRows = otherMembers.map((mid) => ({
@@ -823,7 +799,7 @@ exports.createGroupTransaction = async (req, res) => {
           sender_id: userId,
           group_id: id,
           type: 'new_group_bill',
-          title: `บิลใหม่ในกลุ่ม "${grp?.name || 'กลุ่ม'}"`,
+          title: `บิลใหม่ในกลุ่ม "${group?.name || 'กลุ่ม'}"`,
           message: `${payerName} ได้เพิ่มบิล "${newTransaction.title}" ยอดเงิน ฿${fmtBaht(summary.grandTotal)}`,
           amount: summary.grandTotal,
         }));
@@ -833,22 +809,24 @@ exports.createGroupTransaction = async (req, res) => {
       console.warn('⚠️ แจ้งเตือนบิลใหม่ไม่สำเร็จ:', nErr.message);
     }
 
-    // [เพิ่มใหม่] บันทึกลงรายจ่ายส่วนบุคคลอัตโนมัติ สำหรับคนที่เป็นคนจ่ายบิลนี้ก่อน (paid_by)
+    // บันทึกลงรายจ่ายส่วนบุคคลอัตโนมัติ สำหรับคนที่เป็นคนจ่ายบิลนี้ก่อน (paid_by)
     try {
       const payerId = String(newTransaction.paid_by || userId);
-      const { data: grpInfo } = await groups.findById(id, 'name');
-      const groupLabel = grpInfo?.name ? ` (${grpInfo.name})` : '';
+      const groupLabel = group?.name ? ` (${group.name})` : '';
 
       const { error: personalInsertErr } = await supabase.from('personal_transactions').insert([
         {
           id: uuidv4(),
           user_id: payerId,
+          category_id: null,
           title: `[กลุ่ม${groupLabel}] ${newTransaction.title}`,
-          amount: summary.grandTotal,
           type: newTransaction.type, // 'expense'
-          category: newTransaction.category || 'General',
-          transaction_date: newTransaction.transaction_date,
-          note: `จ่ายสำรองในกลุ่ม (รหัสบิล: ${newTransaction.id})`,
+          amount: summary.grandTotal,
+          net_amount: baseAmount,
+          vat: summary.totalVAT,
+          service_charge: summary.totalSC,
+          merchant: newTransaction.merchant || 'Group Expense',
+          transaction_date: new Date(newTransaction.transaction_date).toISOString(),
         },
       ]);
       if (personalInsertErr) throw personalInsertErr;
@@ -884,7 +862,6 @@ exports.getGroupMembers = async (req, res) => {
   try {
     const { id } = req.params;
     const { data, error } = await members.listMembershipsByGroupIds([id]);
-
     if (error) throw error;
     return res.json({ success: true, members: data || [] });
   } catch (err) {
@@ -929,7 +906,6 @@ exports.addGroupMember = async (req, res) => {
     const { data: group } = await groups.findMembersCount(id);
     const currentCount = group?.members_count || 1;
     const { error: countError } = await groups.updateById(id, { members_count: currentCount + 1 });
-
     if (countError) throw countError;
 
     return res.json({ success: true, message: 'เพิ่มสมาชิกสำเร็จ', member: data });
@@ -1022,8 +998,8 @@ exports.joinGroup = async (req, res) => {
     if (countErr) throw countErr;
 
     try {
-      const { data: memberRows } = await members.listMembers(group_id, 'user_id');
-      const otherMembers = (memberRows || [])
+      const { data: mRows } = await members.listMembers(group_id, 'user_id');
+      const otherMembers = (mRows || [])
         .map((m) => String(m.user_id))
         .filter((mid) => mid !== String(userId));
       if (otherMembers.length > 0) {
@@ -1069,12 +1045,109 @@ exports.updateGroupStatus = async (req, res) => {
       return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
     }
 
+    // เมื่อปิดกลุ่มเป็น settled -> บันทึกรายรับคืนเงินเข้าบัญชีส่วนตัวของเจ้าหนี้ที่ค้างรับอยู่ทุกคน
+    if (status_type === 'settled') {
+      try {
+        const { data: groupMeta } = await groups.findById(id, 'name, status_type, settle_strategy, hub_person');
+        if (groupMeta && groupMeta.status_type !== 'settled') {
+          const settlementResult = await computeGroupSettlement(id, {
+            strategy: groupMeta.settle_strategy || 'greedy',
+            hubPerson: groupMeta.hub_person || undefined,
+          });
+          const remainingDebts = settlementResult.transactions || [];
+          const names = await memberNameMap(id);
+          const groupLabel = groupMeta.name ? ` (${groupMeta.name})` : '';
+
+          for (const debt of remainingDebts) {
+            const payerName = names.get(String(debt.from)) || 'เพื่อน';
+            await notificationRepo.payments.insert({
+              group_id: id,
+              from_user: String(debt.from),
+              to_user: String(debt.to),
+              amount: Number(debt.amount),
+              confirmed_by: userId,
+            }).catch(() => {});
+
+            await supabase.from('personal_transactions').insert([
+              {
+                id: uuidv4(),
+                user_id: String(debt.to),
+                category_id: null,
+                title: `รับเงินคืนจาก ${payerName}${groupLabel}`,
+                type: 'income',
+                amount: Number(debt.amount),
+                net_amount: Number(debt.amount),
+                vat: 0,
+                service_charge: 0,
+                merchant: 'Group Settlement',
+                transaction_date: new Date().toISOString(),
+              },
+            ]);
+          }
+        }
+      } catch (settleSyncErr) {
+        console.warn('⚠️ บันทึกรายรับตอนปิดกลุ่มไม่สำเร็จ:', settleSyncErr.message);
+      }
+    }
+
     const { data, error } = await groups.updateById(id, { status_type }, { select: '*', single: true });
     if (error) throw error;
 
     return res.json({ success: true, message: 'อัปเดตสถานะกลุ่มสำเร็จ', group: data });
   } catch (err) {
     console.error('❌ Update group status error:', err);
+    return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
+  }
+};
+
+exports.updateGroupSettleStrategy = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.user_id;
+    const { id } = req.params;
+    const strategy = String(req.body?.strategy || 'greedy').toLowerCase();
+    const hubPerson = strategy === 'hub' && req.body?.hubPerson ? String(req.body.hubPerson) : null;
+
+    if (!['greedy', 'hub'].includes(strategy)) {
+      return res.status(400).json({ success: false, error: 'รูปแบบการตัดหนี้ไม่ถูกต้อง' });
+    }
+
+    if (!(await isGroupMember(id, userId))) {
+      return res.status(403).json({ success: false, error: 'คุณไม่ได้เป็นสมาชิกของกลุ่มนี้' });
+    }
+
+    const { data, error } = await groups.updateById(
+      id,
+      { settle_strategy: strategy, hub_person: hubPerson },
+      { select: '*', single: true }
+    );
+    if (error) throw error;
+
+    const result = await computeGroupSettlement(id, { strategy, hubPerson });
+    const simplified = Array.isArray(result.transactions) ? result.transactions : [];
+    await groupSettlementRepo.deletePendingByGroupId(id);
+    if (simplified.length > 0) {
+      const toInsert = simplified
+        .map((s) => ({
+          group_id: id,
+          from_user_id: s.from,
+          to_user_id: s.to,
+          amount: Number(s.amount),
+          status: 'pending',
+        }))
+        .filter((s) => s.from_user_id && s.to_user_id && Number(s.amount) > 0);
+      if (toInsert.length > 0) {
+        await groupSettlementRepo.createMany(toInsert);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'บันทึกวิธีการเคลียร์บิลสำเร็จ',
+      group: data,
+      transactions: simplified,
+    });
+  } catch (err) {
+    console.error('❌ Update settle strategy error:', err);
     return res.status(500).json({ success: false, error: `Database Error: ${err.message}` });
   }
 };
@@ -1119,10 +1192,9 @@ exports.updateGroupTransactionSplit = async (req, res) => {
 };
 
 // ==========================================
-// Group Settlements (บันทึกผลการตัดหนี้ลงตาราง)
+// Group Settlements
 // ==========================================
 
-// GET /groups/:id/settlements
 exports.getGroupSettlements = async (req, res) => {
   try {
     const { id: groupId } = req.params;
@@ -1131,6 +1203,17 @@ exports.getGroupSettlements = async (req, res) => {
     if (!(await isGroupMember(groupId, userId))) {
       return res.status(403).json({ success: false, error: 'ไม่มีสิทธิ์เข้าถึงกลุ่มนี้' });
     }
+
+    const { data: groupMeta } = await groups.findById(groupId, 'settle_strategy, hub_person');
+    const strategyParam = String(
+      req.query?.strategy || req.body?.strategy || groupMeta?.settle_strategy || 'greedy'
+    ).toLowerCase();
+    const hubPersonParam =
+      req.query?.hubPerson !== undefined
+        ? req.query.hubPerson
+        : req.body?.hubPerson !== undefined
+          ? req.body.hubPerson
+          : groupMeta?.hub_person;
 
     const txList = await transactions.findByGroupId(groupId);
     const memberList = await members.listMembershipsByGroupIds([groupId]);
@@ -1149,8 +1232,8 @@ exports.getGroupSettlements = async (req, res) => {
 
     const { balances } = splitBillForGroup(items, 0, 0, { groupMembers: memberIds });
     const simplified = settleGroupBalances(balances, {
-      strategy: String(req.query?.strategy || req.body?.strategy || 'greedy'),
-      hubPerson: req.query?.hubPerson || req.body?.hubPerson,
+      strategy: strategyParam,
+      hubPerson: hubPersonParam || undefined,
     });
 
     let pending = await groupSettlementRepo.findPendingByGroupId(groupId);
@@ -1170,10 +1253,7 @@ exports.getGroupSettlements = async (req, res) => {
 
       if (toInsert.length > 0) {
         pending = await groupSettlementRepo.createMany(toInsert);
-        console.log('[SYNC_SETTLEMENTS2] inserted', toInsert.length, 'for group', groupId);
       }
-    } else {
-      console.log('[SYNC_SETTLEMENTS2] simplified empty for group', groupId);
     }
 
     return res.json({ success: true, settlements: pending, balances, transactions: simplified });
@@ -1183,7 +1263,6 @@ exports.getGroupSettlements = async (req, res) => {
   }
 };
 
-// PATCH /groups/:id/settlements/:settlementId/paid
 exports.markSettlementPaid = async (req, res) => {
   try {
     const { id: groupId, settlementId } = req.params;
@@ -1204,7 +1283,6 @@ exports.markSettlementPaid = async (req, res) => {
 
     const updated = await groupSettlementRepo.markAsPaid(settlementId, userId);
 
-    // [เพิ่มใหม่] บันทึกเป็น "รายรับ (income)" ในบัญชีส่วนบุคคลของผู้รับเงิน (to_user_id)
     try {
       const receiverId = String(settlement.to_user_id);
       const payerId = String(settlement.from_user_id);
@@ -1212,17 +1290,21 @@ exports.markSettlementPaid = async (req, res) => {
       const { data: grpInfo } = await groups.findById(groupId, 'name');
       const payerName = names.get(payerId) || 'เพื่อน';
       const groupLabel = grpInfo?.name ? ` (${grpInfo.name})` : '';
+      const paidAmt = Number(settlement.amount);
 
       const { error: incomeInsertErr } = await supabase.from('personal_transactions').insert([
         {
           id: uuidv4(),
           user_id: receiverId,
+          category_id: null,
           title: `รับเงินคืนจาก ${payerName}${groupLabel}`,
-          amount: Number(settlement.amount),
           type: 'income',
-          category: 'Group Settlement',
-          transaction_date: new Date().toISOString().split('T')[0],
-          note: `รับโอนคืนยอดค้างชำระในกลุ่มจาก ${payerName}`,
+          amount: paidAmt,
+          net_amount: paidAmt,
+          vat: 0,
+          service_charge: 0,
+          merchant: 'Group Settlement',
+          transaction_date: new Date().toISOString(),
         },
       ]);
       if (incomeInsertErr) throw incomeInsertErr;

@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SHADOWS } from '@/lib/theme';
 import { useGroup } from './context/GroupContext';
 import { getToken, http } from '@/lib/api';
@@ -139,10 +140,10 @@ export default function GroupSettleScreen() {
 
   // 2 modes หลัก: "ทั้งหมด" (รายบิลดิบ) vs "จ่าย" (ผลหลังตัดหนี้)
   const [activeTab, setActiveTab] = useState('summary');
-  
+
   // Strategy สำหรับการตัดหนี้: 'greedy' (คู่ต่อคู่) vs 'hub' (โอนผ่านศูนย์กลาง)
-  const [strategy, setStrategy] = useState('greedy');
-  const [selectedHubPerson, setSelectedHubPerson] = useState(null);
+  const [strategy, setStrategy] = useState(ctx?.settle_strategy || 'greedy');
+  const [selectedHubPerson, setSelectedHubPerson] = useState(ctx?.hub_person || null);
 
   const [remindedList, setRemindedList] = useState([]);
   const [simplifiedDebts, setSimplifiedDebts] = useState([]);
@@ -154,6 +155,55 @@ export default function GroupSettleScreen() {
   const [confirmingPaymentId, setConfirmingPaymentId] = useState(null);
 
   const myId = String(me?.id || '');
+
+  // โหลดค่า strategy และ hubPerson ที่บันทึกไว้ (จาก Database หรือ AsyncStorage)
+  useEffect(() => {
+    if (!groupId) return;
+    if (ctx?.settle_strategy) {
+      setStrategy(ctx.settle_strategy);
+      setSelectedHubPerson(ctx.hub_person || null);
+      return;
+    }
+    AsyncStorage.getItem(`settle_pref_${groupId}`).then((saved) => {
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.strategy) setStrategy(parsed.strategy);
+          if (parsed.hubPerson !== undefined) setSelectedHubPerson(parsed.hubPerson);
+        } catch {}
+      }
+    });
+  }, [groupId, ctx?.settle_strategy, ctx?.hub_person]);
+
+  // เปลี่ยนรูปแบบการตัดหนี้และบันทึกลง Backend + เครื่องทันที
+  const handleSelectStrategy = async (newStrategy, newHubPerson = null) => {
+    setStrategy(newStrategy);
+    setSelectedHubPerson(newHubPerson);
+
+    if (!groupId) return;
+
+    // 1. บันทึกลงเครื่องสำรองไว้ทันที
+    AsyncStorage.setItem(
+      `settle_pref_${groupId}`,
+      JSON.stringify({ strategy: newStrategy, hubPerson: newHubPerson })
+    ).catch(() => {});
+
+    // 2. ยิง API บันทึกลงฐานข้อมูลของกลุ่ม
+    try {
+      const token = await getToken();
+      await http.patch(
+        `/groups/${groupId}/settle-strategy`,
+        {
+          strategy: newStrategy,
+          hubPerson: newStrategy === 'hub' ? newHubPerson : null,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await refresh();
+    } catch (err) {
+      console.warn('Save settle strategy warning:', err.response?.data || err.message);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -272,7 +322,11 @@ export default function GroupSettleScreen() {
       if (token && groupId) {
         await http.post(
           `/groups/${groupId}/reminders`,
-          { debtor_id: debt.fromId },
+          {
+            debtor_id: debt.fromId,
+            strategy,
+            hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
+          },
           { headers: { Authorization: `Bearer ${token}` } }
         );
       }
@@ -309,7 +363,10 @@ export default function GroupSettleScreen() {
               const token = await getToken();
               const res = await http.post(
                 `/groups/${groupId}/reminders`,
-                {},
+                {
+                  strategy,
+                  hubPerson: strategy === 'hub' ? selectedHubPerson : undefined,
+                },
                 { headers: { Authorization: `Bearer ${token}` } }
               );
               const allIds = simplifiedDebts.map((d) => d.id);
@@ -385,7 +442,20 @@ export default function GroupSettleScreen() {
             if (!groupId) return;
             try {
               setSaving(true);
-              await settleGroup(groupId);
+              const token = await getToken();
+              await http.patch(
+                `/groups/${groupId}/settle-strategy`,
+                {
+                  strategy,
+                  hubPerson: strategy === 'hub' ? selectedHubPerson : null,
+                },
+                { headers: { Authorization: `Bearer ${token}` } }
+              ).catch(() => {});
+
+              await settleGroup(groupId, {
+                strategy,
+                hubPerson: strategy === 'hub' ? selectedHubPerson : null,
+              });
               Alert.alert('สำเร็จ', 'บันทึกการเคลียร์บิลเรียบร้อยแล้ว', [
                 { text: 'ตกลง', onPress: () => router.back() },
               ]);
@@ -512,11 +582,11 @@ export default function GroupSettleScreen() {
               {/* Strategy Selector Box */}
               <View style={styles.strategyBox}>
                 <Text style={styles.strategyTitle}>รูปแบบการคำนวณเงินคืน:</Text>
-                
+
                 <View style={styles.strategyBtnRow}>
                   <TouchableOpacity
                     style={[styles.strategyOptionBtn, strategy === 'greedy' && styles.strategyOptionBtnActive]}
-                    onPress={() => setStrategy('greedy')}
+                    onPress={() => handleSelectStrategy('greedy', null)}
                     activeOpacity={0.8}
                   >
                     <Ionicons
@@ -531,7 +601,7 @@ export default function GroupSettleScreen() {
 
                   <TouchableOpacity
                     style={[styles.strategyOptionBtn, strategy === 'hub' && styles.strategyOptionBtnActive]}
-                    onPress={() => setStrategy('hub')}
+                    onPress={() => handleSelectStrategy('hub', selectedHubPerson)}
                     activeOpacity={0.8}
                   >
                     <Ionicons
@@ -555,7 +625,7 @@ export default function GroupSettleScreen() {
                           styles.hubChip,
                           selectedHubPerson === null && styles.hubChipActive,
                         ]}
-                        onPress={() => setSelectedHubPerson(null)}
+                        onPress={() => handleSelectStrategy('hub', null)}
                       >
                         <Text
                           style={[
@@ -574,7 +644,7 @@ export default function GroupSettleScreen() {
                           <TouchableOpacity
                             key={mId}
                             style={[styles.hubChip, isSelected && styles.hubChipActive]}
-                            onPress={() => setSelectedHubPerson(mId)}
+                            onPress={() => handleSelectStrategy('hub', mId)}
                           >
                             <Text style={[styles.hubChipText, isSelected && styles.hubChipTextActive]}>
                               {m.name}
