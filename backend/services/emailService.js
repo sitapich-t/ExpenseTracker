@@ -3,13 +3,19 @@ const nodemailer = require('nodemailer');
 const GMAIL_USER = process.env.GMAIL_USER;
 const GMAIL_PASS = process.env.GMAIL_PASS;
 
-const transporter =
-  GMAIL_USER && GMAIL_PASS
-    ? nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user: GMAIL_USER, pass: GMAIL_PASS }
-      })
-    : null;
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // ใช้ false สำหรับพอร์ต 587 (STARTTLS)
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,
+  },
+  family: 4, // บังคับเชื่อมต่อผ่าน IPv4 เพื่อแก้ปัญหา ENETUNREACH บน Render
+});
 
 const TITLES = {
   register: 'ยืนยันการสมัครสมาชิก',
