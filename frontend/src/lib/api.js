@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import axios from "axios";
 
-const API_URL = global.__API_URL__ || "http://10.0.2.2:3000";
+const API_URL = global.__API_URL__ || "https://expense-tracker-k8xr.onrender.com";
 const API_V1 = `${API_URL}/api/v1`;
 
 export { API_URL, API_V1 };
