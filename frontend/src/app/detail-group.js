@@ -265,7 +265,7 @@ export default function GroupDetailScreen() {
                   {isDeletingBill ? (
                     <ActivityIndicator size="small" color="#ffffff" />
                   ) : (
-                    <Ionicons name="trash-outline" size={22} color="#ffffff" />
+                    <Ionicons name="trash-outline" size={18} color="#ffffff" />
                   )}
                   <Text style={styles.swipeActionText}>{isDeletingBill ? 'กำลังลบ' : 'ลบ'}</Text>
                 </TouchableOpacity>
@@ -617,18 +617,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   swipeActionButton: {
-    width: 92,
+    width: 72,
     backgroundColor: '#e53935',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    gap: 2,
   },
   swipeActionDisabled: {
     backgroundColor: '#b71c1c',
   },
   swipeActionText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
 });

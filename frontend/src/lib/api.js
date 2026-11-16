@@ -1,8 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import axios from "axios";
+import { Platform } from "react-native";
 
-const API_URL = global.__API_URL__ || "https://expense-tracker-k8xr.onrender.com";
+// ค่าเริ่มต้นสำหรับรันบนคอมให้เร็วที่สุด: ชี้ไป backend ที่รัน local
+// - Android Emulator: ใช้ 10.0.2.2 เพื่อเข้าถึง localhost ของเครื่องคอม
+// - iOS Simulator / Web: ใช้ localhost ได้โดยตรง
+// ถ้ารันบนมือถือเครื่องจริง ให้ตั้ง global.__API_URL__ = "http://<IP-เครื่องคอม>:3000"
+// ถ้าต้องการใช้ backend บน Render ให้ตั้ง global.__API_URL__ = "https://expense-tracker-k8xr.onrender.com"
+const LOCAL_API_URL =
+  Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
+const API_URL = global.__API_URL__ || LOCAL_API_URL;
 const API_V1 = `${API_URL}/api/v1`;
 
 export { API_URL, API_V1 };
