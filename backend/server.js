@@ -120,7 +120,7 @@ app.use(errorMiddleware);
 // ==========================================
 // SERVER START
 // ==========================================
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   logger.info('Server started', {
     url: `http://localhost:${PORT}`,
     health: `http://localhost:${PORT}/api/health`,
