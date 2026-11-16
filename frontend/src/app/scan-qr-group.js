@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, AppState } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { getToken, http } from "@/lib/api";
@@ -9,16 +9,27 @@ import { useGroup } from "./context/GroupContext";
 
 export default function ScanQRCodeScreen() {
     const router = useRouter();
+    const pathname = usePathname();
     const { refresh } = useGroup();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
     const [joining, setJoining] = useState(false);
+    const [appState, setAppState] = useState(AppState.currentState);
 
     useEffect(() => {
         if (!permission) {
             requestPermission();
         }
     }, [permission, requestPermission]);
+
+    useEffect(() => {
+        const subscription = AppState.addEventListener("change", (nextAppState) => {
+            setAppState(nextAppState);
+        });
+        return () => subscription.remove();
+    }, []);
+
+    const isCameraActive = appState === "active" && pathname.includes("scan-qr-group");
 
     if (!permission) {
         return <View style={s.safe}><Text style={{ color: '#fff' }}>กำลังขอสิทธิ์การใช้งานกล้อง...</Text></View>;
@@ -48,7 +59,6 @@ export default function ScanQRCodeScreen() {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!res.data?.success) throw new Error(res.data?.error || 'เข้าร่วมกลุ่มไม่สำเร็จ');
-            // ดึงรายชื่อกลุ่มใหม่ก่อน ไม่งั้นหน้า detail จะหาไม่เจอ
             await refresh();
             router.replace({ pathname: '/detail-group', params: { groupId } });
         } catch (err) {
@@ -99,14 +109,16 @@ export default function ScanQRCodeScreen() {
             </View>
 
             <View style={s.cameraContainer}>
-                <CameraView
-                    style={StyleSheet.absoluteFillObject}
-                    facing="back"
-                    onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-                    barcodeScannerSettings={{
-                        barcodeTypes: ["qr"],
-                    }}
-                />
+                {isCameraActive && (
+                    <CameraView
+                        style={StyleSheet.absoluteFillObject}
+                        facing="back"
+                        onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+                        barcodeScannerSettings={{
+                            barcodeTypes: ["qr"],
+                        }}
+                    />
+                )}
                 <View style={s.overlay}>
                     <View style={s.scanFrame} />
                     <Text style={s.instruction}>เล็ง QR Code ให้อยู่ในกรอบเพื่อเข้าร่วมกลุ่ม</Text>
@@ -138,7 +150,7 @@ const s = StyleSheet.create({
     overlay: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: "center", alignItems: "center",
-        backgroundColor: "rgba(0,0,0,0.5)"
+        backgroundColor: "rgba(0,0,0,0.2)"
     },
     scanFrame: {
         width: 250, height: 250,

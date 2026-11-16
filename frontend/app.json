@@ -20,6 +20,8 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.sitapichsteam.frontend"
@@ -55,6 +57,12 @@
       "eas": {
         "projectId": "1f45887d-35ce-4a12-aa21-a5aa249fc7ec"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1f45887d-35ce-4a12-aa21-a5aa249fc7ec"
     }
   }
 }

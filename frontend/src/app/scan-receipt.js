@@ -1,27 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, AppState, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, usePathname } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL, getToken } from '@/lib/api';
 import { setScannedImage } from '@/utils/scannedImageStore';
-import { File } from 'expo-file-system';
 
 export default function ScanReceiptScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const cameraRef = useRef(null);
   const params = useLocalSearchParams();
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(false);
   const [flash, setFlash] = useState(false);
-
-  // ใช้จาก params ตอน push แทนตัวแปรที่ไม่ได้ใช้งาน
+  const [appState, setAppState] = useState(AppState.currentState);
 
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, [permission, requestPermission]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      setAppState(nextAppState);
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const isCameraActive = appState === 'active' && pathname.includes('scan-receipt');
 
   const handlePickImage = async () => {
     if (loading) return;
@@ -58,9 +66,21 @@ export default function ScanReceiptScreen() {
         throw new Error('กรุณาเข้าสู่ระบบก่อนใช้สแกนใบเสร็จ');
       }
 
-        const formData = new FormData();
-        formData.append('receipt', new File(imageUri));
-        const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
+      const cleanUri = Platform.OS === 'ios' && !imageUri.startsWith('file://')
+        ? `file://${imageUri}`
+        : imageUri;
+      const filename = cleanUri.split('/').pop() || 'receipt.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
+
+      const formData = new FormData();
+      formData.append('receipt', {
+        uri: cleanUri,
+        name: filename,
+        type,
+      });
+
+      const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -86,14 +106,12 @@ export default function ScanReceiptScreen() {
         throw new Error('เซิร์ฟเวอร์ตอบกลับข้อมูลที่ไม่ถูกต้อง');
       }
 
-      // เก็บรูปไว้ใน memory สำหรับหน้า confirm
-      setScannedImage(imageUri);
+      setScannedImage(cleanUri);
 
       const isSlip = data.documentType === 'slip' || data.documentType === 'transfer_slip';
       const returnToRoute = params.returnTo ? String(params.returnTo) : null;
       const groupIdRoute = params.groupId ? String(params.groupId) : null;
 
-      // กรณีมาจากหน้า Add Group Expense
       if (returnToRoute === 'add-group-expense' && groupIdRoute) {
         setLoading(false);
         setTimeout(() => {
@@ -109,16 +127,15 @@ export default function ScanReceiptScreen() {
               ocr_items: JSON.stringify(data.items || []),
               ocr_date: data.date || '',
               ocr_parsed: data.parsedText || '',
-              ocr_image: imageUri,
-              ocr_slipUri: imageUri,
-              slipUri: imageUri,
+              ocr_image: cleanUri,
+              ocr_slipUri: cleanUri,
+              slipUri: cleanUri,
             },
           });
         }, 50);
         return;
       }
 
-      // กรณีสแกนทั่วไป ไปยังหน้า Confirm Receipt
       setLoading(false);
       setTimeout(() => {
         router.replace({
@@ -161,7 +178,14 @@ export default function ScanReceiptScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} enableTorch={flash} />
+      {isCameraActive && (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          enableTorch={flash}
+        />
+      )}
 
       {loading && (
         <View style={styles.loadingOverlay}>
@@ -215,7 +239,7 @@ const styles = StyleSheet.create({
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center',
     zIndex: 999,
   },
