@@ -37,7 +37,7 @@ http.interceptors.response.use(
     } catch {
       bodyStr = "[unserializable error body]";
     }
-    console.error("[API ✗]", status, url, bodyStr);
+    console.warn("[API ✗]", status, url, bodyStr);
     return Promise.reject(err);
   }
 );

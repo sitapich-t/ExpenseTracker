@@ -60,7 +60,8 @@ export default function DashboardScreen() {
           setHasBudget(false);
         }
       } catch (budgetErr) {
-        console.error('Fetch budget error:', budgetErr.response?.data || budgetErr.message);
+        console.warn('Fetch budget warning:', budgetErr.response?.data || budgetErr.message);
+        // ตั้งค่าเริ่มต้นให้หน้า Dashboard แสดงผลต่อได้โดยไม่พัง
       }
 
       try {

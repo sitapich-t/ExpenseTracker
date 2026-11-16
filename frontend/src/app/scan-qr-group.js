@@ -1,22 +1,23 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, AppState, Platform, Dimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, usePathname } from "expo-router";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, AppState, Dimensions } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { getToken, http } from "@/lib/api";
 import { useGroup } from "./context/GroupContext";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function ScanQRCodeScreen() {
     const router = useRouter();
-    const pathname = usePathname();
+    const insets = useSafeAreaInsets();
     const { refresh } = useGroup();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
     const [joining, setJoining] = useState(false);
     const [appState, setAppState] = useState(AppState.currentState);
+    const isScanningLock = useRef(false);
 
     useEffect(() => {
         if (!permission) {
@@ -31,7 +32,12 @@ export default function ScanQRCodeScreen() {
         return () => subscription.remove();
     }, []);
 
-    const isCameraActive = appState === "active"
+    const isCameraActive = appState !== "background" && appState !== "inactive";
+
+    const resetScanner = () => {
+        isScanningLock.current = false;
+        setScanned(false);
+    };
 
     if (!permission) {
         return <View style={s.safe}><Text style={{ color: '#fff' }}>กำลังขอสิทธิ์การใช้งานกล้อง...</Text></View>;
@@ -39,7 +45,7 @@ export default function ScanQRCodeScreen() {
 
     if (!permission.granted) {
         return (
-            <SafeAreaView style={s.safe}>
+            <View style={[s.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
                 <View style={s.centered}>
                     <Text style={s.text}>แอปต้องการสิทธิ์การใช้งานกล้องเพื่อสแกน QR Code</Text>
                     <TouchableOpacity style={s.btn} onPress={requestPermission}>
@@ -49,60 +55,96 @@ export default function ScanQRCodeScreen() {
                         <Text style={s.btnText}>ยกเลิก</Text>
                     </TouchableOpacity>
                 </View>
-            </SafeAreaView>
+            </View>
         );
     }
 
-    const handleJoin = async (groupId) => {
+    const handleJoin = async (payloadData) => {
         try {
             setJoining(true);
             const token = await getToken();
-            const res = await http.post('/groups/join', { group_id: groupId }, {
+            const res = await http.post('/groups/join', payloadData, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (!res.data?.success) throw new Error(res.data?.error || 'เข้าร่วมกลุ่มไม่สำเร็จ');
             await refresh();
-            router.replace({ pathname: '/detail-group', params: { groupId } });
+            const targetGroupId = res.data?.group?.id || res.data?.groupId || payloadData.group_id;
+            if (targetGroupId) {
+                router.replace({ pathname: '/detail-group', params: { groupId: targetGroupId } });
+            } else {
+                router.back();
+            }
         } catch (err) {
-            Alert.alert("เข้าร่วมไม่สำเร็จ", err.message || 'ไม่สามารถเข้าร่วมกลุ่มนี้ได้', [
-                { text: "ตกลง", onPress: () => setScanned(false) },
+            Alert.alert("เข้าร่วมไม่สำเร็จ", err.response?.data?.error || err.message || 'ไม่สามารถเข้าร่วมกลุ่มนี้ได้', [
+                { text: "ตกลง", onPress: resetScanner },
             ]);
         } finally {
             setJoining(false);
         }
     };
 
-    const handleBarcodeScanned = ({ type, data }) => {
+    const handleBarcodeScanned = ({ data }) => {
+        if (isScanningLock.current || scanned) return;
+        isScanningLock.current = true;
         setScanned(true);
+
+        const raw = String(data || "").trim();
+
         try {
-            const payload = JSON.parse(data);
+            const payload = JSON.parse(raw);
             if (payload.action === "join_group" && payload.groupId) {
                 Alert.alert(
                     "พบ QR Code กลุ่ม",
                     `ต้องการเข้าร่วมกลุ่ม "${payload.groupName || 'ไม่ระบุชื่อ'}" ใช่หรือไม่?`,
                     [
-                        { text: "ยกเลิก", onPress: () => setScanned(false), style: "cancel" },
+                        { text: "ยกเลิก", onPress: resetScanner, style: "cancel" },
                         {
                             text: joining ? "กำลังเข้าร่วม..." : "เข้าร่วม",
-                            onPress: () => handleJoin(payload.groupId),
+                            onPress: () => handleJoin({ group_id: payload.groupId }),
                         }
                     ]
                 );
-            } else {
-                Alert.alert("QR Code ไม่ถูกต้อง", "QR Code นี้ไม่ใช่ QR Code สำหรับเข้าร่วมกลุ่ม", [
-                    { text: "ตกลง", onPress: () => setScanned(false) }
-                ]);
+                return;
             }
         } catch (_error) {
-            Alert.alert("อ่าน QR Code ไม่สำเร็จ", "QR Code นี้ไม่ใช่รูปแบบที่ระบบรองรับ", [
-                { text: "ตกลง", onPress: () => setScanned(false) }
+            // ข้ามไปเช็กรหัสเชิญ
+        }
+
+        const extractedCode = raw.includes("/") ? raw.split("/").pop() : raw;
+        if (extractedCode && extractedCode.length >= 4 && extractedCode.length <= 20) {
+            Alert.alert(
+                "พบ QR Code เข้าร่วมกลุ่ม",
+                `ต้องการเข้าร่วมกลุ่มด้วยรหัส "${extractedCode}" ใช่หรือไม่?`,
+                [
+                    { text: "ยกเลิก", onPress: resetScanner, style: "cancel" },
+                    {
+                        text: joining ? "กำลังเข้าร่วม..." : "เข้าร่วม",
+                        onPress: () => handleJoin({ invite_code: extractedCode, code: extractedCode, group_id: extractedCode }),
+                    }
+                ]
+            );
+        } else {
+            Alert.alert("QR Code ไม่ถูกต้อง", `ข้อมูลที่อ่านได้: ${raw}`, [
+                { text: "ตกลง", onPress: resetScanner }
             ]);
         }
     };
 
     return (
-        <SafeAreaView style={s.safe}>
-            <View style={s.header}>
+        <View style={s.container}>
+            {isCameraActive && (
+                <CameraView
+                    style={s.camera}
+                    facing="back"
+                    onBarcodeScanned={handleBarcodeScanned}
+                    barcodeScannerSettings={{
+                        barcodeTypes: ["qr"],
+                    }}
+                />
+            )}
+
+            {/* Header ด้านบนสุด */}
+            <View style={[s.header, { top: insets.top + 8 }]}>
                 <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
                     <Ionicons name="arrow-back" size={24} color="#fff" />
                 </TouchableOpacity>
@@ -110,65 +152,99 @@ export default function ScanQRCodeScreen() {
                 <View style={{ width: 40 }} />
             </View>
 
-            <View style={s.cameraContainer}>
-                {isCameraActive && (
-                    <CameraView
-                        ref={cameraRef}
-                        style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: SCREEN_WIDTH,
-                        height: SCREEN_HEIGHT,
-                        }}
-                        facing="back"
-                        enableTorch={flash}
-                    />
-                )}
-                <View style={s.overlay}>
-                    <View style={s.scanFrame} />
-                    <Text style={s.instruction}>เล็ง QR Code ให้อยู่ในกรอบเพื่อเข้าร่วมกลุ่ม</Text>
-                </View>
+            {/* กรอบสแกนบังคับอยู่ตรงกลางจอ 100% */}
+            <View style={s.centerOverlay} pointerEvents="none">
+                <View style={s.scanFrame} />
+                <Text style={s.instruction}>เล็ง QR Code ให้อยู่ในกรอบเพื่อเข้าร่วมกลุ่ม</Text>
             </View>
 
+            {/* ปุ่มสแกนอีกครั้งด้านล่าง */}
             {scanned && (
-                <TouchableOpacity style={s.rescanBtn} onPress={() => setScanned(false)}>
+                <TouchableOpacity
+                    style={[s.rescanBtn, { bottom: insets.bottom + 32 }]}
+                    onPress={resetScanner}
+                >
                     <Text style={s.rescanText}>แตะเพื่อสแกนอีกครั้ง</Text>
                 </TouchableOpacity>
             )}
-        </SafeAreaView>
+        </View>
     );
 }
 
 const s = StyleSheet.create({
+    container: {
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        backgroundColor: "#000",
+    },
+    camera: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+    },
     safe: { flex: 1, backgroundColor: "#060A13" },
     centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
     text: { color: "#fff", fontSize: 16, textAlign: "center", marginBottom: 24 },
     btn: { backgroundColor: "#21D07A", padding: 16, borderRadius: 12, width: "100%", alignItems: "center" },
     btnText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
     header: {
-        flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-        paddingHorizontal: 16, paddingVertical: 16, zIndex: 10,
+        position: "absolute",
+        left: 0,
+        right: 0,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        zIndex: 20,
     },
-    backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(30,41,59,0.8)", justifyContent: "center", alignItems: "center" },
+    backBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "rgba(30,41,59,0.85)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
     headerTitle: { fontSize: 20, fontWeight: "bold", color: "#fff" },
-    cameraContainer: { flex: 1, position: "relative" },
-    overlay: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: "center", alignItems: "center",
-        backgroundColor: "rgba(0,0,0,0.2)"
+    centerOverlay: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 10,
     },
     scanFrame: {
-        width: 250, height: 250,
-        borderWidth: 2, borderColor: "#21D07A",
+        width: 250,
+        height: 250,
+        borderWidth: 2.5,
+        borderColor: "#21D07A",
         backgroundColor: "transparent",
-        borderRadius: 12,
+        borderRadius: 16,
     },
-    instruction: { color: "#fff", fontSize: 16, marginTop: 40, textAlign: "center", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
+    instruction: {
+        color: "#fff",
+        fontSize: 15,
+        marginTop: 24,
+        textAlign: "center",
+        backgroundColor: "rgba(0,0,0,0.65)",
+        paddingHorizontal: 18,
+        paddingVertical: 10,
+        borderRadius: 20,
+        overflow: "hidden",
+    },
     rescanBtn: {
-        position: "absolute", bottom: 40, alignSelf: "center",
-        backgroundColor: "#21D07A", paddingVertical: 16, paddingHorizontal: 32, borderRadius: 24,
+        position: "absolute",
+        alignSelf: "center",
+        backgroundColor: "#21D07A",
+        paddingVertical: 14,
+        paddingHorizontal: 28,
+        borderRadius: 24,
+        zIndex: 20,
     },
     rescanText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
 });
-

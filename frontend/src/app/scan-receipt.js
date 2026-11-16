@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL, getToken } from '@/lib/api';
 import { setScannedImage } from '@/utils/scannedImageStore';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -69,9 +70,17 @@ export default function ScanReceiptScreen() {
         throw new Error('กรุณาเข้าสู่ระบบก่อนใช้สแกนใบเสร็จ');
       }
 
+      
       const cleanUri = Platform.OS === 'ios' && !imageUri.startsWith('file://')
         ? `file://${imageUri}`
         : imageUri;
+
+        const manipulated = await ImageManipulator.manipulateAsync(
+  cleanUri,
+  [{ resize: { width: 1024 } }],
+  { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+);
+const uploadUri = manipulated.uri;
 
       const uploadResult = await FileSystem.uploadAsync(
         `${API_URL}/api/v1/personal/transactions/scan-receipt`,
