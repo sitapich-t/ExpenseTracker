@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert, AppState } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, AppState, Platform, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { getToken, http } from "@/lib/api";
 import { useGroup } from "./context/GroupContext";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function ScanQRCodeScreen() {
     const router = useRouter();
@@ -29,7 +31,7 @@ export default function ScanQRCodeScreen() {
         return () => subscription.remove();
     }, []);
 
-    const isCameraActive = appState === "active" && pathname.includes("scan-qr-group");
+    const isCameraActive = appState === "active"
 
     if (!permission) {
         return <View style={s.safe}><Text style={{ color: '#fff' }}>กำลังขอสิทธิ์การใช้งานกล้อง...</Text></View>;
@@ -111,12 +113,16 @@ export default function ScanQRCodeScreen() {
             <View style={s.cameraContainer}>
                 {isCameraActive && (
                     <CameraView
-                        style={StyleSheet.absoluteFillObject}
-                        facing="back"
-                        onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-                        barcodeScannerSettings={{
-                            barcodeTypes: ["qr"],
+                        ref={cameraRef}
+                        style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: SCREEN_WIDTH,
+                        height: SCREEN_HEIGHT,
                         }}
+                        facing="back"
+                        enableTorch={flash}
                     />
                 )}
                 <View style={s.overlay}>
@@ -165,3 +171,4 @@ const s = StyleSheet.create({
     },
     rescanText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
 });
+

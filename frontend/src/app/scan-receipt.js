@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, AppState, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, AppState, Platform, Dimensions } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams, usePathname } from 'expo-router';
@@ -7,6 +7,9 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL, getToken } from '@/lib/api';
 import { setScannedImage } from '@/utils/scannedImageStore';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function ScanReceiptScreen() {
   const router = useRouter();
@@ -29,20 +32,20 @@ export default function ScanReceiptScreen() {
     return () => subscription.remove();
   }, []);
 
-  const isCameraActive = appState === 'active' && pathname.includes('scan-receipt');
+  const isCameraActive = appState === 'active'
 
   const handlePickImage = async () => {
     if (loading) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      quality: 1,
+      quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]?.uri) {
       processOCR(result.assets[0].uri);
     }
-  };
+  };  
 
   const handleTakePhoto = async () => {
     if (loading) return;
@@ -69,26 +72,22 @@ export default function ScanReceiptScreen() {
       const cleanUri = Platform.OS === 'ios' && !imageUri.startsWith('file://')
         ? `file://${imageUri}`
         : imageUri;
-      const filename = cleanUri.split('/').pop() || 'receipt.jpg';
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
 
-      const formData = new FormData();
-      formData.append('receipt', {
-        uri: cleanUri,
-        name: filename,
-        type,
-      });
+      const uploadResult = await FileSystem.uploadAsync(
+        `${API_URL}/api/v1/personal/transactions/scan-receipt`,
+        cleanUri,
+        {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'receipt',
+          mimeType: 'image/jpeg',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-      const response = await fetch(`${API_URL}/api/v1/personal/transactions/scan-receipt`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      const resultText = await response.text();
+      const resultText = uploadResult.body;
 
       let data;
       try {
@@ -97,8 +96,8 @@ export default function ScanReceiptScreen() {
         data = null;
       }
 
-      if (!response.ok) {
-        const backendMessage = data?.message || data?.error || `HTTP ${response.status}`;
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        const backendMessage = data?.message || data?.error || `HTTP ${uploadResult.status}`;
         throw new Error(backendMessage);
       }
 
@@ -181,7 +180,13 @@ export default function ScanReceiptScreen() {
       {isCameraActive && (
         <CameraView
           ref={cameraRef}
-          style={StyleSheet.absoluteFillObject}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
+          }}
           facing="back"
           enableTorch={flash}
         />
