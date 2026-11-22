@@ -7,38 +7,99 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SHADOWS } from '@/lib/theme';
+import { getToken, http } from '@/lib/api';
 import { useGroup } from '../context/GroupContext';
+
+const baht = (n) =>
+  Number(n || 0).toLocaleString('th-TH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const sameUser = (a, b) =>
+  String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+
+const memberNameOf = (members, id) => {
+  const found = (members || []).find((m) => sameUser(m.id ?? m.user_id, id));
+  return found?.name || 'สมาชิก';
+};
+
+// รวมรายการที่ต้องโอนให้คนเดียวกันในกลุ่มเดียวกัน (กันรายการซ้ำจากหลายบิล)
+const mergeDebts = (items) => {
+  const map = new Map();
+  items.forEach((item) => {
+    const key = String(item.personId ?? '').trim().toLowerCase() || 'unknown';
+    if (map.has(key)) map.get(key).amount += item.amount;
+    else map.set(key, { ...item, personId: key });
+  });
+  return Array.from(map.values());
+};
+
+// แปลงผล settlement ของ backend ให้เป็นข้อมูลที่หน้ารวม/การ์ดกลุ่มใช้แสดงผล
+const buildSettlementDetail = (group, settlement, myUserId) => {
+  const { balances, transactions } = settlement || {};
+  const mine = (balances || []).find((b) => sameUser(b.person, myUserId));
+  const pay = [];
+  const receive = [];
+
+  // transactions จาก backend คือรายการโอนจริง (from -> to) หลังหักยอดที่ยืนยันรับเงินแล้ว
+  (transactions || []).forEach((t) => {
+    const amount = Number(t.amount) || 0;
+    if (!(amount > 0)) return;
+    const from = String(t.from ?? t.from_user_id ?? '');
+    const to = String(t.to ?? t.to_user_id ?? '');
+
+    if (sameUser(from, myUserId)) {
+      pay.push({ personId: to, personName: memberNameOf(group?.members, to), amount });
+    } else if (sameUser(to, myUserId)) {
+      receive.push({ personId: from, personName: memberNameOf(group?.members, from), amount });
+    }
+  });
+
+  return {
+    net: Number(mine?.amount) || 0,
+    pay: mergeDebts(pay),
+    receive: mergeDebts(receive),
+  };
+};
 
 export default function GroupListScreen() {
   const router = useRouter();
-  const { groups, me, loading, fetchSettlement } = useGroup();
-  const [settlementBalances, setSettlementBalances] = useState({});
+  const { groups, me, loading, fetchSettlement, refresh } = useGroup();
+  const [settlementData, setSettlementData] = useState({});
+  const [confirmingKey, setConfirmingKey] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
+  const myUserId = String(me?.id ?? me?.user_id ?? '').trim().toLowerCase();
+  const hasSettlementToLoad = Boolean(myUserId) && groups.length > 0;
+  const settlementReady =
+    (!loading && groups.length === 0) ||
+    (hasSettlementToLoad && groups.every((g) => settlementData[g.id] !== undefined));
+
   useEffect(() => {
     let active = true;
-    if (!me?.id || groups.length === 0) return () => { active = false; };
+    if (!myUserId || groups.length === 0) return () => { active = false; };
 
     Promise.all(groups.map(async (group) => {
       try {
-        const { balances } = await fetchSettlement(group.id);
-        const mine = balances.find((balance) => String(balance.person) === String(me.id));
-        return [group.id, Number(mine?.amount) || 0];
+        const settlement = await fetchSettlement(group.id);
+        return [group.id, buildSettlementDetail(group, settlement, myUserId)];
       } catch {
-        return [group.id, null];
+        return [group.id, { net: 0, pay: [], receive: [] }];
       }
     })).then((entries) => {
-      if (active) setSettlementBalances(Object.fromEntries(entries));
+      if (active) setSettlementData(Object.fromEntries(entries));
     });
 
     return () => { active = false; };
-  }, [groups, me?.id, fetchSettlement]);
+  }, [groups, myUserId, fetchSettlement]);
 
   const processedGroups = [...groups].sort((a, b) => {
     const newest = new Date(b.created_at || 0).getTime();
@@ -53,7 +114,8 @@ export default function GroupListScreen() {
     }, 0);
 
     // ใช้ยอดเดียวกับหน้าเคลียร์บิล เพื่อรองรับการหารตาม %/รายการ/ยอดตายตัว
-    const net = settlementBalances[g.id] ?? 0;
+    const detail = settlementData[g.id] || { net: 0, pay: [], receive: [] };
+    const net = detail.net;
 
     let statusType = 'empty';
     let statusLabel = 'ยังไม่มีค่าใช้จ่าย';
@@ -82,6 +144,8 @@ export default function GroupListScreen() {
       statusLabel,
       statusAmount,
       net,
+      pay: detail.pay,
+      receive: detail.receive,
     };
   });
 
@@ -92,6 +156,69 @@ export default function GroupListScreen() {
   const totalDebt = processedGroups
     .filter((g) => g.net < -0.01)
     .reduce((sum, g) => sum + Math.abs(g.net), 0);
+
+  // รวมรายการของฉันจากทุกกลุ่ม มาแสดงบนหน้ารวมโดยไม่ต้องเข้าแต่ละกลุ่ม
+  const myPayList = hasSettlementToLoad
+    ? processedGroups.flatMap((g) =>
+        g.pay.map((p) => ({
+          ...p,
+          key: `pay_${g.id}_${p.personId}`,
+          groupId: g.id,
+          groupName: g.name,
+        }))
+      )
+    : [];
+  const myReceiveList = hasSettlementToLoad
+    ? processedGroups.flatMap((g) =>
+        g.receive.map((p) => ({
+          ...p,
+          key: `receive_${g.id}_${p.personId}`,
+          groupId: g.id,
+          groupName: g.name,
+        }))
+      )
+    : [];
+
+  // เจ้าหนี้กดยืนยันรับเงินได้เลยจากหน้ารวม (ไม่ต้องเข้าแต่ละกลุ่ม)
+  const handleConfirmReceived = (item) => {
+    Alert.alert(
+      'ยืนยันได้รับเงินแล้ว',
+      `คุณได้รับเงินจำนวน ฿${baht(item.amount)} จาก "${item.personName}" ในกลุ่ม "${item.groupName}" เรียบร้อยแล้วใช่หรือไม่?\n\nเมื่อยืนยันแล้ว ยอดหนี้รายการนี้จะถูกตัดออกจากระบบทันที`,
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        {
+          text: 'ยืนยันได้รับเงิน',
+          onPress: async () => {
+            setConfirmingKey(item.key);
+            try {
+              const token = await getToken();
+              await http.post(
+                `/groups/${item.groupId}/payments/confirm`,
+                { from_user: item.personId, amount: item.amount },
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+
+              // โหลดยอดกลุ่มนี้ใหม่ทันที แล้วซิงก์สถานะกลุ่ม (settled) จาก context
+              const group = groups.find((g) => String(g.id) === String(item.groupId));
+              const settlement = await fetchSettlement(item.groupId);
+              setSettlementData((prev) => ({
+                ...prev,
+                [item.groupId]: buildSettlementDetail(group, settlement, myUserId),
+              }));
+              await refresh();
+
+              Alert.alert('สำเร็จ', `ยืนยันการรับเงินจาก "${item.personName}" เรียบร้อยแล้ว`);
+            } catch (err) {
+              console.error('Confirm payment error:', err);
+              Alert.alert('ไม่สามารถยืนยันได้', err.response?.data?.error || err.message);
+            } finally {
+              setConfirmingKey(null);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const normQuery = (searchQuery || '').trim().normalize('NFC').toLowerCase();
   const queryTokens = normQuery ? normQuery.split(/\s+/).filter(Boolean) : [];
@@ -173,6 +300,86 @@ export default function GroupListScreen() {
                 </Text>
               </View>
             </View>
+          </View>
+
+          {/* รวมรายการชำระของฉันจากทุกกลุ่ม (ไม่ต้องเข้าแต่ละกลุ่ม) */}
+          <View style={styles.mySettleSection}>
+            <View style={styles.mySettleHeader}>
+              <Text style={styles.mySettleTitle}>รายการชำระของฉัน</Text>
+              {!settlementReady && <ActivityIndicator size="small" color="#6D28D9" />}
+            </View>
+
+            {!settlementReady ? (
+              <Text style={styles.mySettleHint}>กำลังคำนวณรายการชำระ...</Text>
+            ) : myPayList.length === 0 && myReceiveList.length === 0 ? (
+              <View style={styles.mySettleEmpty}>
+                <Ionicons name="checkmark-circle-outline" size={20} color="#059669" />
+                <Text style={styles.mySettleEmptyText}>ไม่มีรายการค้างชำระในทุกกลุ่ม</Text>
+              </View>
+            ) : (
+              <>
+                {myPayList.length > 0 && (
+                  <View style={styles.mySettleBlock}>
+                    <Text style={[styles.mySettleBlockTitle, { color: '#DC2626' }]}>
+                      ฉันต้องจ่าย ({myPayList.length})
+                    </Text>
+                    {myPayList.map((item) => (
+                      <View key={item.key} style={styles.mySettleRow}>
+                        <View style={[styles.mySettleIconBox, styles.payIconBox]}>
+                          <Ionicons name="arrow-up-circle-outline" size={16} color="#DC2626" />
+                        </View>
+                        <View style={styles.mySettleInfo}>
+                          <Text style={styles.mySettleName}>จ่ายให้ {item.personName}</Text>
+                          <Text style={styles.mySettleGroupLabel}>{item.groupName}</Text>
+                        </View>
+                        <Text style={[styles.mySettleAmount, { color: '#DC2626' }]}>
+                          ฿{baht(item.amount)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {myReceiveList.length > 0 && (
+                  <View style={styles.mySettleBlock}>
+                    <Text style={[styles.mySettleBlockTitle, { color: '#059669' }]}>
+                      ฉันได้รับ ({myReceiveList.length})
+                    </Text>
+                    {myReceiveList.map((item) => (
+                      <View key={item.key} style={styles.mySettleRow}>
+                        <View style={[styles.mySettleIconBox, styles.receiveIconBox]}>
+                          <Ionicons name="arrow-down-circle-outline" size={16} color="#059669" />
+                        </View>
+                        <View style={styles.mySettleInfo}>
+                          <Text style={styles.mySettleName}>รับจาก {item.personName}</Text>
+                          <Text style={styles.mySettleGroupLabel}>{item.groupName}</Text>
+                        </View>
+                        <View style={styles.mySettleRight}>
+                          <Text style={[styles.mySettleAmount, { color: '#059669' }]}>
+                            ฿{baht(item.amount)}
+                          </Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.confirmReceivedBtn,
+                              confirmingKey !== null && styles.confirmReceivedBtnDisabled,
+                            ]}
+                            onPress={() => handleConfirmReceived(item)}
+                            disabled={confirmingKey !== null}
+                            activeOpacity={0.85}
+                          >
+                            {confirmingKey === item.key ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.confirmReceivedBtnText}>ยืนยันรับเงิน</Text>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
           </View>
 
           {/* Action Row */}
@@ -286,6 +493,34 @@ export default function GroupListScreen() {
                   {item.statusAmount}
                 </Text>
                 </View>
+
+              {/* รายการของฉันในกลุ่มนี้ (สรุปมาจาก backend เลย) */}
+              {(item.pay.length > 0 || item.receive.length > 0) && (
+                <View style={styles.cardDebts}>
+                  {item.pay.map((p) => (
+                    <View key={`pay_${p.personId}`} style={styles.cardDebtRow}>
+                      <Ionicons name="arrow-up-circle-outline" size={14} color="#DC2626" />
+                      <Text style={styles.cardDebtText} numberOfLines={1}>
+                        จ่ายให้ {p.personName}
+                      </Text>
+                      <Text style={[styles.cardDebtAmount, { color: '#DC2626' }]}>
+                        ฿{baht(p.amount)}
+                      </Text>
+                    </View>
+                  ))}
+                  {item.receive.map((p) => (
+                    <View key={`receive_${p.personId}`} style={styles.cardDebtRow}>
+                      <Ionicons name="arrow-down-circle-outline" size={14} color="#059669" />
+                      <Text style={styles.cardDebtText} numberOfLines={1}>
+                        รับจาก {p.personName}
+                      </Text>
+                      <Text style={[styles.cardDebtAmount, { color: '#059669' }]}>
+                        ฿{baht(p.amount)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               </TouchableOpacity>
               ))
             )}
@@ -590,5 +825,134 @@ const styles = StyleSheet.create({
   },
   statusAmountEmpty: {
     color: '#64748B',
+  },
+
+  // สรุปรายการชำระของฉันบนหน้ารวม
+  mySettleSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    padding: 16,
+    marginBottom: 16,
+    ...SHADOWS.small,
+  },
+  mySettleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  mySettleTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  mySettleHint: {
+    fontSize: 13,
+    color: '#94A3B8',
+    paddingVertical: 6,
+  },
+  mySettleEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  mySettleEmptyText: {
+    fontSize: 13,
+    color: '#059669',
+  },
+  mySettleBlock: {
+    marginBottom: 8,
+  },
+  mySettleBlockTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  mySettleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  mySettleIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  payIconBox: {
+    backgroundColor: '#FEF2F2',
+  },
+  receiveIconBox: {
+    backgroundColor: '#ECFDF5',
+  },
+  mySettleInfo: {
+    flex: 1,
+  },
+  mySettleName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  mySettleGroupLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  mySettleAmount: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  mySettleRight: {
+    alignItems: 'flex-end',
+    marginLeft: 8,
+    gap: 6,
+  },
+  confirmReceivedBtn: {
+    minWidth: 92,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#059669',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmReceivedBtnDisabled: {
+    opacity: 0.7,
+  },
+  confirmReceivedBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  // รายการย่อของฉันในแต่ละการ์ดกลุ่ม
+  cardDebts: {
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  cardDebtRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cardDebtText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#475569',
+  },
+  cardDebtAmount: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
